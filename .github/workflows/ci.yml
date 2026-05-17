@@ -4,10 +4,13 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 jobs:
-  pr-build-test:
-    name: PR Build Test
+  build-test:
+    name: Build Test
     runs-on: ubuntu-latest
 
     services:
