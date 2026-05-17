@@ -1,9 +1,14 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/together_trip
+    url: jdbc:postgresql://127.0.0.1:5432/together_trip
     username: together_trip
     password: together_trip
     driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
 
   jpa:
     hibernate:
