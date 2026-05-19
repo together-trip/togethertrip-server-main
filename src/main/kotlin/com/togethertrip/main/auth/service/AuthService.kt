@@ -81,6 +81,11 @@ class AuthService(
         )
     }
 
+    @Transactional
+    fun logout(userId: Long) {
+        refreshTokenService.delete(userId)
+    }
+
     private fun loginExistingUser(oauthAccount: OAuthAccount): User {
         val user = oauthAccount.user
 

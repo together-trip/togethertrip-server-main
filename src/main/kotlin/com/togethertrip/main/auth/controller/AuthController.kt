@@ -5,6 +5,8 @@ import com.togethertrip.main.auth.dto.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
 import com.togethertrip.main.auth.service.AuthService
 import com.togethertrip.main.global.response.ApiResponse
+import com.togethertrip.main.global.security.principal.AuthUser
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -31,6 +33,18 @@ class AuthController(
     ): ApiResponse<TokenResponse> {
         return ApiResponse.success(
             authService.refreshToken(request)
+        )
+    }
+
+    @PostMapping("/logout")
+    fun logout(
+        @AuthenticationPrincipal authUser: AuthUser,
+    ): ApiResponse<Unit> {
+        authService.logout(authUser.userId)
+
+        return ApiResponse.success(
+            data = Unit,
+            message = "로그아웃되었습니다.",
         )
     }
 }
