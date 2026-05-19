@@ -14,3 +14,15 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+
+jwt:
+  secret: local-development-secret-key-at-least-32-bytes
+  issuer: together-trip
+  access-token-expiration: 1800
+  refresh-token-expiration: 1209600
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
