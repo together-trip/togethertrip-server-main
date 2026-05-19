@@ -8,7 +8,7 @@ plugins {
 
 group = "com.togethertrip"
 version = "0.0.1-SNAPSHOT"
-description = "api"
+description = "main"
 
 java {
     toolchain {
