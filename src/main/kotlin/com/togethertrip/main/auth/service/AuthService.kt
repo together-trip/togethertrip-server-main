@@ -4,9 +4,11 @@ import com.togethertrip.main.auth.client.KakaoOAuthClient
 import com.togethertrip.main.auth.domain.OAuthAccount
 import com.togethertrip.main.auth.dto.KakaoLoginRequest
 import com.togethertrip.main.auth.dto.OAuthUserInfo
+import com.togethertrip.main.auth.dto.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
+import com.togethertrip.main.global.security.jwt.TokenType
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.repository.UserRepository
@@ -39,6 +41,44 @@ class AuthService(
         }
 
         return issueTokens(user)
+    }
+
+    @Transactional(readOnly = true)
+    fun refreshToken(request: TokenRefreshRequest): TokenResponse {
+        if (!jwtTokenProvider.validateToken(request.refreshToken)) {
+            throw IllegalArgumentException("유효하지 않은 refresh token입니다.")
+        }
+
+        val claims = jwtTokenProvider.getClaims(request.refreshToken)
+
+        if (claims.tokenType != TokenType.REFRESH) {
+            throw IllegalArgumentException("Refresh token이 아닙니다.")
+        }
+
+        if (!refreshTokenService.matches(
+                userId = claims.userId,
+                refreshToken = request.refreshToken,
+            )
+        ) {
+            throw IllegalArgumentException("Refresh token이 일치하지 않습니다.")
+        }
+
+        val user = userRepository.findById(claims.userId)
+            .orElseThrow { IllegalArgumentException("사용자를 찾을 수 없습니다.") }
+
+        if (user.status != UserStatus.ACTIVE) {
+            throw IllegalStateException("활성 상태의 사용자가 아닙니다.")
+        }
+
+        val accessToken = jwtTokenProvider.createAccessToken(
+            userId = user.id,
+            role = user.role,
+        )
+
+        return TokenResponse(
+            accessToken = accessToken,
+            refreshToken = request.refreshToken,
+        )
     }
 
     private fun loginExistingUser(oauthAccount: OAuthAccount): User {

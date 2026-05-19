@@ -1,6 +1,7 @@
 package com.togethertrip.main.auth.controller
 
 import com.togethertrip.main.auth.dto.KakaoLoginRequest
+import com.togethertrip.main.auth.dto.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
 import com.togethertrip.main.auth.service.AuthService
 import com.togethertrip.main.global.response.ApiResponse
@@ -21,6 +22,15 @@ class AuthController(
     ): ApiResponse<TokenResponse> {
         return ApiResponse.success(
             authService.loginWithKakao(request)
+        )
+    }
+
+    @PostMapping("/refresh")
+    fun refreshToken(
+        @RequestBody request: TokenRefreshRequest,
+    ): ApiResponse<TokenResponse> {
+        return ApiResponse.success(
+            authService.refreshToken(request)
         )
     }
 }
