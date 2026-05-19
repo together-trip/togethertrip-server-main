@@ -37,6 +37,9 @@ class SecurityConfig(
                     "/api/auth/refresh",
                     "/health",
                     "/actuator/health",
+                    "/swagger-ui/**",
+                    "/swagger-ui.html",
+                    "/v3/api-docs/**",
                 ).permitAll()
 
                 it.anyRequest().authenticated()
