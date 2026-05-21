@@ -1,8 +1,16 @@
 package com.togethertrip.main.auth.domain
 
+import com.togethertrip.main.global.domain.BaseEntity
 import com.togethertrip.main.user.domain.User
-import jakarta.persistence.*
-import java.time.LocalDateTime
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
+import jakarta.persistence.FetchType
+import jakarta.persistence.JoinColumn
+import jakarta.persistence.ManyToOne
+import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 
 @Entity
 @Table(
@@ -36,16 +44,4 @@ class OAuthAccount(
     @Column(name = "profile_image_url", nullable = true, length = 500)
     var profileImageUrl: String? = null,
 
-    @Column(name = "created_at", nullable = false)
-    var createdAt: LocalDateTime = LocalDateTime.now(),
-
-    @Column(name = "updated_at", nullable = false)
-    var updatedAt: LocalDateTime = LocalDateTime.now(),
-
-    @Column(name = "deleted_at")
-    var deletedAt: LocalDateTime? = null,
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long = 0L,
-)
+) : BaseEntity()

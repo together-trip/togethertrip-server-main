@@ -10,7 +10,12 @@ spring:
       host: 127.0.0.1
       port: 6379
 
+  sql:
+    init:
+      mode: always
+
   jpa:
+    defer-datasource-initialization: false
     hibernate:
       ddl-auto: update
     show-sql: true
