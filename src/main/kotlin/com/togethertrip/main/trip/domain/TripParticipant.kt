@@ -10,7 +10,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import java.time.LocalDateTime
+import java.time.Instant
 
 @Entity
 @Table(name = "trip_participants")
@@ -39,6 +39,6 @@ class TripParticipant(
     var participantStatus: TripParticipantStatus,
 
     @Column(name = "joined_at")
-    var joinedAt: LocalDateTime? = null,
+    var joinedAt: Instant? = null,
 
 ) : BaseEntity()

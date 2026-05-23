@@ -72,9 +72,18 @@ class TransactionController(
     ) {
     }
 
-    @Operation(summary = "거래 삭제", description = "특정 거래를 삭제합니다.")
+    @Operation(summary = "거래 삭제", description = "특정 거래를 삭제(무효 처리)합니다.")
     @DeleteMapping("/transactions/{transactionId}")
     fun deleteTransaction(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+        @PathVariable transactionId: Long,
+    ) {
+    }
+
+    @Operation(summary = "거래 변경 이력 조회", description = "특정 거래의 변경 이벤트 이력(생성/조정/무효)을 버전 순으로 조회합니다.")
+    @GetMapping("/transactions/{transactionId}/events")
+    fun getTransactionEvents(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable transactionId: Long,

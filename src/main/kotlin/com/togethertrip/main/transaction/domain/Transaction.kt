@@ -2,7 +2,7 @@ package com.togethertrip.main.transaction.domain
 
 import com.togethertrip.main.global.domain.BaseEntity
 import com.togethertrip.main.trip.domain.Trip
-import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.user.domain.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -11,9 +11,10 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import org.locationtech.jts.geom.Point
 import java.math.BigDecimal
-import java.time.LocalDateTime
+import java.time.Instant
 
 @Entity
 @Table(name = "transactions")
@@ -23,10 +24,10 @@ class Transaction(
     @JoinColumn(name = "trip_id", nullable = false)
     var trip: Trip,
 
-    // created_by_user_id 컬럼이 trip_participants.id 를 참조함 (스키마 FK 기준)
+    // DDL 기준: created_by_user_id 는 users(id) 를 참조한다.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id", nullable = false)
-    var createdBy: TripParticipant,
+    var createdBy: User,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "transaction_type", nullable = false, length = 30)
@@ -50,8 +51,8 @@ class Transaction(
     @Column(columnDefinition = "TEXT")
     var description: String? = null,
 
-    @Column(name = "occured_at", nullable = false)
-    var occuredAt: LocalDateTime,
+    @Column(name = "occurred_at", nullable = false)
+    var occurredAt: Instant,
 
     @Column(name = "location", columnDefinition = "GEOGRAPHY(POINT, 4326)")
     var location: Point? = null,
@@ -59,4 +60,14 @@ class Transaction(
     @Column(name = "place_name", length = 100)
     var placeName: String? = null,
 
-) : BaseEntity()
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    var status: TransactionStatus = TransactionStatus.ACTIVE,
+
+) : BaseEntity() {
+
+    // 거래 낙관적 락 버전 (DDL: version BIGINT NOT NULL DEFAULT 0)
+    @Version
+    @Column(nullable = false)
+    var version: Long = 0
+}

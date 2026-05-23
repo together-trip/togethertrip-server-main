@@ -28,7 +28,15 @@ class SettlementController(
     ) {
     }
 
-    @Operation(summary = "정산 확정", description = "여행의 정산 결과를 확정하고 송금 목록을 생성합니다.")
+    @Operation(summary = "참여자별 잔액 요약 조회", description = "증분 집계된 참여자별 결제/부담/순정산 금액을 조회합니다. 정산 미리보기 화면에서 사용합니다.")
+    @GetMapping("/balance-summary")
+    fun getBalanceSummary(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+    ) {
+    }
+
+    @Operation(summary = "정산 확정", description = "여행의 정산 결과를 확정하고 송금 목록을 생성합니다. 여행방당 CONFIRMED 정산은 하나만 가능합니다.")
     @PostMapping("/settlements")
     fun confirmSettlement(
         @AuthenticationPrincipal authUser: AuthUser,
