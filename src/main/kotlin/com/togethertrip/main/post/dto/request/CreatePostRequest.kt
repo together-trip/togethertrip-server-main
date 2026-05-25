@@ -2,7 +2,6 @@ package com.togethertrip.main.post.dto.request
 
 import com.togethertrip.main.post.domain.PostAttachmentType
 import com.togethertrip.main.post.domain.PostType
-import com.togethertrip.main.post.domain.PostVisibility
 
 /**
  * 게시글 작성 요청.
@@ -10,9 +9,10 @@ import com.togethertrip.main.post.domain.PostVisibility
  */
 data class CreatePostRequest(
     val transactionId: Long? = null,
+    val title: String? = null,
+    val category: String? = null,
     val content: String? = null,
-    val visibility: PostVisibility = PostVisibility.TRIP_ONLY,
-    val postType: PostType = PostType.NORMAL,
+    val postType: PostType = PostType.RECORD,
     val attachments: List<PostAttachmentRequest> = emptyList(),
 )
 

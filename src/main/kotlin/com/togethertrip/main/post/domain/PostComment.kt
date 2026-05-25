@@ -21,10 +21,17 @@ class PostComment(
     var post: Post,
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_comment_id")
+    var parentComment: PostComment? = null,
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_participant_id", nullable = false)
     var author: TripParticipant,
 
     @Column(nullable = false, columnDefinition = "TEXT")
     var content: String,
+
+    @Column(name = "comment_depth", nullable = false)
+    var commentDepth: Int = 0,
 
 ) : BaseEntity()

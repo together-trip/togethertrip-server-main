@@ -12,6 +12,8 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import java.math.BigDecimal
+import java.time.Instant
 
 /**
  * 여행방 게시글. 거래 기반 기록(transaction 연결) 또는 일반 여행 기록 모두 지원한다.
@@ -33,15 +35,32 @@ class Post(
     @JoinColumn(name = "author_participant_id", nullable = false)
     var author: TripParticipant,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "post_type", nullable = false, length = 20)
+    var postType: PostType,
+
+    @Column(length = 100)
+    var title: String? = null,
+
+    @Column(length = 30)
+    var category: String? = null,
+
     @Column(columnDefinition = "TEXT")
     var content: String? = null,
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    var visibility: PostVisibility = PostVisibility.TRIP_ONLY,
+    @Column(name = "occurred_at")
+    var occurredAt: Instant? = null,
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "post_type", nullable = false, length = 20)
-    var postType: PostType = PostType.NORMAL,
+    @Column(name = "place_name", length = 100)
+    var placeName: String? = null,
+
+    @Column(precision = 10, scale = 7)
+    var latitude: BigDecimal? = null,
+
+    @Column(precision = 10, scale = 7)
+    var longitude: BigDecimal? = null,
+
+    @Column(name = "comment_count", nullable = false)
+    var commentCount: Int = 0,
 
 ) : BaseEntity()

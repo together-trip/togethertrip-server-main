@@ -31,6 +31,9 @@ class TransactionPayment(
     @Column(name = "exchange_rate", nullable = false, precision = 19, scale = 6)
     var exchangeRate: BigDecimal,
 
+    @Column(name = "base_currency", nullable = false, length = 3)
+    var baseCurrency: String,
+
     @Column(name = "base_amount", nullable = false, precision = 19, scale = 2)
     var baseAmount: BigDecimal,
 

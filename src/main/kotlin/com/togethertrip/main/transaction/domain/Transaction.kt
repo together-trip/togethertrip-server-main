@@ -12,9 +12,7 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.Version
-import org.locationtech.jts.geom.Point
 import java.math.BigDecimal
-import java.time.Instant
 
 @Entity
 @Table(name = "transactions")
@@ -42,23 +40,11 @@ class Transaction(
     @Column(name = "exchange_rate", nullable = false, precision = 19, scale = 6)
     var exchangeRate: BigDecimal,
 
+    @Column(name = "base_currency", nullable = false, length = 3)
+    var baseCurrency: String,
+
     @Column(name = "base_amount", nullable = false, precision = 19, scale = 2)
     var baseAmount: BigDecimal,
-
-    @Column(length = 30)
-    var category: String? = null,
-
-    @Column(columnDefinition = "TEXT")
-    var description: String? = null,
-
-    @Column(name = "occurred_at", nullable = false)
-    var occurredAt: Instant,
-
-    @Column(name = "location", columnDefinition = "GEOGRAPHY(POINT, 4326)")
-    var location: Point? = null,
-
-    @Column(name = "place_name", length = 100)
-    var placeName: String? = null,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

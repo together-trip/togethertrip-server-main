@@ -25,6 +25,15 @@ class TransactionShare(
     @Column(name = "share_amount", nullable = false, precision = 19, scale = 2)
     var shareAmount: BigDecimal,
 
+    @Column(nullable = false, length = 3)
+    var currency: String,
+
+    @Column(name = "exchange_rate", nullable = false, precision = 19, scale = 6)
+    var exchangeRate: BigDecimal,
+
+    @Column(name = "base_currency", nullable = false, length = 3)
+    var baseCurrency: String,
+
     @Column(name = "base_share_amount", nullable = false, precision = 19, scale = 2)
     var baseShareAmount: BigDecimal,
 

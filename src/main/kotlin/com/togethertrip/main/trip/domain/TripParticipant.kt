@@ -31,8 +31,8 @@ class TripParticipant(
     var profileImageUrl: String? = null,
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "participant_type", nullable = false, length = 20)
-    var participantType: TripParticipantType,
+    @Column(name = "participant_role", nullable = false, length = 20)
+    var participantRole: TripParticipantRole,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "participant_status", nullable = false, length = 20)
@@ -40,5 +40,8 @@ class TripParticipant(
 
     @Column(name = "joined_at")
     var joinedAt: Instant? = null,
+
+    @Column(name = "left_at")
+    var leftAt: Instant? = null,
 
 ) : BaseEntity()

@@ -6,6 +6,7 @@ package com.togethertrip.main.trip.domain
  * - SETTLED: 최종 정산 완료
  */
 enum class TripSettlementStatus {
-    OPEN,
+    NOT_STARTED,
+    IN_PROGRESS,
     SETTLED
 }

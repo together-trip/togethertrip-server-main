@@ -47,7 +47,7 @@ class PostController(
     ) {
     }
 
-    @Operation(summary = "게시글 상세 조회", description = "게시글 본문, 첨부 파일, 댓글, 좋아요 수를 조회합니다.")
+    @Operation(summary = "게시글 상세 조회", description = "게시글 본문, 첨부 파일, 댓글을 조회합니다.")
     @GetMapping("/{postId}")
     fun getPost(
         @AuthenticationPrincipal authUser: AuthUser,
@@ -56,7 +56,7 @@ class PostController(
     ) {
     }
 
-    @Operation(summary = "게시글 수정", description = "게시글 본문과 공개 범위를 수정합니다.")
+    @Operation(summary = "게시글 수정", description = "게시글 제목, 카테고리, 본문을 수정합니다.")
     @PatchMapping("/{postId}")
     fun updatePost(
         @AuthenticationPrincipal authUser: AuthUser,
@@ -104,21 +104,4 @@ class PostController(
     ) {
     }
 
-    @Operation(summary = "좋아요 등록", description = "게시글에 좋아요를 등록합니다. 참여자당 한 번만 가능합니다.")
-    @PostMapping("/{postId}/likes")
-    fun likePost(
-        @AuthenticationPrincipal authUser: AuthUser,
-        @PathVariable tripId: Long,
-        @PathVariable postId: Long,
-    ) {
-    }
-
-    @Operation(summary = "좋아요 취소", description = "게시글 좋아요를 취소합니다.")
-    @DeleteMapping("/{postId}/likes")
-    fun unlikePost(
-        @AuthenticationPrincipal authUser: AuthUser,
-        @PathVariable tripId: Long,
-        @PathVariable postId: Long,
-    ) {
-    }
 }

@@ -7,7 +7,6 @@ package com.togethertrip.main.post.domain
  * - MEMORY: 추억/사진 기록
  */
 enum class PostType {
-    NORMAL,
-    TRANSACTION_LOG,
-    MEMORY
+    RECORD,
+    EXPENSE
 }

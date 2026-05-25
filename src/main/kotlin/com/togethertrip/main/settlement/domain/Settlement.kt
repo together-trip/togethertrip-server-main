@@ -47,9 +47,6 @@ class Settlement(
     @Column(name = "total_expense_amount", nullable = false, precision = 19, scale = 2)
     var totalExpenseAmount: BigDecimal = BigDecimal.ZERO,
 
-    @Column(name = "total_common_fund_amount", nullable = false, precision = 19, scale = 2)
-    var totalCommonFundAmount: BigDecimal = BigDecimal.ZERO,
-
     @Column(name = "total_share_amount", nullable = false, precision = 19, scale = 2)
     var totalShareAmount: BigDecimal = BigDecimal.ZERO,
 

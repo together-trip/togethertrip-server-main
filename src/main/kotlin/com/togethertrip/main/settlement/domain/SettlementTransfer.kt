@@ -48,6 +48,12 @@ class SettlementTransfer(
     @Column(name = "receiver_confirmed_at")
     var receiverConfirmedAt: Instant? = null,
 
+    @Column(name = "auto_confirmed", nullable = false)
+    var autoConfirmed: Boolean = false,
+
+    @Column(name = "auto_confirm_reason", length = 100)
+    var autoConfirmReason: String? = null,
+
     @Column(name = "completed_at")
     var completedAt: Instant? = null,
 

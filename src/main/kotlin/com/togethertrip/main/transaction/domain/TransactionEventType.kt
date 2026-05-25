@@ -8,6 +8,6 @@ package com.togethertrip.main.transaction.domain
  */
 enum class TransactionEventType {
     CREATED,
-    ADJUSTED,
+    UPDATED,
     VOIDED
 }
