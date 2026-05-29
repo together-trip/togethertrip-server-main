@@ -22,6 +22,13 @@
 
 - `./gradlew test`
 
+## Git 운영 규칙
+
+- 커밋 메시지는 반드시 `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:` 같은 prefix를 붙이고, prefix 뒤의 설명은 한국어로 작성한다.
+- 브랜치 이름은 `feature/api-build`, `chore/agent-setup`처럼 `작업성격/작업명` 형식으로 작성한다.
+- PR은 항상 작업 브랜치에서 `develop` 브랜치로 생성한다.
+- `main` 대상 PR이나 직접 push는 사용자가 명시적으로 요청한 경우에만 진행한다.
+
 ## 에이전트 역할
 
 역할 정의는 `docs/agents/roles/`에 있다.
@@ -50,4 +57,3 @@
 - `/togethertrip:verify-agent`
 - `/togethertrip:refactor-cleaner`
 - `/togethertrip:doc-updater`
-
