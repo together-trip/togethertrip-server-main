@@ -14,18 +14,18 @@
 
 ## 아키텍처 원칙
 
-- feature-based hexagonal architecture를 기본으로 한다.
-- domain, application use case, adapter 책임을 분리한다.
-- Controller는 application use case를 호출하고, domain 규칙을 우회하지 않는다.
-- 외부 시스템 접근은 port/adapter 뒤에 둔다.
-- 정산 계산과 권한 정책은 테스트 가능한 domain/application 계층에 둔다.
+- feature-based MVC 패턴을 기본으로 한다.
+- 기능별 패키지는 현재 코드처럼 `controller`, `service`, `repository`, `domain`, `dto` 책임으로 나눈다.
+- Controller는 요청/응답 매핑과 인증 주체 전달에 집중하고, 비즈니스 판단은 Service에 둔다.
+- Repository는 JPA Entity 조회/저장 책임을 맡고, Controller에서 직접 호출하지 않는다.
+- 정산 계산과 권한 정책은 테스트 가능한 Service/domain 메서드에 둔다.
 
 ## 통신 규칙
 
 - `app -> gateway -> main` 흐름의 API 진입을 기본으로 한다.
 - `main -> notification` 알림 생성/발송 요청을 허용한다.
 - 다른 서비스의 DB에 직접 접근하지 않는다.
-- 서비스 간 통신 방식이 확정되기 전까지 port/adapter 경계를 유지한다.
+- 서비스 간 통신 방식이 확정되기 전까지 Service 내부의 명시적인 클라이언트/설정으로 분리하고, 별도 아키텍처 계층 패키지는 만들지 않는다.
 
 ## 핵심 도메인 주의점
 
