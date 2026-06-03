@@ -16,6 +16,11 @@ enum class ErrorCode(
         "접근 권한이 없습니다.",
     ),
 
+    INVALID_INPUT(
+        HttpStatus.BAD_REQUEST,
+        "잘못된 입력입니다.",
+    ),
+
     INVALID_ACCESS_TOKEN(
         HttpStatus.UNAUTHORIZED,
         "유효하지 않은 access token입니다.",
@@ -49,6 +54,11 @@ enum class ErrorCode(
     INACTIVE_USER(
         HttpStatus.FORBIDDEN,
         "활성 상태의 사용자가 아닙니다.",
+    ),
+
+    TRIP_PARTICIPANT_NOT_FOUND(
+        HttpStatus.NOT_FOUND,
+        "여행 참여자 정보를 찾을 수 없습니다.",
     ),
 
     INTERNAL_SERVER_ERROR(

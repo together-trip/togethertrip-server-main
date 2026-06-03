@@ -23,4 +23,10 @@ abstract class BaseEntity(
 
     @Column(name = "deleted_at")
     var deletedAt: Instant? = null,
-)
+) {
+
+    fun markDeleted(now: Instant = Instant.now()) {
+        deletedAt = now
+        updatedAt = now
+    }
+}

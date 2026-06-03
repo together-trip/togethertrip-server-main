@@ -42,4 +42,25 @@ class User(
     @Column(nullable = false, length = 20)
     var status: UserStatus = UserStatus.ACTIVE,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun updateProfile(
+        nickname: String?,
+        profileImageUrl: String?,
+    ) {
+        if (nickname != null) {
+            this.nickname = nickname
+        }
+
+        if (profileImageUrl != null) {
+            this.profileImageUrl = profileImageUrl
+        }
+
+        updatedAt = Instant.now()
+    }
+
+    fun withdraw(now: Instant = Instant.now()) {
+        status = UserStatus.WITHDRAWN
+        markDeleted(now)
+    }
+}

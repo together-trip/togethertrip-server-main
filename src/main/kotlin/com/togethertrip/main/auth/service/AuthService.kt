@@ -92,7 +92,7 @@ class AuthService(
         val user = oauthAccount.user
 
         if (user.status != UserStatus.ACTIVE) {
-            throw IllegalStateException("활성 상태의 사용자가 아닙니다.")
+            throw BusinessException(ErrorCode.INACTIVE_USER)
         }
 
         return user
