@@ -5,6 +5,7 @@
 ## 작업 원칙
 
 - 문서와 산출물은 한국어로 작성한다. 명령어, 코드 식별자, 파일 경로, 라이브러리명은 원문을 유지한다.
+- Kotlin 코드는 IntelliJ Kotlin style guide를 기본 코드 스타일로 따른다.
 - 구현 전에는 기획, 도메인 정책, 권한 규칙, 기존 코드 구조를 먼저 확인한다.
 - feature-based MVC 패턴을 기본으로 하고, 기능별 `controller/service/repository/domain/dto` 구조를 따른다.
 - 사용자 개인정보, 인증, 여행/정산 권한, 정산 금액 무결성은 보안 검토 대상으로 본다.
