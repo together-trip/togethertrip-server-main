@@ -1,0 +1,34 @@
+package com.togethertrip.main.user.controller.spec
+
+import com.togethertrip.main.global.security.principal.AuthUser
+import com.togethertrip.main.user.dto.request.UpdateUserRequest
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
+
+@Tag(name = "User", description = "사용자 API")
+@SecurityRequirement(name = "bearerAuth")
+interface UserApiSpec {
+
+    @Operation(summary = "내 정보 조회", description = "현재 로그인한 사용자 정보를 조회합니다.")
+    fun getMe(
+        authUser: AuthUser,
+    )
+
+    @Operation(summary = "내 정보 수정", description = "현재 사용자의 닉네임과 프로필 이미지를 수정합니다.")
+    fun updateMe(
+        authUser: AuthUser,
+        request: UpdateUserRequest,
+    )
+
+    @Operation(summary = "회원 탈퇴", description = "현재 사용자를 탈퇴 처리합니다.")
+    fun deleteMe(
+        authUser: AuthUser,
+    )
+
+    @Operation(summary = "내 여행 참여자 정보 조회", description = "특정 여행에서 현재 사용자의 참여자 정보를 조회합니다.")
+    fun getMyTripParticipant(
+        authUser: AuthUser,
+        tripId: Long,
+    )
+}

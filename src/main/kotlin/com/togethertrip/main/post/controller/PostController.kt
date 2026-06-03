@@ -1,13 +1,11 @@
 package com.togethertrip.main.post.controller
 
+import com.togethertrip.main.global.security.principal.AuthUser
+import com.togethertrip.main.post.controller.spec.PostApiSpec
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.service.PostService
-import com.togethertrip.main.global.security.principal.AuthUser
-import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.security.SecurityRequirement
-import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -19,26 +17,22 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Post", description = "여행 커뮤니티 게시글 API")
-@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/trips/{tripId}/posts")
 class PostController(
     private val tripPostService: PostService,
-) {
+) : PostApiSpec {
 
-    @Operation(summary = "게시글 작성", description = "거래 기반 기록 또는 일반 여행 기록을 작성합니다. 첨부 파일을 함께 등록할 수 있습니다.")
     @PostMapping
-    fun createPost(
+    override fun createPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @RequestBody request: CreatePostRequest,
     ) {
     }
 
-    @Operation(summary = "게시글 목록 조회", description = "여행방의 게시글 목록을 최신순으로 조회합니다. 게시글 유형으로 필터링할 수 있습니다.")
     @GetMapping
-    fun getPosts(
+    override fun getPosts(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @RequestParam(required = false) postType: String?,
@@ -47,18 +41,16 @@ class PostController(
     ) {
     }
 
-    @Operation(summary = "게시글 상세 조회", description = "게시글 본문, 첨부 파일, 댓글을 조회합니다.")
     @GetMapping("/{postId}")
-    fun getPost(
+    override fun getPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
     ) {
     }
 
-    @Operation(summary = "게시글 수정", description = "게시글 제목, 카테고리, 본문을 수정합니다.")
     @PatchMapping("/{postId}")
-    fun updatePost(
+    override fun updatePost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
@@ -66,18 +58,16 @@ class PostController(
     ) {
     }
 
-    @Operation(summary = "게시글 삭제", description = "게시글을 소프트 삭제합니다.")
     @DeleteMapping("/{postId}")
-    fun deletePost(
+    override fun deletePost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
     ) {
     }
 
-    @Operation(summary = "댓글 작성", description = "게시글에 댓글을 작성합니다.")
     @PostMapping("/{postId}/comments")
-    fun createComment(
+    override fun createComment(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
@@ -85,18 +75,16 @@ class PostController(
     ) {
     }
 
-    @Operation(summary = "댓글 목록 조회", description = "게시글의 댓글 목록을 작성순으로 조회합니다.")
     @GetMapping("/{postId}/comments")
-    fun getComments(
+    override fun getComments(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
     ) {
     }
 
-    @Operation(summary = "댓글 삭제", description = "댓글을 소프트 삭제합니다.")
     @DeleteMapping("/{postId}/comments/{commentId}")
-    fun deleteComment(
+    override fun deleteComment(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
