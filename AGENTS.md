@@ -24,6 +24,7 @@
 
 ## Git 운영 규칙
 
+- 작업을 시작하기 전에 GitHub Issue를 먼저 생성하고, 작업 계획/브랜치/PR에 이슈 번호를 연결한다. 사용자가 명시적으로 생략을 지시하거나 GitHub 접근이 불가능하면 산출물에 사유를 남긴다.
 - 커밋 메시지는 반드시 `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:` 같은 prefix를 붙이고, prefix 뒤의 설명은 한국어로 작성한다.
 - 브랜치 이름은 `feature/api-build`, `chore/agent-setup`처럼 `작업성격/작업명` 형식으로 작성한다.
 - PR은 항상 작업 브랜치에서 `develop` 브랜치로 생성한다.

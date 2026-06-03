@@ -18,6 +18,9 @@ Codex는 이 리포에서 작업할 때 다음 순서를 기본으로 따른다.
 
 ## Git 운영 규칙
 
+- 작업 시작 전에 GitHub Issue를 먼저 생성한다.
+- 작업 계획, 브랜치, 커밋/PR 설명에는 가능한 경우 Issue 번호를 연결한다.
+- 사용자가 Issue 생성을 생략하라고 명시하거나 GitHub 접근이 불가능하면, 작업 산출물에 생략 사유를 남긴다.
 - 커밋 메시지는 `feat: 여행 생성 API 추가`처럼 prefix는 원문으로 두고, 설명은 한국어로 작성한다.
 - 커밋 prefix는 생략하지 않는다.
 - 브랜치는 `feature/api-build`, `fix/login-token-refresh`, `chore/agent-setup`처럼 `작업성격/작업명` 형식을 사용한다.
