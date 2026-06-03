@@ -33,7 +33,9 @@
 - Service가 트랜잭션 경계를 가진다. 클래스 기본값은 `@Transactional(readOnly = true)`, 쓰기 메서드는 별도 `@Transactional`을 사용한다.
 - Service는 비즈니스 규칙과 권한 판단을 담당한다. 여러 Service 조합이 반복될 때만 Facade 도입을 검토한다.
 - Repository는 Entity 조회/저장 책임만 가진다. DTO 반환, 권한 판단, 업무 흐름 조합을 Repository에 두지 않는다.
-- soft delete 대상 조회는 기본적으로 `DeletedAtIsNull` 조건을 포함한다. `findById()` 직접 사용은 도메인 정책상 삭제 데이터 포함이 필요한 경우로 제한한다.
+- soft delete 대상 Entity는 기본적으로 `@SQLRestriction("deleted_at IS NULL")`을 적용한다.
+- soft delete 대상 조회는 `@SQLRestriction`을 기본 안전장치로 두고, 명시성이 필요한 Repository 메서드는 `DeletedAtIsNull` 조건을 포함한다.
+- `findById()` 직접 사용은 `@SQLRestriction` 적용 Entity에서만 허용한다. 삭제 데이터 포함 조회가 필요한 경우는 별도 명시 쿼리로 분리한다.
 - JPA Entity에는 Kotlin `data class`를 사용하지 않는다.
 - Entity 상태 변경은 외부 필드 대입보다 도메인 메서드로 표현한다.
 - 삭제 API 메서드명은 REST 관례상 `deleteXxx`를 사용할 수 있지만, 도메인 데이터는 `deleted_at`을 기록하는 soft delete로 처리한다.

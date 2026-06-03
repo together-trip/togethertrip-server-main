@@ -37,6 +37,7 @@
 - Request DTO는 `user/dto/request`, Response DTO는 `user/dto/response`에 둔다.
 - `UpdateUserRequest`는 기존 placeholder를 제거하고 `nickname`, `profileImageUrl`만 받는다.
 - `UserService`가 트랜잭션 경계와 비즈니스 규칙을 담당한다.
+- `User`, `TripParticipant`에는 `@SQLRestriction("deleted_at IS NULL")`을 적용해 일반 조회에서 soft deleted row를 제외한다.
 - 모든 사용자 API는 `userRepository.findByIdAndDeletedAtIsNull(...)`로 사용자를 조회한다.
 - 사용자가 없으면 `USER_NOT_FOUND`, `status != ACTIVE`면 `INACTIVE_USER`를 반환한다.
 - 회원 탈퇴는 `status = WITHDRAWN`, `deletedAt = now`, `updatedAt = now`로 처리한다.

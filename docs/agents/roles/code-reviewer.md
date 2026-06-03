@@ -20,5 +20,5 @@
 - Swagger/OpenAPI 어노테이션이 Controller 본문이 아니라 `controller/spec`에 있는지 확인한다.
 - Service가 트랜잭션 경계와 비즈니스 규칙을 맡는지 확인한다.
 - Repository가 Entity 조회/저장 책임을 넘어서 DTO 반환, 권한 판단, 업무 흐름 조합을 하지 않는지 확인한다.
-- soft delete 대상 조회가 `DeletedAtIsNull` 조건을 누락하지 않는지 확인한다.
+- soft delete 대상 Entity에 `@SQLRestriction("deleted_at IS NULL")` 또는 명시적 `DeletedAtIsNull` 조회 조건이 누락되지 않았는지 확인한다.
 - JPA Entity에 `data class`를 사용하거나 null 단정(`!!`)으로 도메인 실패를 처리하지 않는지 확인한다.
