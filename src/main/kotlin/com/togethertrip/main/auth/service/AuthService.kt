@@ -102,8 +102,12 @@ class AuthService(
 
         val confirmedPhoneVerification = phoneVerificationService.confirmCode(request)
         val user = if (session.existingUserId != null) {
-            val existingUser = userRepository.findLockedByIdAndDeletedAtIsNull(session.existingUserId)
+            val existingUser = userRepository.findLockedByIdIncludingDeleted(session.existingUserId)
                 ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+
+            if (existingUser.status == UserStatus.WITHDRAWN || existingUser.deletedAt != null) {
+                existingUser.reactivateForSignup()
+            }
 
             if (existingUser.status != UserStatus.ACTIVE) {
                 throw BusinessException(UserErrorCode.INACTIVE_USER)

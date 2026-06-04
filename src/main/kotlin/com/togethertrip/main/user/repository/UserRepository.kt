@@ -15,6 +15,10 @@ interface UserRepository : JpaRepository<User, Long> {
     @Query("select u from User u where u.id = :id and u.deletedAt is null")
     fun findLockedByIdAndDeletedAtIsNull(@Param("id") id: Long): User?
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    fun findLockedByIdIncludingDeleted(@Param("id") id: Long): User?
+
     fun findByNicknameAndDeletedAtIsNull(nickname: String): User?
 
     fun existsByNicknameAndDeletedAtIsNull(nickname: String): Boolean

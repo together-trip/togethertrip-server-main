@@ -188,7 +188,7 @@ class AuthServiceTest {
                 phoneNumber = "+821033334444",
             )
         )
-        `when`(userRepository.findLockedByIdAndDeletedAtIsNull(1L))
+        `when`(userRepository.findLockedByIdIncludingDeleted(1L))
             .thenReturn(user)
         `when`(
             userRepository.existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
@@ -216,5 +216,68 @@ class AuthServiceTest {
             userId = 1L,
             refreshToken = "refresh-token",
         )
+    }
+
+    @Test
+    fun `탈퇴 사용자 임시 세션은 인증 확인 단계에서도 재활성화 후 전화번호를 저장한다`() {
+        val session = OAuthTemporarySession(
+            provider = OAuthProvider.KAKAO,
+            providerUserId = "kakao-123",
+            nickname = "여행자",
+            profileImageUrl = null,
+            existingUserId = 1L,
+        )
+        val user = User(nickname = "여행자").apply {
+            id = 1L
+            verifyPhoneNumber("+821011112222")
+            withdraw()
+        }
+
+        `when`(temporarySessionService.get("temporary-token"))
+            .thenReturn(session)
+        `when`(
+            oauthAccountRepository.findByProviderAndProviderUserId(
+                provider = OAuthProvider.KAKAO,
+                providerUserId = "kakao-123",
+            )
+        ).thenReturn(null)
+        `when`(phoneVerificationService.confirmCode(
+            ConfirmPhoneVerificationRequest(
+                temporaryToken = "temporary-token",
+                phoneNumber = "010-3333-4444",
+                code = "123456",
+            )
+        )).thenReturn(
+            ConfirmedPhoneVerification(
+                session = session,
+                phoneNumber = "+821033334444",
+            )
+        )
+        `when`(userRepository.findLockedByIdIncludingDeleted(1L))
+            .thenReturn(user)
+        `when`(
+            userRepository.existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
+                phoneNumber = "+821033334444",
+                id = 1L,
+            )
+        ).thenReturn(false)
+        `when`(jwtTokenProvider.createAccessToken(userId = 1L, role = user.role))
+            .thenReturn("access-token")
+        `when`(jwtTokenProvider.createRefreshToken(userId = 1L, role = user.role))
+            .thenReturn("refresh-token")
+
+        val response = authService.confirmPhoneVerification(
+            ConfirmPhoneVerificationRequest(
+                temporaryToken = "temporary-token",
+                phoneNumber = "010-3333-4444",
+                code = "123456",
+            )
+        )
+
+        assertEquals(AuthStatus.PROFILE_REQUIRED, response.status)
+        assertEquals(UserStatus.ACTIVE, user.status)
+        assertNull(user.deletedAt)
+        assertEquals("+821033334444", user.phoneNumber)
+        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
     }
 }
