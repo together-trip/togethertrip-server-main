@@ -22,19 +22,20 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 
 @Service
-@Transactional(readOnly = true)
 class UserService(
     private val userRepository: UserRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val phoneNumberNormalizer: PhoneNumberNormalizer,
 ) {
 
+    @Transactional(readOnly = true)
     fun getMe(userId: Long): UserResponse {
         return UserResponse.from(
             getActiveUser(userId)
         )
     }
 
+    @Transactional(readOnly = true)
     fun checkNicknameAvailability(
         nickname: String,
     ): NicknameAvailabilityResponse {
@@ -82,6 +83,7 @@ class UserService(
         user.withdraw()
     }
 
+    @Transactional(readOnly = true)
     fun getMyTripParticipant(
         userId: Long,
         tripId: Long,
@@ -98,6 +100,7 @@ class UserService(
         return MyTripParticipantResponse.from(tripParticipant)
     }
 
+    @Transactional(readOnly = true)
     fun searchByPhoneNumber(
         authUserId: Long,
         request: SearchUserByPhoneRequest,
