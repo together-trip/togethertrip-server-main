@@ -9,7 +9,6 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import jakarta.persistence.UniqueConstraint
 import java.math.BigDecimal
 
 /**
@@ -17,15 +16,7 @@ import java.math.BigDecimal
  * created_at / updated_at / deleted_at 은 BaseEntity 에서 제공한다.
  */
 @Entity
-@Table(
-    name = "trip_participant_balance_summaries",
-    uniqueConstraints = [
-        UniqueConstraint(
-            name = "uk_balance_summaries_trip_participant",
-            columnNames = ["trip_id", "trip_participant_id"],
-        ),
-    ],
-)
+@Table(name = "trip_participant_balance_summaries")
 class TripParticipantBalanceSummary(
 
     @ManyToOne(fetch = FetchType.LAZY)
