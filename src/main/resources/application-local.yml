@@ -1,14 +1,18 @@
 spring:
+  config:
+    import:
+      - optional:classpath:secret.yml
+
   datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/together_trip
-    username: together_trip
-    password: together_trip
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/together_trip}
+    username: ${SPRING_DATASOURCE_USERNAME:together_trip}
+    password: ${SPRING_DATASOURCE_PASSWORD:together_trip}
     driver-class-name: org.postgresql.Driver
 
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
+      host: ${SPRING_REDIS_HOST:127.0.0.1}
+      port: ${SPRING_REDIS_PORT:6379}
 
   sql:
     init:
@@ -21,10 +25,18 @@ spring:
     show-sql: true
 
 jwt:
-  secret: local-development-secret-key-at-least-32-bytes
+  secret: ${JWT_SECRET:local-development-secret-key-at-least-32-bytes}
   issuer: together-trip
   access-token-expiration: 1800
   refresh-token-expiration: 1209600
+
+auth:
+  local-test:
+    enabled: true
+
+sms:
+  solapi:
+    base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
 
 springdoc:
   swagger-ui:

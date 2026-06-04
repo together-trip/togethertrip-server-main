@@ -39,3 +39,7 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+### env ###
+.env
+src/main/resources/secret.yml

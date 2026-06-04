@@ -65,4 +65,13 @@ class User(
         status = UserStatus.WITHDRAWN
         markDeleted(now)
     }
+
+    fun verifyPhoneNumber(
+        phoneNumber: String,
+        verifiedAt: Instant = Instant.now(),
+    ) {
+        this.phoneNumber = phoneNumber
+        phoneVerifiedAt = verifiedAt
+        updatedAt = verifiedAt
+    }
 }

@@ -2,6 +2,7 @@ package com.togethertrip.main.user.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.ErrorCode
+import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -9,6 +10,7 @@ import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
@@ -24,15 +26,18 @@ class UserServiceTest {
 
     private lateinit var userRepository: UserRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
+    private lateinit var phoneNumberNormalizer: PhoneNumberNormalizer
     private lateinit var userService: UserService
 
     @BeforeEach
     fun setUp() {
         userRepository = mock(UserRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
+        phoneNumberNormalizer = PhoneNumberNormalizer()
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
+            phoneNumberNormalizer = phoneNumberNormalizer,
         )
     }
 
@@ -177,6 +182,83 @@ class UserServiceTest {
                 tripId = 10L,
                 userId = 1L,
             )
+    }
+
+    @Test
+    fun `전화번호로 인증 완료 활성 사용자를 검색한다`() {
+        val authUser = createUser().apply {
+            verifyPhoneNumber("+821011112222")
+        }
+        val targetUser = createUser().apply {
+            id = 2L
+            nickname = "동행자"
+            verifyPhoneNumber("+821033334444")
+        }
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(authUser)
+        `when`(
+            userRepository.findByPhoneNumberAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
+                phoneNumber = "+821033334444",
+                status = UserStatus.ACTIVE,
+            )
+        ).thenReturn(targetUser)
+
+        val response = userService.searchByPhoneNumber(
+            authUserId = 1L,
+            request = SearchUserByPhoneRequest(
+                phoneNumber = "010-3333-4444",
+            ),
+        )
+
+        assertEquals(true, response.found)
+        assertEquals(2L, response.user?.userId)
+        assertEquals("동행자", response.user?.nickname)
+    }
+
+    @Test
+    fun `전화번호 검색 결과가 없으면 found false를 반환한다`() {
+        val authUser = createUser().apply {
+            verifyPhoneNumber("+821011112222")
+        }
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(authUser)
+        `when`(
+            userRepository.findByPhoneNumberAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
+                phoneNumber = "+821033334444",
+                status = UserStatus.ACTIVE,
+            )
+        ).thenReturn(null)
+
+        val response = userService.searchByPhoneNumber(
+            authUserId = 1L,
+            request = SearchUserByPhoneRequest(
+                phoneNumber = "+821033334444",
+            ),
+        )
+
+        assertEquals(false, response.found)
+        assertEquals(null, response.user)
+    }
+
+    @Test
+    fun `전화번호 미인증 사용자는 전화번호 검색에 실패한다`() {
+        val authUser = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(authUser)
+
+        val exception = assertBusinessException {
+            userService.searchByPhoneNumber(
+                authUserId = 1L,
+                request = SearchUserByPhoneRequest(
+                    phoneNumber = "01033334444",
+                ),
+            )
+        }
+
+        assertEquals(ErrorCode.PHONE_VERIFICATION_REQUIRED, exception.errorCode)
     }
 
     private fun createUser(

@@ -1,5 +1,6 @@
 package com.togethertrip.main.global.security.jwt
 
+import com.togethertrip.main.global.security.local.LocalTestAuthenticationService
 import com.togethertrip.main.global.security.principal.AuthUser
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -12,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 class JwtAuthenticationFilter(
     private val jwtTokenProvider: JwtTokenProvider,
+    private val localTestAuthenticationService: LocalTestAuthenticationService,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -21,29 +23,39 @@ class JwtAuthenticationFilter(
     ) {
         val token = resolveToken(request)
 
-        if (token != null &&
-            SecurityContextHolder.getContext().authentication == null &&
-            jwtTokenProvider.validateToken(token)
+        if (
+            token != null &&
+            SecurityContextHolder.getContext().authentication == null
         ) {
-            val claims = jwtTokenProvider.getClaims(token)
+            val localTestUser = localTestAuthenticationService.authenticate(token)
 
-            if (claims.tokenType == TokenType.ACCESS) {
-                val authUser = AuthUser(
-                    userId = claims.userId,
-                    role = claims.role,
-                )
+            if (localTestUser != null) {
+                authenticate(localTestUser)
+            } else if (jwtTokenProvider.validateToken(token)) {
+                val claims = jwtTokenProvider.getClaims(token)
 
-                val authentication = UsernamePasswordAuthenticationToken(
-                    authUser,
-                    null,
-                    authUser.getAuthorities(),
-                )
+                if (claims.tokenType == TokenType.ACCESS) {
+                    val authUser = AuthUser(
+                        userId = claims.userId,
+                        role = claims.role,
+                    )
 
-                SecurityContextHolder.getContext().authentication = authentication
+                    authenticate(authUser)
+                }
             }
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun authenticate(authUser: AuthUser) {
+        val authentication = UsernamePasswordAuthenticationToken(
+            authUser,
+            null,
+            authUser.getAuthorities(),
+        )
+
+        SecurityContextHolder.getContext().authentication = authentication
     }
 
     private fun resolveToken(request: HttpServletRequest): String? {

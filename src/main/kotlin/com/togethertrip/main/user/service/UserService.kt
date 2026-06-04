@@ -2,11 +2,15 @@ package com.togethertrip.main.user.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.ErrorCode
+import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
+import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
+import com.togethertrip.main.user.dto.response.PhoneUserSummaryResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.stereotype.Service
@@ -17,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional
 class UserService(
     private val userRepository: UserRepository,
     private val tripParticipantRepository: TripParticipantRepository,
+    private val phoneNumberNormalizer: PhoneNumberNormalizer,
 ) {
 
     fun getMe(userId: Long): UserResponse {
@@ -63,6 +68,29 @@ class UserService(
             ?: throw BusinessException(ErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
 
         return MyTripParticipantResponse.from(tripParticipant)
+    }
+
+    fun searchByPhoneNumber(
+        authUserId: Long,
+        request: SearchUserByPhoneRequest,
+    ): PhoneUserSearchResponse {
+        val authUser = getActiveUser(authUserId)
+
+        if (authUser.phoneVerifiedAt == null) {
+            throw BusinessException(ErrorCode.PHONE_VERIFICATION_REQUIRED)
+        }
+
+        val phoneNumber = phoneNumberNormalizer.normalize(request.phoneNumber)
+        val user = userRepository
+            .findByPhoneNumberAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
+                phoneNumber = phoneNumber,
+                status = UserStatus.ACTIVE,
+            )
+            ?: return PhoneUserSearchResponse.notFound()
+
+        return PhoneUserSearchResponse.found(
+            PhoneUserSummaryResponse.from(user)
+        )
     }
 
     private fun getActiveUser(userId: Long): User {
