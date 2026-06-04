@@ -103,7 +103,7 @@ class AuthService(
         val confirmedPhoneVerification = phoneVerificationService.confirmCode(request)
         val user = if (session.existingUserId != null) {
             val existingUser = userRepository.findLockedByIdIncludingDeleted(session.existingUserId)
-                ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+                ?: rejectExpiredTemporarySession(request.temporaryToken)
 
             if (existingUser.status == UserStatus.WITHDRAWN || existingUser.deletedAt != null) {
                 existingUser.reactivateForSignup()
@@ -245,6 +245,11 @@ class AuthService(
     private fun rejectAlreadyCompleted(temporaryToken: String): Nothing {
         phoneVerificationService.deleteTemporarySession(temporaryToken)
         throw BusinessException(AuthErrorCode.SIGNUP_ALREADY_COMPLETED)
+    }
+
+    private fun rejectExpiredTemporarySession(temporaryToken: String): Nothing {
+        phoneVerificationService.deleteTemporarySession(temporaryToken)
+        throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_TOKEN_EXPIRED)
     }
 
     private fun validatePhoneNumberAvailable(

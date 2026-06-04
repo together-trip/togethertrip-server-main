@@ -280,4 +280,51 @@ class AuthServiceTest {
         assertEquals("+821033334444", user.phoneNumber)
         verify(phoneVerificationService).deleteTemporarySession("temporary-token")
     }
+
+    @Test
+    fun `임시 세션의 기존 사용자 id가 DB에 없으면 세션 만료로 거부한다`() {
+        val session = OAuthTemporarySession(
+            provider = OAuthProvider.KAKAO,
+            providerUserId = "kakao-123",
+            nickname = "여행자",
+            profileImageUrl = null,
+            existingUserId = 1L,
+        )
+
+        `when`(temporarySessionService.get("temporary-token"))
+            .thenReturn(session)
+        `when`(
+            oauthAccountRepository.findByProviderAndProviderUserId(
+                provider = OAuthProvider.KAKAO,
+                providerUserId = "kakao-123",
+            )
+        ).thenReturn(null)
+        `when`(phoneVerificationService.confirmCode(
+            ConfirmPhoneVerificationRequest(
+                temporaryToken = "temporary-token",
+                phoneNumber = "010-3333-4444",
+                code = "123456",
+            )
+        )).thenReturn(
+            ConfirmedPhoneVerification(
+                session = session,
+                phoneNumber = "+821033334444",
+            )
+        )
+        `when`(userRepository.findLockedByIdIncludingDeleted(1L))
+            .thenReturn(null)
+
+        val exception = assertFailsWith<BusinessException> {
+            authService.confirmPhoneVerification(
+                ConfirmPhoneVerificationRequest(
+                    temporaryToken = "temporary-token",
+                    phoneNumber = "010-3333-4444",
+                    code = "123456",
+                )
+            )
+        }
+
+        assertEquals(AuthErrorCode.PHONE_VERIFICATION_TOKEN_EXPIRED, exception.errorCode)
+        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
+    }
 }
