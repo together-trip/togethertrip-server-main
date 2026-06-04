@@ -36,17 +36,12 @@ class UserService(
     }
 
     fun checkNicknameAvailability(
-        userId: Long,
         nickname: String,
     ): NicknameAvailabilityResponse {
         validateNickname(nickname)
-        getActiveUser(userId)
 
         return NicknameAvailabilityResponse(
-            available = !userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
-                nickname = nickname,
-                id = userId,
-            )
+            available = !userRepository.existsByNicknameAndDeletedAtIsNull(nickname)
         )
     }
 

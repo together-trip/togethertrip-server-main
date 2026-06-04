@@ -28,9 +28,8 @@ interface UserApiSpec {
         authUser: AuthUser,
     ): ApiResponse<UserResponse>
 
-    @Operation(summary = "닉네임 중복 체크", description = "현재 사용자를 제외하고 닉네임 사용 가능 여부를 확인합니다.")
+    @Operation(summary = "닉네임 중복 체크", description = "가입 또는 프로필 입력 전 닉네임 사용 가능 여부를 확인합니다.")
     fun checkNicknameAvailability(
-        authUser: AuthUser,
         @Parameter(
             description = "중복 확인할 닉네임. 2~20자.",
             example = "여행자",

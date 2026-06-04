@@ -51,12 +51,10 @@ class UserController(
 
     @GetMapping("/nickname-availability")
     override fun checkNicknameAvailability(
-        @AuthenticationPrincipal authUser: AuthUser,
         @RequestParam nickname: String,
     ): ApiResponse<NicknameAvailabilityResponse> {
         return ApiResponse.success(
             userService.checkNicknameAvailability(
-                userId = authUser.userId,
                 nickname = nickname,
             )
         )

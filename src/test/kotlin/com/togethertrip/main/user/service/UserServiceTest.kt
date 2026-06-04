@@ -201,19 +201,10 @@ class UserServiceTest {
 
     @Test
     fun `사용 가능한 닉네임이면 available true를 반환한다`() {
-        val user = createUser()
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(user)
-        `when`(
-            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
-                nickname = "여행자",
-                id = 1L,
-            )
-        ).thenReturn(false)
+        `when`(userRepository.existsByNicknameAndDeletedAtIsNull("여행자"))
+            .thenReturn(false)
 
         val response = userService.checkNicknameAvailability(
-            userId = 1L,
             nickname = "여행자",
         )
 
@@ -222,19 +213,10 @@ class UserServiceTest {
 
     @Test
     fun `이미 사용 중인 닉네임이면 available false를 반환한다`() {
-        val user = createUser()
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(user)
-        `when`(
-            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
-                nickname = "동행자",
-                id = 1L,
-            )
-        ).thenReturn(true)
+        `when`(userRepository.existsByNicknameAndDeletedAtIsNull("동행자"))
+            .thenReturn(true)
 
         val response = userService.checkNicknameAvailability(
-            userId = 1L,
             nickname = "동행자",
         )
 

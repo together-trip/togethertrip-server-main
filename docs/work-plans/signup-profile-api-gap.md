@@ -44,7 +44,6 @@
 
 ```http
 GET /api/users/nickname-availability?nickname={nickname}
-Authorization: Bearer {accessToken}
 ```
 
 Query Parameters:
@@ -128,6 +127,7 @@ Response는 기존 `UserResponse`를 유지한다.
 
 - 닉네임은 2~20자로 통일한다.
 - 닉네임은 공백 문자열을 허용하지 않는다.
+- 닉네임 중복 확인은 가입 전에도 호출할 수 있도록 인증 없이 허용한다.
 - 닉네임 중복은 `deleted_at IS NULL` 사용자 기준으로 검사한다.
 - 필수 가입 프로필은 `nickname`, `gender`, `birthDate` 기준으로 완료 여부를 판단한다.
 - 전화번호 인증 완료 후 앱을 종료하고 다시 카카오 로그인해도 필수 가입 프로필이 비어 있으면 `PROFILE_REQUIRED`를 반환한다.
