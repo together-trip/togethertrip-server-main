@@ -46,7 +46,7 @@ class AuthService(
             )
 
         if (oauthAccount != null) {
-            val user = loginExistingUser(oauthAccount)
+            val user = resolveOAuthAccountUser(oauthAccount)
 
             if (user.phoneVerifiedAt != null) {
                 return createAuthenticatedResponse(user)
@@ -150,8 +150,13 @@ class AuthService(
         refreshTokenService.delete(userId)
     }
 
-    private fun loginExistingUser(oauthAccount: OAuthAccount): User {
+    private fun resolveOAuthAccountUser(oauthAccount: OAuthAccount): User {
         val user = oauthAccount.user
+
+        if (user.status == UserStatus.WITHDRAWN) {
+            user.reactivateForSignup()
+            return user
+        }
 
         if (user.status != UserStatus.ACTIVE) {
             throw BusinessException(UserErrorCode.INACTIVE_USER)

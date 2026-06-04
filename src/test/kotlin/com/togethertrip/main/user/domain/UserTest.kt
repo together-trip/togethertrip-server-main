@@ -2,7 +2,9 @@ package com.togethertrip.main.user.domain
 
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class UserTest {
@@ -23,5 +25,20 @@ class UserTest {
         val user = User(nickname = "여행자")
 
         assertFalse(user.isProfileCompleted())
+    }
+
+    @Test
+    fun `탈퇴 사용자를 재가입 상태로 재활성화한다`() {
+        val user = User(nickname = "여행자").apply {
+            verifyPhoneNumber("+821012345678")
+            withdraw()
+        }
+
+        user.reactivateForSignup()
+
+        assertEquals(UserStatus.ACTIVE, user.status)
+        assertNull(user.deletedAt)
+        assertNull(user.phoneNumber)
+        assertNull(user.phoneVerifiedAt)
     }
 }
