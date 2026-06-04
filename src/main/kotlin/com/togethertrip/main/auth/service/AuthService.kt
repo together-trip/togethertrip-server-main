@@ -2,11 +2,17 @@ package com.togethertrip.main.auth.service
 
 import com.togethertrip.main.auth.client.KakaoOAuthClient
 import com.togethertrip.main.auth.domain.OAuthAccount
-import com.togethertrip.main.auth.dto.KakaoLoginRequest
+import com.togethertrip.main.auth.dto.response.AuthResponse
+import com.togethertrip.main.auth.dto.request.ConfirmPhoneVerificationRequest
+import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
 import com.togethertrip.main.auth.dto.OAuthUserInfo
-import com.togethertrip.main.auth.dto.TokenRefreshRequest
+import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
+import com.togethertrip.main.auth.dto.request.RequestPhoneVerificationRequest
+import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
+import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
+import com.togethertrip.main.auth.service.phone.PhoneVerificationService
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.ErrorCode
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
@@ -24,10 +30,12 @@ class AuthService(
     private val userRepository: UserRepository,
     private val jwtTokenProvider: JwtTokenProvider,
     private val refreshTokenService: RefreshTokenService,
+    private val temporarySessionService: OAuthTemporarySessionService,
+    private val phoneVerificationService: PhoneVerificationService,
 ) {
 
     @Transactional
-    fun loginWithKakao(request: KakaoLoginRequest): TokenResponse {
+    fun loginWithKakao(request: KakaoLoginRequest): AuthResponse {
         val oauthUserInfo = kakaoOAuthClient.getUserInfo(request.accessToken)
 
         val oauthAccount = oauthAccountRepository
@@ -36,13 +44,67 @@ class AuthService(
                 providerUserId = oauthUserInfo.providerUserId,
             )
 
-        val user = if (oauthAccount != null) {
-            loginExistingUser(oauthAccount)
-        } else {
-            registerNewUser(oauthUserInfo)
+        if (oauthAccount != null) {
+            val user = loginExistingUser(oauthAccount)
+
+            if (user.phoneVerifiedAt != null) {
+                return AuthResponse.authenticated(issueTokens(user))
+            }
+
+            return AuthResponse.phoneVerificationRequired(
+                temporarySessionService.create(
+                    oauthUserInfo = oauthUserInfo,
+                    existingUserId = user.id,
+                )
+            )
         }
 
-        return issueTokens(user)
+        return AuthResponse.phoneVerificationRequired(
+            temporarySessionService.create(
+                oauthUserInfo = oauthUserInfo,
+                existingUserId = null,
+            )
+        )
+    }
+
+    fun requestPhoneVerification(
+        request: RequestPhoneVerificationRequest,
+    ): PhoneVerificationCodeSentResponse {
+        return phoneVerificationService.requestCode(request)
+    }
+
+    @Transactional
+    fun confirmPhoneVerification(
+        request: ConfirmPhoneVerificationRequest,
+    ): AuthResponse {
+        val confirmedPhoneVerification = phoneVerificationService.confirmCode(request)
+        val session = confirmedPhoneVerification.session
+        val user = if (session.existingUserId != null) {
+            val existingUser = userRepository.findByIdAndDeletedAtIsNull(session.existingUserId)
+                ?: throw BusinessException(ErrorCode.USER_NOT_FOUND)
+
+            if (existingUser.status != UserStatus.ACTIVE) {
+                throw BusinessException(ErrorCode.INACTIVE_USER)
+            }
+
+            existingUser.verifyPhoneNumber(confirmedPhoneVerification.phoneNumber)
+            existingUser
+        } else {
+            registerNewUser(
+                oauthUserInfo = OAuthUserInfo(
+                    provider = session.provider,
+                    providerUserId = session.providerUserId,
+                    email = session.email,
+                    nickname = session.nickname,
+                    profileImageUrl = session.profileImageUrl,
+                ),
+                phoneNumber = confirmedPhoneVerification.phoneNumber,
+            )
+        }
+
+        phoneVerificationService.deleteTemporarySession(request.temporaryToken)
+
+        return AuthResponse.authenticated(issueTokens(user))
     }
 
     @Transactional(readOnly = true)
@@ -92,7 +154,7 @@ class AuthService(
         val user = oauthAccount.user
 
         if (user.status != UserStatus.ACTIVE) {
-            throw IllegalStateException("활성 상태의 사용자가 아닙니다.")
+            throw BusinessException(ErrorCode.INACTIVE_USER)
         }
 
         return user
@@ -100,13 +162,16 @@ class AuthService(
 
     private fun registerNewUser(
         oauthUserInfo: OAuthUserInfo,
+        phoneNumber: String,
     ): User {
         val user = userRepository.save(
             User(
                 email = oauthUserInfo.email,
                 nickname = oauthUserInfo.nickname ?: "카카오 사용자",
                 profileImageUrl = oauthUserInfo.profileImageUrl,
-            )
+            ).apply {
+                verifyPhoneNumber(phoneNumber)
+            }
         )
 
         oauthAccountRepository.save(

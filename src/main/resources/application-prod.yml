@@ -1,4 +1,8 @@
 spring:
+  config:
+    import:
+      - optional:classpath:secret.yml
+
   datasource:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -20,6 +24,10 @@ jwt:
   issuer: together-trip
   access-token-expiration: 1800
   refresh-token-expiration: 1209600
+
+sms:
+  solapi:
+    base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
 
 springdoc:
   swagger-ui:

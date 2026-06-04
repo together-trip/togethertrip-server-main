@@ -3,6 +3,7 @@ package com.togethertrip.main.global.exception
 import com.togethertrip.main.global.response.ErrorResponse
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
 @RestControllerAdvice
@@ -34,6 +35,24 @@ class GlobalExceptionHandler {
                 ErrorResponse(
                     code = "BAD_REQUEST",
                     message = exception.message ?: "잘못된 요청입니다.",
+                )
+            )
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleMethodArgumentNotValidException(
+        exception: MethodArgumentNotValidException,
+    ): ResponseEntity<ErrorResponse> {
+        val message = exception.bindingResult.fieldErrors
+            .joinToString(", ") { "${it.field}: ${it.defaultMessage}" }
+            .ifBlank { ErrorCode.INVALID_INPUT.message }
+
+        return ResponseEntity
+            .status(ErrorCode.INVALID_INPUT.status)
+            .body(
+                ErrorResponse(
+                    code = ErrorCode.INVALID_INPUT.name,
+                    message = message,
                 )
             )
     }

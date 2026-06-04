@@ -5,6 +5,7 @@ import com.togethertrip.main.auth.dto.KakaoUserInfoResponse
 import com.togethertrip.main.auth.dto.OAuthUserInfo
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.ErrorCode
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
@@ -14,6 +15,8 @@ import org.springframework.web.reactive.function.client.bodyToMono
 @Component
 class KakaoOAuthClient(
     private val webClientBuilder: WebClient.Builder,
+    @Value("\${auth.local-test.enabled:false}")
+    private val localTestEnabled: Boolean,
 ) {
 
     private val webClient: WebClient = webClientBuilder
@@ -21,6 +24,10 @@ class KakaoOAuthClient(
         .build()
 
     fun getUserInfo(accessToken: String): OAuthUserInfo {
+        createLocalTestUserInfo(accessToken)?.let {
+            return it
+        }
+
         val response = try {
             webClient.get()
                 .uri("/v2/user/me")
@@ -41,5 +48,27 @@ class KakaoOAuthClient(
             profileImageUrl = response.kakaoAccount?.profile?.profileImageUrl
                 ?: response.properties?.profileImage,
         )
+    }
+
+    private fun createLocalTestUserInfo(accessToken: String): OAuthUserInfo? {
+        if (!localTestEnabled || !accessToken.startsWith(LOCAL_TEST_TOKEN_PREFIX)) {
+            return null
+        }
+
+        val localUserId = accessToken
+            .removePrefix(LOCAL_TEST_TOKEN_PREFIX)
+            .ifBlank { "swagger" }
+
+        return OAuthUserInfo(
+            provider = OAuthProvider.KAKAO,
+            providerUserId = "local-test-$localUserId",
+            email = "local-test-$localUserId@togethertrip.local",
+            nickname = "로컬 테스트 $localUserId",
+            profileImageUrl = null,
+        )
+    }
+
+    companion object {
+        private const val LOCAL_TEST_TOKEN_PREFIX = "local-test:"
     }
 }

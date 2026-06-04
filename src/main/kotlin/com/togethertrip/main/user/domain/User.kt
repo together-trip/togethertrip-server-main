@@ -6,11 +6,13 @@ import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Table
+import org.hibernate.annotations.SQLRestriction
 import java.time.Instant
 import java.time.LocalDate
 
 @Entity
 @Table(name = "users")
+@SQLRestriction("deleted_at IS NULL")
 class User(
 
     @Column(nullable = true, length = 255)
@@ -42,4 +44,34 @@ class User(
     @Column(nullable = false, length = 20)
     var status: UserStatus = UserStatus.ACTIVE,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun updateProfile(
+        nickname: String?,
+        profileImageUrl: String?,
+    ) {
+        if (nickname != null) {
+            this.nickname = nickname
+        }
+
+        if (profileImageUrl != null) {
+            this.profileImageUrl = profileImageUrl
+        }
+
+        updatedAt = Instant.now()
+    }
+
+    fun withdraw(now: Instant = Instant.now()) {
+        status = UserStatus.WITHDRAWN
+        markDeleted(now)
+    }
+
+    fun verifyPhoneNumber(
+        phoneNumber: String,
+        verifiedAt: Instant = Instant.now(),
+    ) {
+        this.phoneNumber = phoneNumber
+        phoneVerifiedAt = verifiedAt
+        updatedAt = verifiedAt
+    }
+}
