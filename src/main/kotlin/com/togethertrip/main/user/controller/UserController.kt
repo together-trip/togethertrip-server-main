@@ -6,6 +6,7 @@ import com.togethertrip.main.user.controller.spec.UserApiSpec
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
+import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
 import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.service.UserService
@@ -45,6 +46,19 @@ class UserController(
     ): ApiResponse<UserResponse> {
         return ApiResponse.success(
             userService.getMe(authUser.userId)
+        )
+    }
+
+    @GetMapping("/nickname-availability")
+    override fun checkNicknameAvailability(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @RequestParam nickname: String,
+    ): ApiResponse<NicknameAvailabilityResponse> {
+        return ApiResponse.success(
+            userService.checkNicknameAvailability(
+                userId = authUser.userId,
+                nickname = nickname,
+            )
         )
     }
 

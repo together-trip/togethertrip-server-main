@@ -7,7 +7,14 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface UserRepository : JpaRepository<User, Long> {
     fun findByIdAndDeletedAtIsNull(id: Long): User?
 
-    fun findByEmailAndDeletedAtIsNull(email: String): User?
+    fun findByNicknameAndDeletedAtIsNull(nickname: String): User?
+
+    fun existsByNicknameAndDeletedAtIsNull(nickname: String): Boolean
+
+    fun existsByNicknameAndIdNotAndDeletedAtIsNull(
+        nickname: String,
+        id: Long,
+    ): Boolean
 
     fun existsByPhoneNumberAndDeletedAtIsNull(phoneNumber: String): Boolean
 

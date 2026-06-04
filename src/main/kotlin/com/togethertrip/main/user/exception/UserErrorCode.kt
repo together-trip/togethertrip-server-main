@@ -18,5 +18,11 @@ enum class UserErrorCode(
         HttpStatus.FORBIDDEN,
         "INACTIVE_USER",
         "활성 상태의 사용자가 아닙니다.",
+    ),
+
+    NICKNAME_ALREADY_USED(
+        HttpStatus.CONFLICT,
+        "NICKNAME_ALREADY_USED",
+        "이미 사용 중인 닉네임입니다.",
     )
 }

@@ -11,6 +11,7 @@ import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
+import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
 import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
 import com.togethertrip.main.user.dto.response.PhoneUserSummaryResponse
 import com.togethertrip.main.user.dto.response.UserResponse
@@ -18,6 +19,7 @@ import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 
 @Service
 @Transactional(readOnly = true)
@@ -33,6 +35,21 @@ class UserService(
         )
     }
 
+    fun checkNicknameAvailability(
+        userId: Long,
+        nickname: String,
+    ): NicknameAvailabilityResponse {
+        validateNickname(nickname)
+        getActiveUser(userId)
+
+        return NicknameAvailabilityResponse(
+            available = !userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = nickname,
+                id = userId,
+            )
+        )
+    }
+
     @Transactional
     fun updateMe(
         userId: Long,
@@ -42,8 +59,21 @@ class UserService(
 
         val user = getActiveUser(userId)
 
+        if (
+            request.nickname != null &&
+            request.nickname != user.nickname &&
+            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = request.nickname,
+                id = userId,
+            )
+        ) {
+            throw BusinessException(UserErrorCode.NICKNAME_ALREADY_USED)
+        }
+
         user.updateProfile(
             nickname = request.nickname,
+            gender = request.gender,
+            birthDate = request.birthDate,
             profileImageUrl = request.profileImageUrl,
         )
 
@@ -108,8 +138,30 @@ class UserService(
     }
 
     private fun validateUpdateRequest(request: UpdateUserRequest) {
-        if (request.nickname != null && request.nickname.isBlank()) {
+        request.nickname?.let(::validateNickname)
+
+        if (request.gender != null && request.gender !in ALLOWED_GENDERS) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
+
+        if (request.birthDate != null && request.birthDate.isAfter(LocalDate.now())) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+    }
+
+    private fun validateNickname(nickname: String) {
+        if (
+            nickname.isBlank() ||
+            nickname.length < MIN_NICKNAME_LENGTH ||
+            nickname.length > MAX_NICKNAME_LENGTH
+        ) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+    }
+
+    companion object {
+        private const val MIN_NICKNAME_LENGTH = 2
+        private const val MAX_NICKNAME_LENGTH = 20
+        private val ALLOWED_GENDERS = setOf("MALE", "FEMALE")
     }
 }

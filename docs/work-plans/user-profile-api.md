@@ -65,7 +65,7 @@
 
 응답 DTO 초안은 다음 기준으로 둔다.
 
-- `UserResponse`: `id`, `email`, `nickname`, `gender`, `birthDate`, `profileImageUrl`, `phoneNumber`, `phoneVerifiedAt`, `role`, `status`
+- `UserResponse`: `id`, `nickname`, `gender`, `birthDate`, `profileImageUrl`, `phoneNumber`, `phoneVerifiedAt`, `role`, `status`
 - `MyTripParticipantResponse`: `id`, `tripId`, `userId`, `displayName`, `profileImageUrl`, `participantRole`, `participantStatus`, `joinedAt`, `leftAt`
 - `AuthResponse`: `status`, `temporaryToken`, `accessToken`, `refreshToken`
 - `PhoneUserSearchResponse`: `found`, `user`

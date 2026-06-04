@@ -35,9 +35,6 @@ class OAuthAccount(
     @Column(name = "provider_user_id", nullable = false, length = 100)
     var providerUserId: String,
 
-    @Column(nullable = true, length = 255)
-    var email: String? = null,
-
     @Column(nullable = true, length = 50)
     var nickname: String? = null,
 

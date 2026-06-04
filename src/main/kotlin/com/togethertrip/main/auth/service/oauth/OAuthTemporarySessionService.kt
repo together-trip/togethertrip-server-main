@@ -23,7 +23,6 @@ class OAuthTemporarySessionService(
         val session = OAuthTemporarySession(
             provider = oauthUserInfo.provider,
             providerUserId = oauthUserInfo.providerUserId,
-            email = oauthUserInfo.email,
             nickname = oauthUserInfo.nickname,
             profileImageUrl = oauthUserInfo.profileImageUrl,
             existingUserId = existingUserId,

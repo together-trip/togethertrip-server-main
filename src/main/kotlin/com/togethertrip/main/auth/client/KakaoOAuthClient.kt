@@ -42,7 +42,6 @@ class KakaoOAuthClient(
         return OAuthUserInfo(
             provider = OAuthProvider.KAKAO,
             providerUserId = response.id.toString(),
-            email = response.kakaoAccount?.email,
             nickname = response.kakaoAccount?.profile?.nickname
                 ?: response.properties?.nickname,
             profileImageUrl = response.kakaoAccount?.profile?.profileImageUrl
@@ -62,7 +61,6 @@ class KakaoOAuthClient(
         return OAuthUserInfo(
             provider = OAuthProvider.KAKAO,
             providerUserId = "local-test-$localUserId",
-            email = "local-test-$localUserId@togethertrip.local",
             nickname = "로컬 테스트 $localUserId",
             profileImageUrl = null,
         )

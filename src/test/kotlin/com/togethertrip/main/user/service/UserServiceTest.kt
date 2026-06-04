@@ -22,6 +22,7 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
+import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
@@ -105,6 +106,36 @@ class UserServiceTest {
     }
 
     @Test
+    fun `닉네임 성별 생년월일을 수정한다`() {
+        val user = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(
+            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = "여행자",
+                id = 1L,
+            )
+        ).thenReturn(false)
+
+        val response = userService.updateMe(
+            userId = 1L,
+            request = UpdateUserRequest(
+                nickname = "여행자",
+                gender = "MALE",
+                birthDate = LocalDate.of(1990, 1, 1),
+            ),
+        )
+
+        assertEquals("여행자", user.nickname)
+        assertEquals("MALE", user.gender)
+        assertEquals(LocalDate.of(1990, 1, 1), user.birthDate)
+        assertEquals("여행자", response.nickname)
+        assertEquals("MALE", response.gender)
+        assertEquals(LocalDate.of(1990, 1, 1), response.birthDate)
+    }
+
+    @Test
     fun `빈 닉네임으로 수정하면 실패한다`() {
         val exception = assertBusinessException {
             userService.updateMe(
@@ -115,6 +146,99 @@ class UserServiceTest {
 
         assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
         verifyNoInteractions(userRepository)
+    }
+
+    @Test
+    fun `중복 닉네임으로 수정하면 실패한다`() {
+        val user = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(
+            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = "동행자",
+                id = 1L,
+            )
+        ).thenReturn(true)
+
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(nickname = "동행자"),
+            )
+        }
+
+        assertEquals(UserErrorCode.NICKNAME_ALREADY_USED, exception.errorCode)
+    }
+
+    @Test
+    fun `허용되지 않은 성별로 수정하면 실패한다`() {
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(gender = "UNKNOWN"),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(userRepository)
+    }
+
+    @Test
+    fun `미래 생년월일로 수정하면 실패한다`() {
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(
+                    birthDate = LocalDate.now().plusDays(1),
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(userRepository)
+    }
+
+    @Test
+    fun `사용 가능한 닉네임이면 available true를 반환한다`() {
+        val user = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(
+            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = "여행자",
+                id = 1L,
+            )
+        ).thenReturn(false)
+
+        val response = userService.checkNicknameAvailability(
+            userId = 1L,
+            nickname = "여행자",
+        )
+
+        assertEquals(true, response.available)
+    }
+
+    @Test
+    fun `이미 사용 중인 닉네임이면 available false를 반환한다`() {
+        val user = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(
+            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = "동행자",
+                id = 1L,
+            )
+        ).thenReturn(true)
+
+        val response = userService.checkNicknameAvailability(
+            userId = 1L,
+            nickname = "동행자",
+        )
+
+        assertEquals(false, response.available)
     }
 
     @Test
@@ -268,7 +392,6 @@ class UserServiceTest {
         status: UserStatus = UserStatus.ACTIVE,
     ): User {
         return User(
-            email = "user@example.com",
             nickname = "재완",
             profileImageUrl = null,
             status = status,

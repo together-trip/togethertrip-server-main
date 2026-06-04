@@ -95,7 +95,6 @@ class AuthService(
                 oauthUserInfo = OAuthUserInfo(
                     provider = session.provider,
                     providerUserId = session.providerUserId,
-                    email = session.email,
                     nickname = session.nickname,
                     profileImageUrl = session.profileImageUrl,
                 ),
@@ -167,7 +166,6 @@ class AuthService(
     ): User {
         val user = userRepository.save(
             User(
-                email = oauthUserInfo.email,
                 nickname = oauthUserInfo.nickname ?: "카카오 사용자",
                 profileImageUrl = oauthUserInfo.profileImageUrl,
             ).apply {
@@ -180,7 +178,6 @@ class AuthService(
                 user = user,
                 provider = oauthUserInfo.provider,
                 providerUserId = oauthUserInfo.providerUserId,
-                email = oauthUserInfo.email,
                 nickname = oauthUserInfo.nickname,
                 profileImageUrl = oauthUserInfo.profileImageUrl,
             )
