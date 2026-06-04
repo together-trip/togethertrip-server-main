@@ -81,4 +81,8 @@ class User(
         phoneVerifiedAt = verifiedAt
         updatedAt = verifiedAt
     }
+
+    fun isProfileCompleted(): Boolean {
+        return nickname.isNotBlank() && gender != null && birthDate != null
+    }
 }

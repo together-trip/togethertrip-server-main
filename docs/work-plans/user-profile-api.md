@@ -52,12 +52,14 @@
 - 여행 참여자가 없으면 새 에러 코드 `TRIP_PARTICIPANT_NOT_FOUND`를 사용한다.
 - `AuthService.loginExistingUser()`의 비활성 사용자 예외도 `BusinessException(ErrorCode.INACTIVE_USER)`로 정리한다.
 - 전화번호 인증은 가입 필수 단계다. 카카오 로그인 성공 후 신규 사용자 또는 `phoneVerifiedAt == null` 기존 사용자는 `PHONE_VERIFICATION_REQUIRED` 응답과 임시 토큰을 받는다.
+- 전화번호 인증은 완료되었지만 `gender` 또는 `birthDate`가 비어 있는 사용자는 토큰과 함께 `PROFILE_REQUIRED` 응답을 받는다.
 - 임시 토큰은 opaque token으로 발급하고, OAuth 사용자 정보는 Redis에 10분 TTL로 저장한다.
 - 인증번호는 SMS로 발송하며 6자리 숫자, 3분 만료, 5회 실패 시 재발송 필요 정책을 적용한다.
 - 같은 전화번호 인증번호 요청은 1분에 1회, 하루 5회로 제한한다.
 - 전화번호는 한국 휴대폰 번호만 허용하고 `010...` 또는 `+8210...` 입력을 `+8210...` E.164 형태로 정규화한다.
 - 인증 완료 시 `users.phone_number`, `users.phone_verified_at`을 저장한다.
 - 인증 완료 시 신규 사용자는 사용자 생성과 OAuth 계정 연결 후 토큰을 발급하고, 기존 미인증 사용자는 전화번호를 갱신한 뒤 토큰을 발급한다.
+- 인증 완료 후 필수 프로필이 비어 있으면 메인 화면이 아니라 프로필 입력 화면으로 이어질 수 있도록 `PROFILE_REQUIRED`를 반환한다.
 - SMS 발송은 SOLAPI/CoolSMS REST API를 기준으로 `SmsSender` 인터페이스 뒤에 둔다.
 - 전화번호 검색 API는 로그인과 전화번호 인증이 완료된 사용자만 호출할 수 있다.
 - 전화번호 검색은 정확히 일치하는 `ACTIVE` + `phoneVerifiedAt != null` 사용자 1명만 대상으로 한다.
@@ -67,7 +69,7 @@
 
 - `UserResponse`: `id`, `nickname`, `gender`, `birthDate`, `profileImageUrl`, `phoneNumber`, `phoneVerifiedAt`, `role`, `status`
 - `MyTripParticipantResponse`: `id`, `tripId`, `userId`, `displayName`, `profileImageUrl`, `participantRole`, `participantStatus`, `joinedAt`, `leftAt`
-- `AuthResponse`: `status`, `temporaryToken`, `accessToken`, `refreshToken`
+- `AuthResponse`: `status(AUTHENTICATED|PROFILE_REQUIRED|PHONE_VERIFICATION_REQUIRED)`, `temporaryToken`, `accessToken`, `refreshToken`
 - `PhoneUserSearchResponse`: `found`, `user`
 
 ## 테스트 계획

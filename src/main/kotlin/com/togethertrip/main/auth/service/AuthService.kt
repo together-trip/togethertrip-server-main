@@ -49,7 +49,7 @@ class AuthService(
             val user = loginExistingUser(oauthAccount)
 
             if (user.phoneVerifiedAt != null) {
-                return AuthResponse.authenticated(issueTokens(user))
+                return createAuthenticatedResponse(user)
             }
 
             return AuthResponse.phoneVerificationRequired(
@@ -104,7 +104,7 @@ class AuthService(
 
         phoneVerificationService.deleteTemporarySession(request.temporaryToken)
 
-        return AuthResponse.authenticated(issueTokens(user))
+        return createAuthenticatedResponse(user)
     }
 
     @Transactional(readOnly = true)
@@ -206,5 +206,14 @@ class AuthService(
             accessToken = accessToken,
             refreshToken = refreshToken,
         )
+    }
+
+    private fun createAuthenticatedResponse(user: User): AuthResponse {
+        val tokenResponse = issueTokens(user)
+        if (!user.isProfileCompleted()) {
+            return AuthResponse.profileRequired(tokenResponse)
+        }
+
+        return AuthResponse.authenticated(tokenResponse)
     }
 }

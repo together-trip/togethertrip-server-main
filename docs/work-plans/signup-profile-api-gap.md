@@ -19,6 +19,7 @@
 
 - 닉네임 중복 체크 API를 추가한다.
 - `PATCH /api/users/me`에서 성별과 생년월일 저장을 지원한다.
+- 전화번호 인증 후 필수 프로필 입력을 완료하지 않은 사용자는 `PROFILE_REQUIRED` 상태로 프로필 입력 화면에 재진입할 수 있게 한다.
 - `UpdateUserRequest`에 `gender`, `birthDate` 필드를 추가한다.
 - `User.updateProfile()`이 성별과 생년월일을 갱신하도록 확장한다.
 - `UserService.updateMe()` 검증 로직을 보강한다.
@@ -128,6 +129,8 @@ Response는 기존 `UserResponse`를 유지한다.
 - 닉네임은 2~20자로 통일한다.
 - 닉네임은 공백 문자열을 허용하지 않는다.
 - 닉네임 중복은 `deleted_at IS NULL` 사용자 기준으로 검사한다.
+- 필수 가입 프로필은 `nickname`, `gender`, `birthDate` 기준으로 완료 여부를 판단한다.
+- 전화번호 인증 완료 후 앱을 종료하고 다시 카카오 로그인해도 필수 가입 프로필이 비어 있으면 `PROFILE_REQUIRED`를 반환한다.
 - 본인의 기존 닉네임은 수정 요청과 중복 체크에서 사용 가능으로 본다.
 - 성별은 우선 문자열로 저장하되 허용값을 `MALE`, `FEMALE`로 제한한다.
 - 생년월일은 ISO date 형식 `yyyy-MM-dd`로 받는다.
