@@ -43,7 +43,7 @@
 닉네임 입력 중 클라이언트가 중복 여부를 확인할 수 있도록 별도 API를 둔다.
 
 ```http
-GET /api/users/search/nickname?nickname={nickname}
+GET /api/users/nicknames/availability?nickname={nickname}
 ```
 
 Query Parameters:

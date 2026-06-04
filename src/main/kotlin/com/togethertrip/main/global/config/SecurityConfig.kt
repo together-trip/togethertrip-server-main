@@ -37,7 +37,7 @@ class SecurityConfig(
                     "/api/auth/phone/request",
                     "/api/auth/phone/confirm",
                     "/api/auth/refresh",
-                    "/api/users/search/nickname",
+                    "/api/users/nicknames/availability",
                     "/health",
                     "/actuator/health",
                     "/swagger-ui/**",
