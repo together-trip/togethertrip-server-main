@@ -1,7 +1,7 @@
 package com.togethertrip.main.global.phone
 
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
+import com.togethertrip.main.global.exception.CommonErrorCode
 import org.springframework.stereotype.Component
 
 @Component
@@ -16,7 +16,7 @@ class PhoneNumberNormalizer {
         return when {
             KOREAN_MOBILE_LOCAL.matches(compact) -> "+82${compact.substring(1)}"
             KOREAN_MOBILE_E164.matches(compact) -> compact
-            else -> throw BusinessException(ErrorCode.INVALID_PHONE_NUMBER)
+            else -> throw BusinessException(CommonErrorCode.INVALID_PHONE_NUMBER)
         }
     }
 

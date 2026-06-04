@@ -1,17 +1,20 @@
 package com.togethertrip.main.user.service
 
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
+import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
+import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -64,7 +67,7 @@ class UserServiceTest {
             userService.getMe(1L)
         }
 
-        assertEquals(ErrorCode.USER_NOT_FOUND, exception.errorCode)
+        assertEquals(UserErrorCode.USER_NOT_FOUND, exception.errorCode)
     }
 
     @Test
@@ -78,7 +81,7 @@ class UserServiceTest {
             userService.getMe(1L)
         }
 
-        assertEquals(ErrorCode.INACTIVE_USER, exception.errorCode)
+        assertEquals(UserErrorCode.INACTIVE_USER, exception.errorCode)
     }
 
     @Test
@@ -110,7 +113,7 @@ class UserServiceTest {
             )
         }
 
-        assertEquals(ErrorCode.INVALID_INPUT, exception.errorCode)
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
         verifyNoInteractions(userRepository)
     }
 
@@ -176,7 +179,7 @@ class UserServiceTest {
             )
         }
 
-        assertEquals(ErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
         verify(tripParticipantRepository)
             .findByTripIdAndUserIdAndDeletedAtIsNull(
                 tripId = 10L,
@@ -258,7 +261,7 @@ class UserServiceTest {
             )
         }
 
-        assertEquals(ErrorCode.PHONE_VERIFICATION_REQUIRED, exception.errorCode)
+        assertEquals(AuthErrorCode.PHONE_VERIFICATION_REQUIRED, exception.errorCode)
     }
 
     private fun createUser(

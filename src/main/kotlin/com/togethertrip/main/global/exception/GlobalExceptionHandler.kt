@@ -19,7 +19,7 @@ class GlobalExceptionHandler {
             .status(errorCode.status)
             .body(
                 ErrorResponse(
-                    code = errorCode.name,
+                    code = errorCode.code,
                     message = errorCode.message,
                 )
             )
@@ -45,13 +45,13 @@ class GlobalExceptionHandler {
     ): ResponseEntity<ErrorResponse> {
         val message = exception.bindingResult.fieldErrors
             .joinToString(", ") { "${it.field}: ${it.defaultMessage}" }
-            .ifBlank { ErrorCode.INVALID_INPUT.message }
+            .ifBlank { CommonErrorCode.INVALID_INPUT.message }
 
         return ResponseEntity
-            .status(ErrorCode.INVALID_INPUT.status)
+            .status(CommonErrorCode.INVALID_INPUT.status)
             .body(
                 ErrorResponse(
-                    code = ErrorCode.INVALID_INPUT.name,
+                    code = CommonErrorCode.INVALID_INPUT.code,
                     message = message,
                 )
             )
@@ -65,8 +65,8 @@ class GlobalExceptionHandler {
             .internalServerError()
             .body(
                 ErrorResponse(
-                    code = ErrorCode.INTERNAL_SERVER_ERROR.name,
-                    message = ErrorCode.INTERNAL_SERVER_ERROR.message,
+                    code = CommonErrorCode.INTERNAL_SERVER_ERROR.code,
+                    message = CommonErrorCode.INTERNAL_SERVER_ERROR.message,
                 )
             )
     }

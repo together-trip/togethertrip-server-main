@@ -1,7 +1,7 @@
 package com.togethertrip.main.global.phone
 
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
+import com.togethertrip.main.global.exception.CommonErrorCode
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
@@ -39,6 +39,6 @@ class PhoneNumberNormalizerTest {
             exception
         }
 
-        assertEquals(ErrorCode.INVALID_PHONE_NUMBER, exception.errorCode)
+        assertEquals(CommonErrorCode.INVALID_PHONE_NUMBER, exception.errorCode)
     }
 }

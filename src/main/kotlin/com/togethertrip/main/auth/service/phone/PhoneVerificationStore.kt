@@ -1,7 +1,7 @@
 package com.togethertrip.main.auth.service.phone
 
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
@@ -28,7 +28,7 @@ class PhoneVerificationStore(
 
     fun get(temporaryToken: String): PhoneVerificationState {
         val value = redisTemplate.opsForValue().get(getVerificationKey(temporaryToken))
-            ?: throw BusinessException(ErrorCode.PHONE_VERIFICATION_CODE_EXPIRED)
+            ?: throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_CODE_EXPIRED)
 
         return objectMapper.readValue(value, PhoneVerificationState::class.java)
     }
@@ -46,7 +46,7 @@ class PhoneVerificationStore(
 
         if (nextState.attemptCount >= maxAttemptCount) {
             delete(temporaryToken)
-            throw BusinessException(ErrorCode.PHONE_VERIFICATION_ATTEMPT_EXCEEDED)
+            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_ATTEMPT_EXCEEDED)
         }
 
         val remainingTtl = Duration

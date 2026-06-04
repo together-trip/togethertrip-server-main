@@ -1,8 +1,8 @@
 package com.togethertrip.main.auth.client
 
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.service.phone.SmsSender
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
@@ -53,7 +53,7 @@ class SolapiSmsSender(
                 .bodyToMono(String::class.java)
                 .block()
         } catch (exception: RuntimeException) {
-            throw BusinessException(ErrorCode.SMS_SEND_FAILED)
+            throw BusinessException(AuthErrorCode.SMS_SEND_FAILED)
         }
     }
 
@@ -63,7 +63,7 @@ class SolapiSmsSender(
             properties.apiSecret.isBlank() ||
             properties.from.isBlank()
         ) {
-            throw BusinessException(ErrorCode.SMS_CONFIGURATION_REQUIRED)
+            throw BusinessException(AuthErrorCode.SMS_CONFIGURATION_REQUIRED)
         }
     }
 
