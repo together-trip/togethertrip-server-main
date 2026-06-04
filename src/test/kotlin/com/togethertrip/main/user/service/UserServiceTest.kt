@@ -1,17 +1,20 @@
 package com.togethertrip.main.user.service
 
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
+import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
+import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -19,6 +22,7 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
+import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
@@ -64,7 +68,7 @@ class UserServiceTest {
             userService.getMe(1L)
         }
 
-        assertEquals(ErrorCode.USER_NOT_FOUND, exception.errorCode)
+        assertEquals(UserErrorCode.USER_NOT_FOUND, exception.errorCode)
     }
 
     @Test
@@ -78,7 +82,7 @@ class UserServiceTest {
             userService.getMe(1L)
         }
 
-        assertEquals(ErrorCode.INACTIVE_USER, exception.errorCode)
+        assertEquals(UserErrorCode.INACTIVE_USER, exception.errorCode)
     }
 
     @Test
@@ -102,6 +106,36 @@ class UserServiceTest {
     }
 
     @Test
+    fun `닉네임 성별 생년월일을 수정한다`() {
+        val user = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(
+            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = "여행자",
+                id = 1L,
+            )
+        ).thenReturn(false)
+
+        val response = userService.updateMe(
+            userId = 1L,
+            request = UpdateUserRequest(
+                nickname = "여행자",
+                gender = "MALE",
+                birthDate = LocalDate.of(1990, 1, 1),
+            ),
+        )
+
+        assertEquals("여행자", user.nickname)
+        assertEquals("MALE", user.gender)
+        assertEquals(LocalDate.of(1990, 1, 1), user.birthDate)
+        assertEquals("여행자", response.nickname)
+        assertEquals("MALE", response.gender)
+        assertEquals(LocalDate.of(1990, 1, 1), response.birthDate)
+    }
+
+    @Test
     fun `빈 닉네임으로 수정하면 실패한다`() {
         val exception = assertBusinessException {
             userService.updateMe(
@@ -110,8 +144,83 @@ class UserServiceTest {
             )
         }
 
-        assertEquals(ErrorCode.INVALID_INPUT, exception.errorCode)
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
         verifyNoInteractions(userRepository)
+    }
+
+    @Test
+    fun `중복 닉네임으로 수정하면 실패한다`() {
+        val user = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(
+            userRepository.existsByNicknameAndIdNotAndDeletedAtIsNull(
+                nickname = "동행자",
+                id = 1L,
+            )
+        ).thenReturn(true)
+
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(nickname = "동행자"),
+            )
+        }
+
+        assertEquals(UserErrorCode.NICKNAME_ALREADY_USED, exception.errorCode)
+    }
+
+    @Test
+    fun `허용되지 않은 성별로 수정하면 실패한다`() {
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(gender = "UNKNOWN"),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(userRepository)
+    }
+
+    @Test
+    fun `미래 생년월일로 수정하면 실패한다`() {
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(
+                    birthDate = LocalDate.now().plusDays(1),
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(userRepository)
+    }
+
+    @Test
+    fun `사용 가능한 닉네임이면 available true를 반환한다`() {
+        `when`(userRepository.existsByNicknameAndDeletedAtIsNull("여행자"))
+            .thenReturn(false)
+
+        val response = userService.checkNicknameAvailability(
+            nickname = "여행자",
+        )
+
+        assertEquals(true, response.available)
+    }
+
+    @Test
+    fun `이미 사용 중인 닉네임이면 available false를 반환한다`() {
+        `when`(userRepository.existsByNicknameAndDeletedAtIsNull("동행자"))
+            .thenReturn(true)
+
+        val response = userService.checkNicknameAvailability(
+            nickname = "동행자",
+        )
+
+        assertEquals(false, response.available)
     }
 
     @Test
@@ -176,7 +285,7 @@ class UserServiceTest {
             )
         }
 
-        assertEquals(ErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
         verify(tripParticipantRepository)
             .findByTripIdAndUserIdAndDeletedAtIsNull(
                 tripId = 10L,
@@ -258,14 +367,13 @@ class UserServiceTest {
             )
         }
 
-        assertEquals(ErrorCode.PHONE_VERIFICATION_REQUIRED, exception.errorCode)
+        assertEquals(AuthErrorCode.PHONE_VERIFICATION_REQUIRED, exception.errorCode)
     }
 
     private fun createUser(
         status: UserStatus = UserStatus.ACTIVE,
     ): User {
         return User(
-            email = "user@example.com",
             nickname = "재완",
             profileImageUrl = null,
             status = status,

@@ -3,9 +3,9 @@ package com.togethertrip.main.auth.service.phone
 import com.togethertrip.main.auth.dto.request.ConfirmPhoneVerificationRequest
 import com.togethertrip.main.auth.dto.request.RequestPhoneVerificationRequest
 import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.stereotype.Service
@@ -64,16 +64,16 @@ class PhoneVerificationService(
         validatePhoneNumberAvailable(phoneNumber)
 
         if (state.phoneNumber != phoneNumber) {
-            throw BusinessException(ErrorCode.INVALID_PHONE_VERIFICATION_CODE)
+            throw BusinessException(AuthErrorCode.INVALID_PHONE_VERIFICATION_CODE)
         }
 
         if (Instant.now().isAfter(state.expiresAt)) {
             phoneVerificationStore.delete(request.temporaryToken)
-            throw BusinessException(ErrorCode.PHONE_VERIFICATION_CODE_EXPIRED)
+            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_CODE_EXPIRED)
         }
 
         if (state.attemptCount >= MAX_ATTEMPT_COUNT) {
-            throw BusinessException(ErrorCode.PHONE_VERIFICATION_ATTEMPT_EXCEEDED)
+            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_ATTEMPT_EXCEEDED)
         }
 
         if (state.code != request.code) {
@@ -82,7 +82,7 @@ class PhoneVerificationService(
                 state = state,
                 maxAttemptCount = MAX_ATTEMPT_COUNT,
             )
-            throw BusinessException(ErrorCode.INVALID_PHONE_VERIFICATION_CODE)
+            throw BusinessException(AuthErrorCode.INVALID_PHONE_VERIFICATION_CODE)
         }
 
         phoneVerificationStore.delete(request.temporaryToken)
@@ -102,7 +102,7 @@ class PhoneVerificationService(
             .existsByPhoneNumberAndDeletedAtIsNull(phoneNumber)
 
         if (alreadyUsed) {
-            throw BusinessException(ErrorCode.PHONE_NUMBER_ALREADY_USED)
+            throw BusinessException(AuthErrorCode.PHONE_NUMBER_ALREADY_USED)
         }
     }
 

@@ -19,6 +19,15 @@ data class AuthResponse(
             )
         }
 
+        fun profileRequired(tokenResponse: TokenResponse): AuthResponse {
+            return AuthResponse(
+                status = AuthStatus.PROFILE_REQUIRED,
+                temporaryToken = null,
+                accessToken = tokenResponse.accessToken,
+                refreshToken = tokenResponse.refreshToken,
+            )
+        }
+
         fun phoneVerificationRequired(temporaryToken: String): AuthResponse {
             return AuthResponse(
                 status = AuthStatus.PHONE_VERIFICATION_REQUIRED,

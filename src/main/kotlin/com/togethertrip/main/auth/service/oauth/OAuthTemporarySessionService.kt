@@ -1,8 +1,8 @@
 package com.togethertrip.main.auth.service.oauth
 
 import com.togethertrip.main.auth.dto.OAuthUserInfo
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
 import tools.jackson.databind.ObjectMapper
@@ -23,7 +23,6 @@ class OAuthTemporarySessionService(
         val session = OAuthTemporarySession(
             provider = oauthUserInfo.provider,
             providerUserId = oauthUserInfo.providerUserId,
-            email = oauthUserInfo.email,
             nickname = oauthUserInfo.nickname,
             profileImageUrl = oauthUserInfo.profileImageUrl,
             existingUserId = existingUserId,
@@ -40,7 +39,7 @@ class OAuthTemporarySessionService(
 
     fun get(temporaryToken: String): OAuthTemporarySession {
         val value = redisTemplate.opsForValue().get(getKey(temporaryToken))
-            ?: throw BusinessException(ErrorCode.PHONE_VERIFICATION_TOKEN_EXPIRED)
+            ?: throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_TOKEN_EXPIRED)
 
         return objectMapper.readValue(value, OAuthTemporarySession::class.java)
     }

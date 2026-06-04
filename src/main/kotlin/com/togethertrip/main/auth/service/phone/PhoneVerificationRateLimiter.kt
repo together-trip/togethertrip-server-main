@@ -1,7 +1,7 @@
 package com.togethertrip.main.auth.service.phone
 
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import java.time.Duration
@@ -16,7 +16,7 @@ class PhoneVerificationRateLimiter(
 
     fun validate(phoneNumber: String) {
         if (redisTemplate.hasKey(getRateLimitKey(phoneNumber))) {
-            throw BusinessException(ErrorCode.PHONE_VERIFICATION_REQUEST_TOO_SOON)
+            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_REQUEST_TOO_SOON)
         }
 
         val dailyLimitKey = getDailyLimitKey(phoneNumber)
@@ -31,7 +31,7 @@ class PhoneVerificationRateLimiter(
         }
 
         if (dailyCount > DAILY_REQUEST_LIMIT) {
-            throw BusinessException(ErrorCode.PHONE_VERIFICATION_DAILY_LIMIT_EXCEEDED)
+            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_DAILY_LIMIT_EXCEEDED)
         }
 
         redisTemplate.opsForValue().set(

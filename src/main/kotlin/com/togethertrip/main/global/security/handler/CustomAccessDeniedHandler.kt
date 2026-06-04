@@ -1,5 +1,6 @@
 package com.togethertrip.main.global.security.handler
 
+import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.response.ErrorResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -23,9 +24,10 @@ class CustomAccessDeniedHandler(
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = Charsets.UTF_8.name()
 
+        val errorCode = CommonErrorCode.ACCESS_DENIED
         val errorResponse = ErrorResponse(
-            code = "ACCESS_DENIED",
-            message = "접근 권한이 없습니다.",
+            code = errorCode.code,
+            message = errorCode.message,
         )
 
         response.writer.write(objectMapper.writeValueAsString(errorResponse))

@@ -15,9 +15,6 @@ import java.time.LocalDate
 @SQLRestriction("deleted_at IS NULL")
 class User(
 
-    @Column(nullable = true, length = 255)
-    var email: String? = null,
-
     @Column(nullable = false, length = 50)
     var nickname: String,
 
@@ -48,10 +45,20 @@ class User(
 
     fun updateProfile(
         nickname: String?,
+        gender: String?,
+        birthDate: LocalDate?,
         profileImageUrl: String?,
     ) {
         if (nickname != null) {
             this.nickname = nickname
+        }
+
+        if (gender != null) {
+            this.gender = gender
+        }
+
+        if (birthDate != null) {
+            this.birthDate = birthDate
         }
 
         if (profileImageUrl != null) {
@@ -73,5 +80,9 @@ class User(
         this.phoneNumber = phoneNumber
         phoneVerifiedAt = verifiedAt
         updatedAt = verifiedAt
+    }
+
+    fun isProfileCompleted(): Boolean {
+        return nickname.isNotBlank() && gender != null && birthDate != null
     }
 }

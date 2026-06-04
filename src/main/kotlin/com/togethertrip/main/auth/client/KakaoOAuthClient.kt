@@ -3,8 +3,8 @@ package com.togethertrip.main.auth.client
 import com.togethertrip.main.auth.domain.OAuthProvider
 import com.togethertrip.main.auth.dto.KakaoUserInfoResponse
 import com.togethertrip.main.auth.dto.OAuthUserInfo
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
 import org.springframework.stereotype.Component
@@ -36,13 +36,12 @@ class KakaoOAuthClient(
                 .bodyToMono<KakaoUserInfoResponse>()
                 .block()
         } catch (exception: WebClientResponseException) {
-            throw BusinessException(ErrorCode.OAUTH_USER_INFO_FAILED)
-        } ?: throw BusinessException(ErrorCode.OAUTH_USER_INFO_FAILED)
+            throw BusinessException(AuthErrorCode.OAUTH_USER_INFO_FAILED)
+        } ?: throw BusinessException(AuthErrorCode.OAUTH_USER_INFO_FAILED)
 
         return OAuthUserInfo(
             provider = OAuthProvider.KAKAO,
             providerUserId = response.id.toString(),
-            email = response.kakaoAccount?.email,
             nickname = response.kakaoAccount?.profile?.nickname
                 ?: response.properties?.nickname,
             profileImageUrl = response.kakaoAccount?.profile?.profileImageUrl
@@ -62,7 +61,6 @@ class KakaoOAuthClient(
         return OAuthUserInfo(
             provider = OAuthProvider.KAKAO,
             providerUserId = "local-test-$localUserId",
-            email = "local-test-$localUserId@togethertrip.local",
             nickname = "로컬 테스트 $localUserId",
             profileImageUrl = null,
         )

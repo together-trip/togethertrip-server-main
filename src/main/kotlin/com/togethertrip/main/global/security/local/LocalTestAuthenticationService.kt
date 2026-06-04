@@ -50,18 +50,17 @@ class LocalTestAuthenticationService(
         phoneVerified: Boolean,
     ): User {
         val verificationLabel = if (phoneVerified) "verified" else "unverified"
-        val email = "local-test-$verificationLabel-$identifier@togethertrip.local"
-        val user = userRepository.findByEmailAndDeletedAtIsNull(email)
+        val nickname = "로컬 $verificationLabel $identifier"
+        val user = userRepository.findByNicknameAndDeletedAtIsNull(nickname)
             ?: userRepository.save(
                 User(
-                    email = email,
-                    nickname = "로컬 $verificationLabel $identifier",
+                    nickname = nickname,
                     role = UserRole.USER,
                 )
             )
 
         if (phoneVerified && user.phoneVerifiedAt == null) {
-            user.verifyPhoneNumber(createPhoneNumber(email))
+            user.verifyPhoneNumber(createPhoneNumber(nickname))
         }
 
         return user

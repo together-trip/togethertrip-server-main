@@ -10,11 +10,12 @@ import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
 import com.togethertrip.main.auth.dto.request.RequestPhoneVerificationRequest
 import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
+import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
 import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
 import com.togethertrip.main.auth.service.phone.PhoneVerificationService
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.global.exception.ErrorCode
+import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
 import com.togethertrip.main.global.security.jwt.TokenType
 import com.togethertrip.main.user.domain.User
@@ -48,7 +49,7 @@ class AuthService(
             val user = loginExistingUser(oauthAccount)
 
             if (user.phoneVerifiedAt != null) {
-                return AuthResponse.authenticated(issueTokens(user))
+                return createAuthenticatedResponse(user)
             }
 
             return AuthResponse.phoneVerificationRequired(
@@ -81,10 +82,10 @@ class AuthService(
         val session = confirmedPhoneVerification.session
         val user = if (session.existingUserId != null) {
             val existingUser = userRepository.findByIdAndDeletedAtIsNull(session.existingUserId)
-                ?: throw BusinessException(ErrorCode.USER_NOT_FOUND)
+                ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
 
             if (existingUser.status != UserStatus.ACTIVE) {
-                throw BusinessException(ErrorCode.INACTIVE_USER)
+                throw BusinessException(UserErrorCode.INACTIVE_USER)
             }
 
             existingUser.verifyPhoneNumber(confirmedPhoneVerification.phoneNumber)
@@ -94,7 +95,6 @@ class AuthService(
                 oauthUserInfo = OAuthUserInfo(
                     provider = session.provider,
                     providerUserId = session.providerUserId,
-                    email = session.email,
                     nickname = session.nickname,
                     profileImageUrl = session.profileImageUrl,
                 ),
@@ -104,19 +104,19 @@ class AuthService(
 
         phoneVerificationService.deleteTemporarySession(request.temporaryToken)
 
-        return AuthResponse.authenticated(issueTokens(user))
+        return createAuthenticatedResponse(user)
     }
 
     @Transactional(readOnly = true)
     fun refreshToken(request: TokenRefreshRequest): TokenResponse {
         if (!jwtTokenProvider.validateToken(request.refreshToken)) {
-            throw BusinessException(ErrorCode.INVALID_REFRESH_TOKEN)
+            throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         }
 
         val claims = jwtTokenProvider.getClaims(request.refreshToken)
 
         if (claims.tokenType != TokenType.REFRESH) {
-            throw BusinessException(ErrorCode.INVALID_REFRESH_TOKEN)
+            throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         }
 
         if (!refreshTokenService.matches(
@@ -124,14 +124,14 @@ class AuthService(
                 refreshToken = request.refreshToken,
             )
         ) {
-            throw BusinessException(ErrorCode.INVALID_REFRESH_TOKEN)
+            throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         }
 
         val user = userRepository.findById(claims.userId)
-            .orElseThrow { BusinessException(ErrorCode.USER_NOT_FOUND) }
+            .orElseThrow { BusinessException(UserErrorCode.USER_NOT_FOUND) }
 
         if (user.status != UserStatus.ACTIVE) {
-            throw BusinessException(ErrorCode.INACTIVE_USER)
+            throw BusinessException(UserErrorCode.INACTIVE_USER)
         }
 
         val accessToken = jwtTokenProvider.createAccessToken(
@@ -154,7 +154,7 @@ class AuthService(
         val user = oauthAccount.user
 
         if (user.status != UserStatus.ACTIVE) {
-            throw BusinessException(ErrorCode.INACTIVE_USER)
+            throw BusinessException(UserErrorCode.INACTIVE_USER)
         }
 
         return user
@@ -166,7 +166,6 @@ class AuthService(
     ): User {
         val user = userRepository.save(
             User(
-                email = oauthUserInfo.email,
                 nickname = oauthUserInfo.nickname ?: "카카오 사용자",
                 profileImageUrl = oauthUserInfo.profileImageUrl,
             ).apply {
@@ -179,7 +178,6 @@ class AuthService(
                 user = user,
                 provider = oauthUserInfo.provider,
                 providerUserId = oauthUserInfo.providerUserId,
-                email = oauthUserInfo.email,
                 nickname = oauthUserInfo.nickname,
                 profileImageUrl = oauthUserInfo.profileImageUrl,
             )
@@ -208,5 +206,14 @@ class AuthService(
             accessToken = accessToken,
             refreshToken = refreshToken,
         )
+    }
+
+    private fun createAuthenticatedResponse(user: User): AuthResponse {
+        val tokenResponse = issueTokens(user)
+        if (!user.isProfileCompleted()) {
+            return AuthResponse.profileRequired(tokenResponse)
+        }
+
+        return AuthResponse.authenticated(tokenResponse)
     }
 }
