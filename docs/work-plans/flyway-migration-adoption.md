@@ -122,7 +122,20 @@ V2를 함께 둔다.
 7. 전화번호 인증 완료 후 기존 user에 새 전화번호를 저장한다.
 8. 프로필 완료 여부에 따라 `PROFILE_REQUIRED` 또는 `AUTHENTICATED`를 반환한다.
 
-### 5. 코드 측 구현
+### 5. 여러 기기 동시 회원가입 정책
+
+동일 OAuth 계정으로 여러 기기에서 회원가입을 동시에 진행할 수 있다. 임시 토큰은 기기별로 발급될 수 있으나,
+전화번호 인증 완료와 사용자 생성/갱신은 OAuth 계정 단위로 한 번만 성공해야 한다.
+
+1. A/B 기기가 같은 카카오 계정으로 로그인하면 각각 임시 토큰을 받을 수 있다.
+2. 인증번호 확인 단계에서 `provider + providerUserId` 기준으로 짧은 Redis lock을 획득한다.
+3. lock을 잡은 세션만 전화번호 인증 완료 후 사용자 생성/전화번호 갱신을 진행한다.
+4. 트랜잭션 커밋이 끝난 뒤 lock을 해제해 다른 세션이 미완료 상태를 잘못 읽지 않게 한다.
+5. 한 세션이 먼저 완료한 뒤 다른 세션이 인증번호 확인을 시도하면 `SIGNUP_ALREADY_COMPLETED`를 반환한다.
+6. 사용자는 “다른 기기에서 회원가입이 완료되었습니다. 다시 로그인해주세요.” 안내를 받고 다시 카카오 로그인한다.
+7. 동시에 확인 요청이 들어와 lock 획득에 실패하면 `SIGNUP_CONFIRMATION_IN_PROGRESS`를 반환하고 잠시 후 재시도를 유도한다.
+
+### 6. 코드 측 구현
 
 마이그레이션만으로는 재활성화가 완성되지 않는다. 다음 코드 변경을 함께 진행한다.
 
@@ -142,6 +155,7 @@ V2를 함께 둔다.
   - 기존 OAuthAccount가 있고 user가 ACTIVE면 기존 로그인 플로우 유지.
 - `AuthService.confirmPhoneVerification()`:
   - 재활성화된 기존 user에도 전화번호 인증 결과를 저장할 수 있어야 한다.
+  - 동일 OAuth 계정의 여러 임시 세션 중 첫 인증 완료만 성공하도록 OAuth 가입 lock과 완료 상태 재확인을 적용한다.
 - `UserService.deleteMe()`:
   - OAuthAccount unlink 호출 없이 user만 탈퇴 처리한다.
 
@@ -154,7 +168,8 @@ V2를 함께 둔다.
 3. `db/migration/V1__baseline.sql`, `V2__drop_legacy_email_columns.sql` 작성.
 4. `schema.sql` 제거.
 5. 재활성화 코드 구현.
-6. 로컬 검증.
+6. 동시 회원가입 세션 방어 로직 구현.
+7. 로컬 검증.
 
 ## 테스트 계획
 
@@ -170,6 +185,8 @@ V2를 함께 둔다.
 - 기존 개발 DB로 기동 → V2가 `users.email`, `oauth_accounts.email` 제거 확인.
 - 회귀: 탈퇴 → 동일 카카오 로그인 → 기존 userId 재활성화 → 전화번호 인증 재요구.
 - 회귀: 전화번호 인증 완료 후 기존 userId로 `PROFILE_REQUIRED` 또는 `AUTHENTICATED` 반환.
+- 회귀: 동일 OAuth 계정으로 여러 임시 토큰을 받은 뒤 한 세션이 인증 완료하면 다른 세션의 인증 완료는
+  `SIGNUP_ALREADY_COMPLETED`로 실패.
 
 ## 위험과 확인 사항
 

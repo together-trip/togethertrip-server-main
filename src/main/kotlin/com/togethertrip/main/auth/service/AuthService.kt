@@ -12,6 +12,8 @@ import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
+import com.togethertrip.main.auth.service.oauth.OAuthSignupLock
+import com.togethertrip.main.auth.service.oauth.OAuthTemporarySession
 import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
 import com.togethertrip.main.auth.service.phone.PhoneVerificationService
 import com.togethertrip.main.global.exception.BusinessException
@@ -33,6 +35,7 @@ class AuthService(
     private val refreshTokenService: RefreshTokenService,
     private val temporarySessionService: OAuthTemporarySessionService,
     private val phoneVerificationService: PhoneVerificationService,
+    private val oauthSignupLock: OAuthSignupLock,
 ) {
 
     @Transactional
@@ -78,19 +81,49 @@ class AuthService(
     fun confirmPhoneVerification(
         request: ConfirmPhoneVerificationRequest,
     ): AuthResponse {
+        val session = temporarySessionService.get(request.temporaryToken)
+
+        return oauthSignupLock.withLock(session) {
+            confirmPhoneVerificationWithLockedSession(
+                request = request,
+                session = session,
+            )
+        }
+    }
+
+    private fun confirmPhoneVerificationWithLockedSession(
+        request: ConfirmPhoneVerificationRequest,
+        session: OAuthTemporarySession,
+    ): AuthResponse {
+        rejectIfSignupAlreadyCompleted(
+            session = session,
+            temporaryToken = request.temporaryToken,
+        )
+
         val confirmedPhoneVerification = phoneVerificationService.confirmCode(request)
-        val session = confirmedPhoneVerification.session
         val user = if (session.existingUserId != null) {
-            val existingUser = userRepository.findByIdAndDeletedAtIsNull(session.existingUserId)
+            val existingUser = userRepository.findLockedByIdAndDeletedAtIsNull(session.existingUserId)
                 ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
 
             if (existingUser.status != UserStatus.ACTIVE) {
                 throw BusinessException(UserErrorCode.INACTIVE_USER)
             }
 
+            if (existingUser.phoneVerifiedAt != null) {
+                rejectAlreadyCompleted(request.temporaryToken)
+            }
+
+            validatePhoneNumberAvailable(
+                phoneNumber = confirmedPhoneVerification.phoneNumber,
+                currentUserId = existingUser.id,
+            )
             existingUser.verifyPhoneNumber(confirmedPhoneVerification.phoneNumber)
             existingUser
         } else {
+            validatePhoneNumberAvailable(
+                phoneNumber = confirmedPhoneVerification.phoneNumber,
+                currentUserId = null,
+            )
             registerNewUser(
                 oauthUserInfo = OAuthUserInfo(
                     provider = session.provider,
@@ -189,6 +222,43 @@ class AuthService(
         )
 
         return user
+    }
+
+    private fun rejectIfSignupAlreadyCompleted(
+        session: OAuthTemporarySession,
+        temporaryToken: String,
+    ) {
+        val oauthAccount = oauthAccountRepository.findByProviderAndProviderUserId(
+            provider = session.provider,
+            providerUserId = session.providerUserId,
+        ) ?: return
+
+        if (oauthAccount.user.phoneVerifiedAt != null) {
+            rejectAlreadyCompleted(temporaryToken)
+        }
+    }
+
+    private fun rejectAlreadyCompleted(temporaryToken: String): Nothing {
+        phoneVerificationService.deleteTemporarySession(temporaryToken)
+        throw BusinessException(AuthErrorCode.SIGNUP_ALREADY_COMPLETED)
+    }
+
+    private fun validatePhoneNumberAvailable(
+        phoneNumber: String,
+        currentUserId: Long?,
+    ) {
+        val alreadyUsed = if (currentUserId == null) {
+            userRepository.existsByPhoneNumberAndDeletedAtIsNull(phoneNumber)
+        } else {
+            userRepository.existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
+                phoneNumber = phoneNumber,
+                id = currentUserId,
+            )
+        }
+
+        if (alreadyUsed) {
+            throw BusinessException(AuthErrorCode.PHONE_NUMBER_ALREADY_USED)
+        }
     }
 
     private fun issueTokens(user: User): TokenResponse {
