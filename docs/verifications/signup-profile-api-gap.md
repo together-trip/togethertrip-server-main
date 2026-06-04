@@ -23,7 +23,7 @@ BUILD SUCCESSFUL in 16s
 
 ## 확인 내용
 
-- `GET /api/users/nickname-availability?nickname=` endpoint가 추가됐다.
+- `GET /api/users/search/nickname?nickname=` endpoint가 추가됐다.
 - 닉네임 중복 체크 응답은 `NicknameAvailabilityResponse(available)`로 반환된다.
 - `PATCH /api/users/me`가 `nickname`, `gender`, `birthDate`, `profileImageUrl`을 받도록 확장됐다.
 - `User.updateProfile()`이 `gender`, `birthDate`를 저장한다.

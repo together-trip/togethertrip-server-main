@@ -49,7 +49,7 @@ class UserController(
         )
     }
 
-    @GetMapping("/nickname-availability")
+    @GetMapping("/search/nickname")
     override fun checkNicknameAvailability(
         @RequestParam nickname: String,
     ): ApiResponse<NicknameAvailabilityResponse> {

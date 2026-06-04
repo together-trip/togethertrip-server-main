@@ -43,7 +43,7 @@
 닉네임 입력 중 클라이언트가 중복 여부를 확인할 수 있도록 별도 API를 둔다.
 
 ```http
-GET /api/users/nickname-availability?nickname={nickname}
+GET /api/users/search/nickname?nickname={nickname}
 ```
 
 Query Parameters:
@@ -142,7 +142,7 @@ Response는 기존 `UserResponse`를 유지한다.
 - `UserRepository`에 닉네임 조회/존재 여부 메서드를 추가한다.
   - `existsByNicknameAndDeletedAtIsNull(nickname: String): Boolean`
   - 본인 제외가 필요한 경우 `existsByNicknameAndIdNotAndDeletedAtIsNull(...)`를 추가한다.
-- `UserService`에 `checkNicknameAvailability(userId, nickname)`를 추가한다.
+- `UserService`에 `checkNicknameAvailability(nickname)`를 추가한다.
 - `UserService.updateMe()`에서 닉네임 변경 시 중복을 검사한다.
 - 중복 닉네임이면 새 에러 코드 `DUPLICATE_NICKNAME` 또는 `NICKNAME_ALREADY_USED`를 반환한다.
 - `UserErrorCode`에 닉네임 중복 오류를 추가한다.
@@ -174,5 +174,5 @@ Response는 기존 `UserResponse`를 유지한다.
 
 - 현재 클라이언트 와이어프레임은 성별을 `남자/여자`로 표현한다. API에는 `MALE/FEMALE`로 보낼지, 서버가 한국어 입력을 받아 정규화할지 결정이 필요하다.
 - 기존 `UpdateUserRequest.nickname` max 50과 와이어프레임/요구사항의 2~20자 정책이 다르다. 이번 작업에서 2~20자로 통일할지 확인한다.
-- 닉네임 중복 체크 API가 인증 필요 API인지, 가입 완료 전 임시 토큰 단계에서도 호출되어야 하는지 확인이 필요하다.
-- 현재 가입 플로우는 전화번호 인증 후 토큰을 발급하고 `PATCH /api/users/me`를 호출하는 구조다. 닉네임 중복 체크가 전화번호 인증 전에도 필요하면 임시 토큰 기반 endpoint를 별도로 검토한다.
+- 닉네임 중복 체크 API는 가입 완료 전에도 호출해야 하므로 인증 없이 허용한다.
+- 가입 플로우에서는 닉네임 중복 확인, 전화번호 인증, 프로필 저장이 서로 독립된 입력 단계로 동작한다.
