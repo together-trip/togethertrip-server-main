@@ -9,6 +9,7 @@ import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.exception.PostErrorCode
+import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
 import com.togethertrip.main.post.repository.PostRepository
@@ -29,7 +30,9 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import org.springframework.data.domain.PageRequest
 import java.math.BigDecimal
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
@@ -155,6 +158,86 @@ class PostServiceTest {
         }
 
         assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
+    }
+
+    @Test
+    fun `게시글 목록은 size보다 하나 더 조회해 다음 cursor를 생성한다`() {
+        val first = createPost(id = 303L).apply {
+            createdAt = Instant.parse("2026-06-05T03:00:00Z")
+        }
+        val second = createPost(id = 302L).apply {
+            createdAt = Instant.parse("2026-06-05T02:00:00Z")
+        }
+        val extra = createPost(id = 301L).apply {
+            createdAt = Instant.parse("2026-06-05T01:00:00Z")
+        }
+
+        `when`(
+            postRepository.findPostsByCursor(
+                tripId = 10L,
+                postType = null,
+                cursorCreatedAt = null,
+                cursorId = null,
+                pageable = PageRequest.of(0, 3),
+            )
+        ).thenReturn(listOf(first, second, extra))
+
+        val response = postService.getPosts(
+            tripId = 10L,
+            postType = null,
+            cursor = null,
+            size = 2,
+        )
+
+        assertEquals(2, response.items.size)
+        assertEquals(true, response.hasNext)
+        assertNotNull(response.nextCursor)
+
+        val nextCursor = PostCursor.decode(response.nextCursor!!)
+        assertEquals(second.createdAt, nextCursor.createdAt)
+        assertEquals(302L, nextCursor.id)
+    }
+
+    @Test
+    fun `cursor가 있으면 cursor 이후 게시글을 조회한다`() {
+        val cursor = PostCursor(
+            createdAt = Instant.parse("2026-06-05T02:00:00Z"),
+            id = 302L,
+        )
+
+        `when`(
+            postRepository.findPostsByCursor(
+                tripId = 10L,
+                postType = PostType.RECORD,
+                cursorCreatedAt = cursor.createdAt,
+                cursorId = cursor.id,
+                pageable = PageRequest.of(0, 21),
+            )
+        ).thenReturn(emptyList())
+
+        val response = postService.getPosts(
+            tripId = 10L,
+            postType = "RECORD",
+            cursor = cursor.encode(),
+            size = null,
+        )
+
+        assertEquals(false, response.hasNext)
+        assertEquals(null, response.nextCursor)
+    }
+
+    @Test
+    fun `잘못된 cursor면 조회에 실패한다`() {
+        val exception = assertBusinessException {
+            postService.getPosts(
+                tripId = 10L,
+                postType = null,
+                cursor = "invalid-cursor",
+                size = 20,
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
     }
 
     @Test
@@ -324,6 +407,7 @@ class PostServiceTest {
     }
 
     private fun createPost(
+        id: Long = 300L,
         author: TripParticipant = createParticipant(),
     ): Post {
         return Post(
@@ -333,7 +417,7 @@ class PostServiceTest {
             title = "첫 기록",
             content = "여행 시작",
         ).apply {
-            id = 300L
+            this.id = id
         }
     }
 

@@ -2,7 +2,7 @@ package com.togethertrip.main.post.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
-import com.togethertrip.main.global.response.PageResponse
+import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostComment
@@ -14,6 +14,7 @@ import com.togethertrip.main.post.dto.response.PostCommentResponse
 import com.togethertrip.main.post.dto.response.PostDetailResponse
 import com.togethertrip.main.post.dto.response.PostSummaryResponse
 import com.togethertrip.main.post.exception.PostErrorCode
+import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
 import com.togethertrip.main.post.repository.PostRepository
@@ -94,29 +95,37 @@ class PostService(
     fun getPosts(
         tripId: Long,
         postType: String?,
-        page: Int?,
+        cursor: String?,
         size: Int?,
-    ): PageResponse<PostSummaryResponse> {
-        val pageable = PageRequest.of(
-            page?.coerceAtLeast(0) ?: DEFAULT_PAGE,
-            size?.coerceIn(1, MAX_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE,
-        )
+    ): CursorResponse<PostSummaryResponse> {
+        val requestedSize = size?.coerceIn(1, MAX_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
+        val pageable = PageRequest.of(0, requestedSize + 1)
         val parsedPostType = postType?.let(::parsePostType)
-        val posts = if (parsedPostType == null) {
-            postRepository.findByTripIdAndDeletedAtIsNullOrderByCreatedAtDesc(
-                tripId = tripId,
-                pageable = pageable,
-            )
+        val parsedCursor = cursor?.let(::parseCursor)
+        val posts = postRepository.findPostsByCursor(
+            tripId = tripId,
+            postType = parsedPostType,
+            cursorCreatedAt = parsedCursor?.createdAt,
+            cursorId = parsedCursor?.id,
+            pageable = pageable,
+        )
+        val responseItems = posts.take(requestedSize)
+        val hasNext = posts.size > requestedSize
+        val nextCursor = if (hasNext && responseItems.isNotEmpty()) {
+            val lastPost = responseItems.last()
+            PostCursor(
+                createdAt = lastPost.createdAt,
+                id = lastPost.id,
+            ).encode()
         } else {
-            postRepository.findByTripIdAndPostTypeAndDeletedAtIsNullOrderByCreatedAtDesc(
-                tripId = tripId,
-                postType = parsedPostType,
-                pageable = pageable,
-            )
+            null
         }
 
-        return PageResponse.from(
-            posts.map(PostSummaryResponse::from)
+        return CursorResponse(
+            items = responseItems.map(PostSummaryResponse::from),
+            nextCursor = nextCursor,
+            hasNext = hasNext,
+            size = responseItems.size,
         )
     }
 
@@ -289,8 +298,15 @@ class PostService(
         }
     }
 
+    private fun parseCursor(cursor: String): PostCursor {
+        return try {
+            PostCursor.decode(cursor)
+        } catch (exception: RuntimeException) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+    }
+
     private companion object {
-        const val DEFAULT_PAGE = 0
         const val DEFAULT_PAGE_SIZE = 20
         const val MAX_PAGE_SIZE = 100
     }

@@ -1,7 +1,7 @@
 package com.togethertrip.main.post.controller
 
 import com.togethertrip.main.global.response.ApiResponse
-import com.togethertrip.main.global.response.PageResponse
+import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.post.controller.spec.PostApiSpec
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
@@ -49,14 +49,14 @@ class PostController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @RequestParam(required = false) postType: String?,
-        @RequestParam(required = false) page: Int?,
+        @RequestParam(required = false) cursor: String?,
         @RequestParam(required = false) size: Int?,
-    ): ApiResponse<PageResponse<PostSummaryResponse>> {
+    ): ApiResponse<CursorResponse<PostSummaryResponse>> {
         return ApiResponse.success(
             tripPostService.getPosts(
                 tripId = tripId,
                 postType = postType,
-                page = page,
+                cursor = cursor,
                 size = size,
             )
         )

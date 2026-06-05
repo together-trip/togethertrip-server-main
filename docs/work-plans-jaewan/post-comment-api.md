@@ -31,7 +31,7 @@
 - 거래 기반 기록인 경우 `transactionId` 존재 여부와 transaction-trip 일치를 검증한다.
 - 첨부 파일 업로드 없이 요청으로 전달된 첨부 파일 메타데이터만 저장한다.
 - Post API용 `dto/response`를 추가하고 기존 `ApiResponse` 형식에 맞춘다.
-- 페이지 목록 응답용 공통 `PageResponse<T>`를 추가한다.
+- cursor 목록 응답용 공통 `CursorResponse<T>`를 추가한다.
 - Post API 성공/실패 경로 테스트를 추가한다.
 
 ## 제외 범위
@@ -53,7 +53,8 @@
 - Swagger/OpenAPI 문서 책임은 현재 구조처럼 `post/controller/spec`에 둔다.
 - Request DTO는 `post/dto/request`, Response DTO는 `post/dto/response`에 둔다.
 - `PostApiSpec`와 `PostController`의 반환 타입을 `ApiResponse<T>`로 맞춘다.
-- 목록 응답은 Spring `Page`를 직접 노출하지 않고 `global/response/PageResponse<T>`로 감싼다.
+- 목록 응답은 Spring `Page`를 직접 노출하지 않고 `global/response/CursorResponse<T>`로 감싼다.
+- Post 목록 정렬은 `createdAt DESC, id DESC`로 고정하고, `post/pagination/PostCursor`는 마지막 아이템의 `createdAt`, `id` key를 URL-safe Base64 문자열로 인코딩한다.
 - `PostService`가 트랜잭션 경계와 비즈니스 규칙을 담당한다.
 - 쓰기 메서드는 `@Transactional`, 읽기 메서드는 클래스 기본 `@Transactional(readOnly = true)`를 사용한다.
 - Entity를 Controller에서 직접 반환하지 않고 응답 DTO로 변환한다.
@@ -87,7 +88,7 @@
 - `PostDetailResponse`: summary 필드 + `content`, `attachments`
 - `PostAttachmentResponse`: `id`, `attachmentType`, `fileUrl`, `thumbnailUrl`, `fileSize`, `mimeType`, `sortOrder`
 - `PostCommentResponse`: `id`, `postId`, `authorParticipantId`, `authorDisplayName`, `content`, `commentDepth`, `createdAt`, `updatedAt`
-- `PageResponse<T>`: `items`, `page`, `size`, `totalElements`, `totalPages`, `hasNext`
+- `CursorResponse<T>`: `items`, `nextCursor`, `hasNext`, `size`
 
 ## 테스트 계획
 
@@ -98,7 +99,10 @@
 - 거래 기반 기록은 transaction-trip 일치 시 `postType = EXPENSE`로 생성되는지 검증한다.
 - 요청의 `postType`이 `transactionId`와 충돌해도 서버 정책대로 강제되는지 검증한다.
 - 거래가 다른 여행에 속하면 실패하는지 검증한다.
-- 게시글 목록 조회가 삭제되지 않은 게시글만 최신순으로 조회하는지 검증한다.
+- 게시글 목록 조회가 삭제되지 않은 게시글만 `createdAt DESC, id DESC` 순으로 조회하는지 검증한다.
+- 목록 조회가 `size + 1`개를 조회해 `hasNext`와 `nextCursor`를 계산하는지 검증한다.
+- cursor가 있으면 cursor 이후 게시글만 조회하는지 검증한다.
+- 잘못된 cursor 문자열이면 `INVALID_INPUT`으로 실패하는지 검증한다.
 - 게시글 상세 조회가 다른 여행의 게시글을 노출하지 않는지 검증한다.
 - 작성자가 아니면 게시글 수정/삭제에 실패하는지 검증한다.
 - 게시글 삭제 시 `deletedAt != null`이 되는지 검증한다.

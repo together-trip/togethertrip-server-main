@@ -1,7 +1,7 @@
 package com.togethertrip.main.post.controller.spec
 
 import com.togethertrip.main.global.response.ApiResponse
-import com.togethertrip.main.global.response.PageResponse
+import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
@@ -29,9 +29,9 @@ interface PostApiSpec {
         authUser: AuthUser,
         tripId: Long,
         postType: String?,
-        page: Int?,
+        cursor: String?,
         size: Int?,
-    ): ApiResponse<PageResponse<PostSummaryResponse>>
+    ): ApiResponse<CursorResponse<PostSummaryResponse>>
 
     @Operation(summary = "게시글 상세 조회", description = "게시글 본문, 첨부 파일, 댓글을 조회합니다.")
     fun getPost(
