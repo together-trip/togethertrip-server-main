@@ -1,11 +1,17 @@
 package com.togethertrip.main.post.controller
 
+import com.togethertrip.main.global.response.ApiResponse
+import com.togethertrip.main.global.response.PageResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.post.controller.spec.PostApiSpec
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
+import com.togethertrip.main.post.dto.response.PostCommentResponse
+import com.togethertrip.main.post.dto.response.PostDetailResponse
+import com.togethertrip.main.post.dto.response.PostSummaryResponse
 import com.togethertrip.main.post.service.PostService
+import jakarta.validation.Valid
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -27,8 +33,15 @@ class PostController(
     override fun createPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-        @RequestBody request: CreatePostRequest,
-    ) {
+        @Valid @RequestBody request: CreatePostRequest,
+    ): ApiResponse<PostDetailResponse> {
+        return ApiResponse.success(
+            tripPostService.createPost(
+                userId = authUser.userId,
+                tripId = tripId,
+                request = request,
+            )
+        )
     }
 
     @GetMapping
@@ -38,7 +51,15 @@ class PostController(
         @RequestParam(required = false) postType: String?,
         @RequestParam(required = false) page: Int?,
         @RequestParam(required = false) size: Int?,
-    ) {
+    ): ApiResponse<PageResponse<PostSummaryResponse>> {
+        return ApiResponse.success(
+            tripPostService.getPosts(
+                tripId = tripId,
+                postType = postType,
+                page = page,
+                size = size,
+            )
+        )
     }
 
     @GetMapping("/{postId}")
@@ -46,7 +67,13 @@ class PostController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-    ) {
+    ): ApiResponse<PostDetailResponse> {
+        return ApiResponse.success(
+            tripPostService.getPost(
+                tripId = tripId,
+                postId = postId,
+            )
+        )
     }
 
     @PatchMapping("/{postId}")
@@ -54,8 +81,16 @@ class PostController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-        @RequestBody request: UpdatePostRequest,
-    ) {
+        @Valid @RequestBody request: UpdatePostRequest,
+    ): ApiResponse<PostDetailResponse> {
+        return ApiResponse.success(
+            tripPostService.updatePost(
+                userId = authUser.userId,
+                tripId = tripId,
+                postId = postId,
+                request = request,
+            )
+        )
     }
 
     @DeleteMapping("/{postId}")
@@ -63,7 +98,14 @@ class PostController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-    ) {
+    ): ApiResponse<Unit> {
+        tripPostService.deletePost(
+            userId = authUser.userId,
+            tripId = tripId,
+            postId = postId,
+        )
+
+        return ApiResponse.success()
     }
 
     @PostMapping("/{postId}/comments")
@@ -71,8 +113,16 @@ class PostController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-        @RequestBody request: CreatePostCommentRequest,
-    ) {
+        @Valid @RequestBody request: CreatePostCommentRequest,
+    ): ApiResponse<PostCommentResponse> {
+        return ApiResponse.success(
+            tripPostService.createComment(
+                userId = authUser.userId,
+                tripId = tripId,
+                postId = postId,
+                request = request,
+            )
+        )
     }
 
     @GetMapping("/{postId}/comments")
@@ -80,7 +130,13 @@ class PostController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-    ) {
+    ): ApiResponse<List<PostCommentResponse>> {
+        return ApiResponse.success(
+            tripPostService.getComments(
+                tripId = tripId,
+                postId = postId,
+            )
+        )
     }
 
     @DeleteMapping("/{postId}/comments/{commentId}")
@@ -89,7 +145,15 @@ class PostController(
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
         @PathVariable commentId: Long,
-    ) {
+    ): ApiResponse<Unit> {
+        tripPostService.deleteComment(
+            userId = authUser.userId,
+            tripId = tripId,
+            postId = postId,
+            commentId = commentId,
+        )
+
+        return ApiResponse.success()
     }
 
 }

@@ -8,12 +8,14 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.SQLRestriction
 
 /**
  * 여행 게시글 댓글.
  */
 @Entity
 @Table(name = "post_comments")
+@SQLRestriction("deleted_at IS NULL")
 class PostComment(
 
     @ManyToOne(fetch = FetchType.LAZY)

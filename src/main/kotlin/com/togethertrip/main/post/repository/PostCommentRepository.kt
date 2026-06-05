@@ -6,4 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface PostCommentRepository : JpaRepository<PostComment, Long> {
 
     fun findByPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(postId: Long): List<PostComment>
+
+    fun findByIdAndPostIdAndDeletedAtIsNull(
+        id: Long,
+        postId: Long,
+    ): PostComment?
 }
