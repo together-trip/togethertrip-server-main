@@ -29,8 +29,8 @@ import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
-import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
+import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -108,11 +108,11 @@ class TripServiceTest {
         assertEquals(10L, response.id)
         assertEquals("오사카 여행", response.title)
         assertEquals("JPY", response.defaultCurrency)
-        assertEquals(TripStatus.PLANNED.name, response.tripStatus)
+        assertEquals(TripStatus.PLANNED, response.tripStatus)
         assertEquals(1, response.countries.size)
         assertEquals("JP", response.countries.first().countryCode)
         assertEquals(2, response.participants.size)
-        assertEquals(TripParticipantRole.LEADER.name, response.participants.first().participantRole)
+        assertEquals(TripParticipantRole.LEADER, response.participants.first().participantRole)
         assertEquals("동행자1", response.participants.last().displayName)
     }
 
@@ -149,20 +149,24 @@ class TripServiceTest {
             tripRepository.findAccessibleTrips(
                 1L,
                 TripStatus.ONGOING,
-                PageRequest.of(0, 20),
+                null,
+                null,
+                PageRequest.of(0, 21),
             )
-        ).thenReturn(PageImpl(listOf(trip), PageRequest.of(0, 20), 1))
+        ).thenReturn(listOf(trip))
 
         val response = tripService.getTrips(
             userId = 1L,
             status = "ongoing",
-            page = 0,
+            cursor = null,
             size = 20,
         )
 
         assertEquals(1, response.items.size)
         assertEquals(10L, response.items.first().id)
-        assertEquals(TripStatus.ONGOING.name, response.items.first().tripStatus)
+        assertEquals(TripStatus.ONGOING, response.items.first().tripStatus)
+        assertEquals(false, response.hasNext)
+        assertEquals(null, response.nextCursor)
     }
 
     @Test
@@ -174,12 +178,68 @@ class TripServiceTest {
             tripService.getTrips(
                 userId = 1L,
                 status = "invalid",
-                page = 0,
+                cursor = null,
                 size = 20,
             )
         }
 
         assertEquals(TripErrorCode.INVALID_TRIP_STATUS, exception.errorCode)
+    }
+
+    @Test
+    fun `커서 기반으로 다음 여행 목록을 조회한다`() {
+        val user = createUser()
+        val firstTrip = createTrip(ownerUser = user).apply {
+            id = 10L
+            createdAt = Instant.parse("2026-06-05T12:30:00Z")
+        }
+        val secondTrip = createTrip(ownerUser = user).apply {
+            id = 9L
+            createdAt = Instant.parse("2026-06-05T12:20:00Z")
+        }
+        val extraTrip = createTrip(ownerUser = user).apply {
+            id = 8L
+            createdAt = Instant.parse("2026-06-05T12:10:00Z")
+        }
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(
+            tripRepository.findAccessibleTrips(
+                1L,
+                null,
+                Instant.parse("2026-06-05T13:00:00Z"),
+                20L,
+                PageRequest.of(0, 3),
+            )
+        ).thenReturn(listOf(firstTrip, secondTrip, extraTrip))
+
+        val response = tripService.getTrips(
+            userId = 1L,
+            status = null,
+            cursor = "2026-06-05T13:00:00Z_20",
+            size = 2,
+        )
+
+        assertEquals(2, response.items.size)
+        assertEquals(true, response.hasNext)
+        assertEquals("2026-06-05T12:20:00Z_9", response.nextCursor)
+    }
+
+    @Test
+    fun `잘못된 커서로 여행 목록 조회하면 실패한다`() {
+        val user = createUser()
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+
+        val exception = assertBusinessException {
+            tripService.getTrips(
+                userId = 1L,
+                status = null,
+                cursor = "invalid-cursor",
+                size = 20,
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
     }
 
     @Test
@@ -295,7 +355,7 @@ class TripServiceTest {
             tripService.getTrips(
                 userId = 1L,
                 status = null,
-                page = 0,
+                cursor = null,
                 size = 20,
             )
         }

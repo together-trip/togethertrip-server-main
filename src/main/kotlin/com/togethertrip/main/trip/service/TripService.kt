@@ -88,29 +88,36 @@ class TripService(
     fun getTrips(
         userId: Long,
         status: String?,
-        page: Int?,
+        cursor: String?,
         size: Int?,
     ): TripListResponse {
         getActiveUser(userId)
 
-        val pageable = PageRequest.of(
-            (page ?: 0).coerceAtLeast(0),
-            (size ?: DEFAULT_PAGE_SIZE).coerceIn(1, MAX_PAGE_SIZE),
-        )
+        val requestedSize = (size ?: DEFAULT_PAGE_SIZE).coerceIn(1, MAX_PAGE_SIZE)
+        val pageable = PageRequest.of(0, requestedSize + 1)
         val tripStatus = status?.let(::parseTripStatus)
+        val tripCursor = cursor?.let(::parseTripCursor)
         val trips = tripRepository.findAccessibleTrips(
             userId = userId,
             status = tripStatus,
+            cursorCreatedAt = tripCursor?.createdAt,
+            cursorId = tripCursor?.id,
             pageable = pageable,
         )
+        val hasNext = trips.size > requestedSize
+        val visibleTrips = if (hasNext) trips.take(requestedSize) else trips
 
-        return TripListResponse(
-            items = trips.content.map(TripSummaryResponse::from),
-            page = trips.number,
-            size = trips.size,
-            totalElements = trips.totalElements,
-            totalPages = trips.totalPages,
-            hasNext = trips.hasNext(),
+        val items = visibleTrips.map(TripSummaryResponse::from)
+        val nextCursor = visibleTrips
+            .lastOrNull()
+            ?.takeIf { hasNext }
+            ?.let(::createNextCursor)
+
+        return TripListResponse.from(
+            items = items,
+            size = requestedSize,
+            nextCursor = nextCursor,
+            hasNext = hasNext,
         )
     }
 
@@ -176,8 +183,8 @@ class TripService(
         val countries = saveTripCountries(trip, request.countries)
             .map(TripCountryResponse::from)
 
-        return TripCountriesResponse(
-            tripId = trip.id,
+        return TripCountriesResponse.from(
+            trip = trip,
             countries = countries,
         )
     }
@@ -283,6 +290,27 @@ class TripService(
         }
     }
 
+    private fun parseTripCursor(cursor: String): TripCursor {
+        val separatorIndex = cursor.lastIndexOf(CURSOR_SEPARATOR)
+
+        if (separatorIndex <= 0 || separatorIndex == cursor.lastIndex) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+
+        return try {
+            TripCursor(
+                createdAt = Instant.parse(cursor.substring(0, separatorIndex)),
+                id = cursor.substring(separatorIndex + 1).toLong(),
+            )
+        } catch (_: Exception) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+    }
+
+    private fun createNextCursor(trip: Trip): String {
+        return "${trip.createdAt}$CURSOR_SEPARATOR${trip.id}"
+    }
+
     private fun validateTripDates(
         startDate: LocalDate?,
         endDate: LocalDate?,
@@ -320,5 +348,11 @@ class TripService(
     companion object {
         private const val DEFAULT_PAGE_SIZE = 20
         private const val MAX_PAGE_SIZE = 100
+        private const val CURSOR_SEPARATOR = "_"
     }
 }
+
+private data class TripCursor(
+    val createdAt: Instant,
+    val id: Long,
+)

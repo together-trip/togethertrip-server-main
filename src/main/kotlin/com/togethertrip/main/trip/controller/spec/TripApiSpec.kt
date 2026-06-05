@@ -26,7 +26,7 @@ interface TripApiSpec {
     fun getTrips(
         authUser: AuthUser,
         status: String?,
-        page: Int?,
+        cursor: String?,
         size: Int?,
     ): ApiResponse<TripListResponse>
 

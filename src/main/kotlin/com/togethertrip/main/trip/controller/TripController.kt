@@ -46,14 +46,14 @@ class TripController(
     override fun getTrips(
         @AuthenticationPrincipal authUser: AuthUser,
         @RequestParam(required = false) status: String?,
-        @RequestParam(required = false) page: Int?,
+        @RequestParam(required = false) cursor: String?,
         @RequestParam(required = false) size: Int?,
     ): ApiResponse<TripListResponse> {
         return ApiResponse.success(
             tripService.getTrips(
                 userId = authUser.userId,
                 status = status,
-                page = page,
+                cursor = cursor,
                 size = size,
             )
         )

@@ -1,6 +1,8 @@
 package com.togethertrip.main.trip.dto.response
 
 import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.trip.domain.TripParticipantRole
+import com.togethertrip.main.trip.domain.TripParticipantStatus
 import java.time.Instant
 
 data class TripParticipantSummaryResponse(
@@ -8,8 +10,8 @@ data class TripParticipantSummaryResponse(
     val userId: Long?,
     val displayName: String,
     val profileImageUrl: String?,
-    val participantRole: String,
-    val participantStatus: String,
+    val participantRole: TripParticipantRole,
+    val participantStatus: TripParticipantStatus,
     val joinedAt: Instant?,
 ) {
     companion object {
@@ -19,8 +21,8 @@ data class TripParticipantSummaryResponse(
                 userId = participant.user?.id,
                 displayName = participant.displayName,
                 profileImageUrl = participant.profileImageUrl,
-                participantRole = participant.participantRole.name,
-                participantStatus = participant.participantStatus.name,
+                participantRole = participant.participantRole,
+                participantStatus = participant.participantStatus,
                 joinedAt = participant.joinedAt,
             )
         }
