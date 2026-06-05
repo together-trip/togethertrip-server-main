@@ -20,9 +20,10 @@ class OpenApiConfig {
             .`in`(SecurityScheme.In.HEADER)
             .name("Authorization")
             .description(
-                "JWT access token을 입력합니다. local 프로필에서는 개발용 고정 토큰을 사용할 수 있습니다. " +
-                    "전화번호 인증 완료 유저: local-test:verified, 전화번호 미인증 유저: local-test:unverified. " +
-                    "여러 테스트 유저가 필요하면 local-test:verified:{id}, local-test:unverified:{id} 형식으로 입력하세요."
+                "한지민(인증): local-test:verified:hana<br>" +
+                    "김민서(인증): local-test:verified:minseo<br>" +
+                    "박서준(인증): local-test:verified:joon<br>" +
+                    "이유리(미인증): local-test:unverified:yuri"
             )
 
         return OpenAPI()
