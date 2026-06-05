@@ -9,6 +9,7 @@ import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.exception.PostErrorCode
+import com.togethertrip.main.post.pagination.PostCommentCursor
 import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
@@ -315,6 +316,117 @@ class PostServiceTest {
     }
 
     @Test
+    fun `댓글 목록은 원댓글만 size보다 하나 더 조회해 다음 cursor를 생성한다`() {
+        val post = createPost()
+        val first = createComment(
+            post = post,
+            id = 401L,
+            content = "첫 댓글",
+        ).apply {
+            createdAt = Instant.parse("2026-06-05T01:00:00Z")
+        }
+        val second = createComment(
+            post = post,
+            id = 402L,
+            content = "둘째 댓글",
+        ).apply {
+            createdAt = Instant.parse("2026-06-05T02:00:00Z")
+        }
+        val extra = createComment(
+            post = post,
+            id = 403L,
+            content = "셋째 댓글",
+        ).apply {
+            createdAt = Instant.parse("2026-06-05T03:00:00Z")
+        }
+
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+        `when`(
+            postCommentRepository.findRootCommentsByCursor(
+                postId = 300L,
+                cursorCreatedAt = null,
+                cursorId = null,
+                pageable = PageRequest.of(0, 3),
+            )
+        ).thenReturn(listOf(first, second, extra))
+
+        val response = postService.getComments(
+            tripId = 10L,
+            postId = 300L,
+            cursor = null,
+            size = 2,
+        )
+
+        assertEquals(2, response.items.size)
+        assertEquals(true, response.hasNext)
+        assertNotNull(response.nextCursor)
+
+        val nextCursor = PostCommentCursor.decode(response.nextCursor!!)
+        assertEquals(second.createdAt, nextCursor.createdAt)
+        assertEquals(402L, nextCursor.id)
+    }
+
+    @Test
+    fun `댓글 cursor가 있으면 cursor 이후 원댓글을 조회한다`() {
+        val post = createPost()
+        val cursor = PostCommentCursor(
+            createdAt = Instant.parse("2026-06-05T02:00:00Z"),
+            id = 402L,
+        )
+
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+        `when`(
+            postCommentRepository.findRootCommentsByCursor(
+                postId = 300L,
+                cursorCreatedAt = cursor.createdAt,
+                cursorId = cursor.id,
+                pageable = PageRequest.of(0, 21),
+            )
+        ).thenReturn(emptyList())
+
+        val response = postService.getComments(
+            tripId = 10L,
+            postId = 300L,
+            cursor = cursor.encode(),
+            size = null,
+        )
+
+        assertEquals(false, response.hasNext)
+        assertEquals(null, response.nextCursor)
+    }
+
+    @Test
+    fun `잘못된 댓글 cursor면 조회에 실패한다`() {
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(createPost())
+
+        val exception = assertBusinessException {
+            postService.getComments(
+                tripId = 10L,
+                postId = 300L,
+                cursor = "invalid-cursor",
+                size = 20,
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+    }
+
+    @Test
     fun `댓글 삭제 시 댓글 수가 감소하고 soft delete로 처리한다`() {
         val participant = createParticipant()
         val post = createPost(author = participant).apply {
@@ -335,7 +447,7 @@ class PostServiceTest {
             )
         ).thenReturn(post)
         `when`(
-            postCommentRepository.findByIdAndPostIdAndDeletedAtIsNull(
+            postCommentRepository.findByIdAndPostIdAndParentCommentIsNullAndDeletedAtIsNull(
                 id = 400L,
                 postId = 300L,
             )
@@ -416,6 +528,20 @@ class PostServiceTest {
             postType = PostType.RECORD,
             title = "첫 기록",
             content = "여행 시작",
+        ).apply {
+            this.id = id
+        }
+    }
+
+    private fun createComment(
+        post: Post,
+        id: Long,
+        content: String,
+    ): PostComment {
+        return PostComment(
+            post = post,
+            author = post.author,
+            content = content,
         ).apply {
             this.id = id
         }

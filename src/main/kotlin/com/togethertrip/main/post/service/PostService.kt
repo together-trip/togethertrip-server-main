@@ -14,6 +14,7 @@ import com.togethertrip.main.post.dto.response.PostCommentResponse
 import com.togethertrip.main.post.dto.response.PostDetailResponse
 import com.togethertrip.main.post.dto.response.PostSummaryResponse
 import com.togethertrip.main.post.exception.PostErrorCode
+import com.togethertrip.main.post.pagination.PostCommentCursor
 import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
@@ -223,17 +224,44 @@ class PostService(
         return PostCommentResponse.from(comment)
     }
 
+    @Transactional(readOnly = true)
     fun getComments(
         tripId: Long,
         postId: Long,
-    ): List<PostCommentResponse> {
+        cursor: String?,
+        size: Int?,
+    ): CursorResponse<PostCommentResponse> {
         getPostOrThrow(
             tripId = tripId,
             postId = postId,
         )
+        val requestedSize = size?.coerceIn(1, MAX_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
+        val pageable = PageRequest.of(0, requestedSize + 1)
+        val parsedCursor = cursor?.let(::parseCommentCursor)
+        val comments = postCommentRepository.findRootCommentsByCursor(
+            postId = postId,
+            cursorCreatedAt = parsedCursor?.createdAt,
+            cursorId = parsedCursor?.id,
+            pageable = pageable,
+        )
+        val responseItems = comments.take(requestedSize)
+        val hasNext = comments.size > requestedSize
+        val nextCursor = if (hasNext && responseItems.isNotEmpty()) {
+            val lastComment = responseItems.last()
+            PostCommentCursor(
+                createdAt = lastComment.createdAt,
+                id = lastComment.id,
+            ).encode()
+        } else {
+            null
+        }
 
-        return postCommentRepository.findByPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(postId)
-            .map(PostCommentResponse::from)
+        return CursorResponse(
+            items = responseItems.map(PostCommentResponse::from),
+            nextCursor = nextCursor,
+            hasNext = hasNext,
+            size = responseItems.size,
+        )
     }
 
     @Transactional
@@ -247,7 +275,7 @@ class PostService(
             tripId = tripId,
             postId = postId,
         )
-        val comment = postCommentRepository.findByIdAndPostIdAndDeletedAtIsNull(
+        val comment = postCommentRepository.findByIdAndPostIdAndParentCommentIsNullAndDeletedAtIsNull(
             id = commentId,
             postId = postId,
         ) ?: throw BusinessException(PostErrorCode.POST_COMMENT_NOT_FOUND)
@@ -301,6 +329,14 @@ class PostService(
     private fun parseCursor(cursor: String): PostCursor {
         return try {
             PostCursor.decode(cursor)
+        } catch (exception: RuntimeException) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+    }
+
+    private fun parseCommentCursor(cursor: String): PostCommentCursor {
+        return try {
+            PostCommentCursor.decode(cursor)
         } catch (exception: RuntimeException) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }

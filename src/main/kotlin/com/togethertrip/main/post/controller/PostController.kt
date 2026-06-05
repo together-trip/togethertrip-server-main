@@ -130,11 +130,15 @@ class PostController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-    ): ApiResponse<List<PostCommentResponse>> {
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(required = false) size: Int?,
+    ): ApiResponse<CursorResponse<PostCommentResponse>> {
         return ApiResponse.success(
             tripPostService.getComments(
                 tripId = tripId,
                 postId = postId,
+                cursor = cursor,
+                size = size,
             )
         )
     }

@@ -63,14 +63,16 @@ interface PostApiSpec {
         request: CreatePostCommentRequest,
     ): ApiResponse<PostCommentResponse>
 
-    @Operation(summary = "댓글 목록 조회", description = "게시글의 댓글 목록을 작성순으로 조회합니다.")
+    @Operation(summary = "댓글 목록 조회", description = "게시글의 원댓글 목록을 작성순 cursor 방식으로 조회합니다.")
     fun getComments(
         authUser: AuthUser,
         tripId: Long,
         postId: Long,
-    ): ApiResponse<List<PostCommentResponse>>
+        cursor: String?,
+        size: Int?,
+    ): ApiResponse<CursorResponse<PostCommentResponse>>
 
-    @Operation(summary = "댓글 삭제", description = "댓글을 소프트 삭제합니다.")
+    @Operation(summary = "댓글 삭제", description = "원댓글을 소프트 삭제합니다.")
     fun deleteComment(
         authUser: AuthUser,
         tripId: Long,

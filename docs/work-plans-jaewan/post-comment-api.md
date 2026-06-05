@@ -24,7 +24,7 @@
 - `PATCH /api/trips/{tripId}/posts/{postId}` 게시글 수정을 구현한다.
 - `DELETE /api/trips/{tripId}/posts/{postId}` 게시글 soft delete를 구현한다.
 - `POST /api/trips/{tripId}/posts/{postId}/comments` 댓글 작성을 구현한다.
-- `GET /api/trips/{tripId}/posts/{postId}/comments` 댓글 목록 조회를 구현한다.
+- `GET /api/trips/{tripId}/posts/{postId}/comments` 원댓글 목록 cursor 조회를 구현한다.
 - `DELETE /api/trips/{tripId}/posts/{postId}/comments/{commentId}` 댓글 soft delete를 구현한다.
 - `trip` 쪽에서 제공하는 여행 참여자 접근 권한 검증을 Post API에 적용한다.
 - 게시글/댓글 작성자 권한을 검증한다.
@@ -39,6 +39,7 @@
 - 실제 파일 업로드 스토리지 연동.
 - 파일 URL 발급, 파일 삭제, 이미지 리사이징.
 - 댓글 대댓글 고도화. `parentComment`가 Entity에는 있으나 이번 API 요청 DTO에는 포함하지 않는다.
+- 대댓글 목록 조회. 댓글 목록은 `parentComment IS NULL`인 원댓글만 반환한다.
 - 신고/차단.
 - 게시글 좋아요/북마크.
 - 알림 서버 연동.
@@ -55,6 +56,7 @@
 - `PostApiSpec`와 `PostController`의 반환 타입을 `ApiResponse<T>`로 맞춘다.
 - 목록 응답은 Spring `Page`를 직접 노출하지 않고 `global/response/CursorResponse<T>`로 감싼다.
 - Post 목록 정렬은 `createdAt DESC, id DESC`로 고정하고, `post/pagination/PostCursor`는 마지막 아이템의 `createdAt`, `id` key를 URL-safe Base64 문자열로 인코딩한다.
+- 댓글 목록 정렬은 `createdAt ASC, id ASC`로 고정하고, `post/pagination/PostCommentCursor`는 마지막 아이템의 `createdAt`, `id` key를 URL-safe Base64 문자열로 인코딩한다.
 - `PostService`가 트랜잭션 경계와 비즈니스 규칙을 담당한다.
 - 쓰기 메서드는 `@Transactional`, 읽기 메서드는 클래스 기본 `@Transactional(readOnly = true)`를 사용한다.
 - Entity를 Controller에서 직접 반환하지 않고 응답 DTO로 변환한다.
@@ -109,6 +111,10 @@
 - 댓글 작성 시 `post.commentCount`가 증가하는지 검증한다.
 - 댓글 삭제 시 `deletedAt != null`이 되고 `post.commentCount`가 감소하는지 검증한다.
 - 작성자가 아니면 댓글 삭제에 실패하는지 검증한다.
+- 댓글 목록 조회가 원댓글만 `createdAt ASC, id ASC` 순으로 조회하는지 검증한다.
+- 댓글 목록 조회가 `size + 1`개를 조회해 `hasNext`와 `nextCursor`를 계산하는지 검증한다.
+- 댓글 cursor가 있으면 cursor 이후 원댓글만 조회하는지 검증한다.
+- 잘못된 댓글 cursor 문자열이면 `INVALID_INPUT`으로 실패하는지 검증한다.
 - 빈 제목, 빈 본문, 빈 댓글, 잘못된 page/size 등 입력 제한을 검증한다.
 - 여행 참여자 권한 검증은 `trip` 쪽 공통 기능이 준비된 뒤 `@SpringBootTest` 또는 slice 테스트로 Post API 적용 여부만 최소 검증한다.
 - 최종 검증 명령은 `./gradlew test`다.
