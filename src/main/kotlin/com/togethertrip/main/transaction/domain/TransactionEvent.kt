@@ -11,7 +11,6 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import jakarta.persistence.UniqueConstraint
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 
@@ -20,15 +19,7 @@ import org.hibernate.type.SqlTypes
  * created_at / updated_at / deleted_at(soft delete) 은 BaseEntity 에서 제공한다.
  */
 @Entity
-@Table(
-    name = "transaction_events",
-    uniqueConstraints = [
-        UniqueConstraint(
-            name = "uk_transaction_events_version",
-            columnNames = ["transaction_id", "aggregate_version"],
-        ),
-    ],
-)
+@Table(name = "transaction_events")
 class TransactionEvent(
 
     @ManyToOne(fetch = FetchType.LAZY)

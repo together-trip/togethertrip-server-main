@@ -6,13 +6,11 @@ import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Table
-import org.hibernate.annotations.SQLRestriction
 import java.time.Instant
 import java.time.LocalDate
 
 @Entity
 @Table(name = "users")
-@SQLRestriction("deleted_at IS NULL")
 class User(
 
     @Column(nullable = false, length = 50)
@@ -71,6 +69,14 @@ class User(
     fun withdraw(now: Instant = Instant.now()) {
         status = UserStatus.WITHDRAWN
         markDeleted(now)
+    }
+
+    fun reactivateForSignup(now: Instant = Instant.now()) {
+        status = UserStatus.ACTIVE
+        deletedAt = null
+        phoneNumber = null
+        phoneVerifiedAt = null
+        updatedAt = now
     }
 
     fun verifyPhoneNumber(

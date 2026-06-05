@@ -86,6 +86,18 @@ enum class AuthErrorCode(
         "오늘 인증번호 요청 가능 횟수를 초과했습니다.",
     ),
 
+    SIGNUP_CONFIRMATION_IN_PROGRESS(
+        HttpStatus.CONFLICT,
+        "SIGNUP_CONFIRMATION_IN_PROGRESS",
+        "회원가입 인증 처리가 진행 중입니다. 잠시 후 다시 시도해주세요.",
+    ),
+
+    SIGNUP_ALREADY_COMPLETED(
+        HttpStatus.CONFLICT,
+        "SIGNUP_ALREADY_COMPLETED",
+        "다른 기기에서 회원가입이 완료되었습니다. 다시 로그인해주세요.",
+    ),
+
     SMS_CONFIGURATION_REQUIRED(
         HttpStatus.INTERNAL_SERVER_ERROR,
         "SMS_CONFIGURATION_REQUIRED",

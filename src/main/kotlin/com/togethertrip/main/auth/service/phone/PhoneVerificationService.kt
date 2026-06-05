@@ -61,8 +61,6 @@ class PhoneVerificationService(
         val phoneNumber = phoneNumberNormalizer.normalize(request.phoneNumber)
         val state = phoneVerificationStore.get(request.temporaryToken)
 
-        validatePhoneNumberAvailable(phoneNumber)
-
         if (state.phoneNumber != phoneNumber) {
             throw BusinessException(AuthErrorCode.INVALID_PHONE_VERIFICATION_CODE)
         }
