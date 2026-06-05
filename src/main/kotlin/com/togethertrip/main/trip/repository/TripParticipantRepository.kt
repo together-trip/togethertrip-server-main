@@ -8,4 +8,6 @@ interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
         tripId: Long,
         userId: Long,
     ): TripParticipant?
+
+    fun findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(tripId: Long): List<TripParticipant>
 }

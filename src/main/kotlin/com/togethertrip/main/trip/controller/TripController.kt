@@ -1,11 +1,16 @@
 package com.togethertrip.main.trip.controller
 
+import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.trip.controller.spec.TripApiSpec
 import com.togethertrip.main.trip.dto.request.CreateTripRequest
 import com.togethertrip.main.trip.dto.request.UpdateTripCountriesRequest
 import com.togethertrip.main.trip.dto.request.UpdateTripRequest
+import com.togethertrip.main.trip.dto.response.TripCountriesResponse
+import com.togethertrip.main.trip.dto.response.TripDetailResponse
+import com.togethertrip.main.trip.dto.response.TripListResponse
 import com.togethertrip.main.trip.service.TripService
+import jakarta.validation.Valid
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -27,8 +32,14 @@ class TripController(
     @PostMapping
     override fun createTrip(
         @AuthenticationPrincipal authUser: AuthUser,
-        @RequestBody request: CreateTripRequest,
-    ) {
+        @Valid @RequestBody request: CreateTripRequest,
+    ): ApiResponse<TripDetailResponse> {
+        return ApiResponse.success(
+            tripService.createTrip(
+                userId = authUser.userId,
+                request = request,
+            )
+        )
     }
 
     @GetMapping
@@ -37,36 +48,70 @@ class TripController(
         @RequestParam(required = false) status: String?,
         @RequestParam(required = false) page: Int?,
         @RequestParam(required = false) size: Int?,
-    ) {
+    ): ApiResponse<TripListResponse> {
+        return ApiResponse.success(
+            tripService.getTrips(
+                userId = authUser.userId,
+                status = status,
+                page = page,
+                size = size,
+            )
+        )
     }
 
     @GetMapping("/{tripId}")
     override fun getTrip(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-    ) {
+    ): ApiResponse<TripDetailResponse> {
+        return ApiResponse.success(
+            tripService.getTrip(
+                userId = authUser.userId,
+                tripId = tripId,
+            )
+        )
     }
 
     @PatchMapping("/{tripId}")
     override fun updateTrip(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-        @RequestBody request: UpdateTripRequest,
-    ) {
+        @Valid @RequestBody request: UpdateTripRequest,
+    ): ApiResponse<TripDetailResponse> {
+        return ApiResponse.success(
+            tripService.updateTrip(
+                userId = authUser.userId,
+                tripId = tripId,
+                request = request,
+            )
+        )
     }
 
     @DeleteMapping("/{tripId}")
     override fun deleteTrip(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-    ) {
+    ): ApiResponse<Unit> {
+        tripService.deleteTrip(
+            userId = authUser.userId,
+            tripId = tripId,
+        )
+
+        return ApiResponse.success()
     }
 
     @PutMapping("/{tripId}/countries")
     override fun updateTripCountries(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-        @RequestBody request: UpdateTripCountriesRequest,
-    ) {
+        @Valid @RequestBody request: UpdateTripCountriesRequest,
+    ): ApiResponse<TripCountriesResponse> {
+        return ApiResponse.success(
+            tripService.updateTripCountries(
+                userId = authUser.userId,
+                tripId = tripId,
+                request = request,
+            )
+        )
     }
 }

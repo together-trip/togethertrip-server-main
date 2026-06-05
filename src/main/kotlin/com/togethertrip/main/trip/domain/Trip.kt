@@ -51,4 +51,27 @@ class Trip(
     @Column(name = "settled_at")
     var settledAt: Instant? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun updateBasicInfo(
+        title: String?,
+        defaultCurrency: String?,
+        exchangeRateBaseDate: LocalDate?,
+        startDate: LocalDate?,
+        endDate: LocalDate?,
+        updatedAt: Instant = Instant.now(),
+    ) {
+        if (title != null) {
+            this.title = title
+        }
+
+        if (defaultCurrency != null) {
+            this.defaultCurrency = defaultCurrency
+        }
+
+        this.exchangeRateBaseDate = exchangeRateBaseDate
+        this.startDate = startDate
+        this.endDate = endDate
+        this.updatedAt = updatedAt
+    }
+}
