@@ -10,18 +10,9 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import jakarta.persistence.UniqueConstraint
 
 @Entity
-@Table(
-    name = "oauth_accounts",
-    uniqueConstraints = [
-        UniqueConstraint(
-            name = "uk_oauth_accounts_provider_provider_user_id",
-            columnNames = ["provider", "provider_user_id"]
-        )
-    ]
-)
+@Table(name = "oauth_accounts")
 class OAuthAccount(
 
     @ManyToOne(fetch = FetchType.LAZY)
