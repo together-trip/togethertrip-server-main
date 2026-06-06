@@ -21,6 +21,7 @@ import com.togethertrip.main.trip.dto.response.TripListResponse
 import com.togethertrip.main.trip.dto.response.TripParticipantSummaryResponse
 import com.togethertrip.main.trip.dto.response.TripSummaryResponse
 import com.togethertrip.main.trip.exception.TripErrorCode
+import com.togethertrip.main.trip.pagination.TripCursor
 import com.togethertrip.main.trip.repository.TripCountryRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
@@ -291,24 +292,18 @@ class TripService(
     }
 
     private fun parseTripCursor(cursor: String): TripCursor {
-        val separatorIndex = cursor.lastIndexOf(CURSOR_SEPARATOR)
-
-        if (separatorIndex <= 0 || separatorIndex == cursor.lastIndex) {
-            throw BusinessException(CommonErrorCode.INVALID_INPUT)
-        }
-
         return try {
-            TripCursor(
-                createdAt = Instant.parse(cursor.substring(0, separatorIndex)),
-                id = cursor.substring(separatorIndex + 1).toLong(),
-            )
-        } catch (_: Exception) {
+            TripCursor.decode(cursor)
+        } catch (_: RuntimeException) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
     }
 
     private fun createNextCursor(trip: Trip): String {
-        return "${trip.createdAt}$CURSOR_SEPARATOR${trip.id}"
+        return TripCursor(
+            createdAt = trip.createdAt,
+            id = trip.id,
+        ).encode()
     }
 
     private fun validateTripDates(
@@ -348,11 +343,5 @@ class TripService(
     companion object {
         private const val DEFAULT_PAGE_SIZE = 20
         private const val MAX_PAGE_SIZE = 100
-        private const val CURSOR_SEPARATOR = "_"
     }
 }
-
-private data class TripCursor(
-    val createdAt: Instant,
-    val id: Long,
-)
