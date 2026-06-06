@@ -43,3 +43,6 @@ out/
 ### env ###
 .env
 src/main/resources/secret.yml
+
+### Agent Notes ###
+.agent-notes/

@@ -1,5 +1,8 @@
 package com.togethertrip.main.trip.dto.request
 
+import jakarta.validation.Valid
+
 data class UpdateTripCountriesRequest(
-    val placeholder: Unit? = null,
+    @field:Valid
+    val countries: List<TripCountryInput> = emptyList(),
 )
