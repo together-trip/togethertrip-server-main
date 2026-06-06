@@ -11,6 +11,7 @@ import com.togethertrip.main.post.dto.response.PostCommentResponse
 import com.togethertrip.main.post.dto.response.PostDetailResponse
 import com.togethertrip.main.post.dto.response.PostSummaryResponse
 import com.togethertrip.main.post.service.PostService
+import com.togethertrip.main.trip.security.RequireActiveTripParticipant
 import jakarta.validation.Valid
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -30,6 +31,7 @@ class PostController(
 ) : PostApiSpec {
 
     @PostMapping
+    @RequireActiveTripParticipant
     override fun createPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
@@ -45,6 +47,7 @@ class PostController(
     }
 
     @GetMapping
+    @RequireActiveTripParticipant
     override fun getPosts(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
@@ -63,6 +66,7 @@ class PostController(
     }
 
     @GetMapping("/{postId}")
+    @RequireActiveTripParticipant
     override fun getPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
@@ -77,6 +81,7 @@ class PostController(
     }
 
     @PatchMapping("/{postId}")
+    @RequireActiveTripParticipant
     override fun updatePost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
@@ -94,6 +99,7 @@ class PostController(
     }
 
     @DeleteMapping("/{postId}")
+    @RequireActiveTripParticipant
     override fun deletePost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
@@ -109,6 +115,7 @@ class PostController(
     }
 
     @PostMapping("/{postId}/comments")
+    @RequireActiveTripParticipant
     override fun createComment(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
@@ -126,6 +133,7 @@ class PostController(
     }
 
     @GetMapping("/{postId}/comments")
+    @RequireActiveTripParticipant
     override fun getComments(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
@@ -144,6 +152,7 @@ class PostController(
     }
 
     @DeleteMapping("/{postId}/comments/{commentId}")
+    @RequireActiveTripParticipant
     override fun deleteComment(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,

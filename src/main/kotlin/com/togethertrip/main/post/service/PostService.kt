@@ -21,6 +21,7 @@ import com.togethertrip.main.post.repository.PostCommentRepository
 import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import org.springframework.data.domain.PageRequest
@@ -303,9 +304,10 @@ class PostService(
         userId: Long,
         tripId: Long,
     ): TripParticipant {
-        return tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(
+        return tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
             tripId = tripId,
             userId = userId,
+            participantStatus = TripParticipantStatus.ACTIVE,
         ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
     }
 

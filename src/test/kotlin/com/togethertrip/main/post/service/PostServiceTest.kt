@@ -67,9 +67,10 @@ class PostServiceTest {
         val participant = createParticipant()
 
         `when`(
-            tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = 10L,
                 userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
             )
         ).thenReturn(participant)
 
@@ -94,9 +95,10 @@ class PostServiceTest {
         val transaction = createTransaction(trip = participant.trip)
 
         `when`(
-            tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = 10L,
                 userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
             )
         ).thenReturn(participant)
         `when`(transactionRepository.findByIdAndDeletedAtIsNull(200L))
@@ -122,9 +124,10 @@ class PostServiceTest {
         val transaction = createTransaction(trip = otherTrip)
 
         `when`(
-            tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = 10L,
                 userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
             )
         ).thenReturn(participant)
         `when`(transactionRepository.findByIdAndDeletedAtIsNull(200L))
@@ -144,9 +147,31 @@ class PostServiceTest {
     @Test
     fun `여행 참여자가 없으면 게시글 작성에 실패한다`() {
         `when`(
-            tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = 10L,
                 userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(null)
+
+        val exception = assertBusinessException {
+            postService.createPost(
+                userId = 1L,
+                tripId = 10L,
+                request = CreatePostRequest(title = "기록"),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
+    }
+
+    @Test
+    fun `활성 여행 참여자가 아니면 게시글 작성에 실패한다`() {
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
             )
         ).thenReturn(null)
 
@@ -291,9 +316,10 @@ class PostServiceTest {
         val post = createPost(author = participant)
 
         `when`(
-            tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = 10L,
                 userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
             )
         ).thenReturn(participant)
         `when`(
@@ -313,6 +339,28 @@ class PostServiceTest {
         assertEquals("좋아요", response.content)
         assertEquals(1, post.commentCount)
         verify(postCommentRepository).save(any(PostComment::class.java))
+    }
+
+    @Test
+    fun `활성 여행 참여자가 아니면 댓글 작성에 실패한다`() {
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(null)
+
+        val exception = assertBusinessException {
+            postService.createComment(
+                userId = 1L,
+                tripId = 10L,
+                postId = 300L,
+                request = CreatePostCommentRequest(content = "좋아요"),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
     }
 
     @Test
