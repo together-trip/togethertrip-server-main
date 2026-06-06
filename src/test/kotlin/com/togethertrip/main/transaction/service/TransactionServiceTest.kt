@@ -193,6 +193,53 @@ class TransactionServiceTest {
     }
 
     @Test
+    fun `동일 참여자가 결제자 목록에 중복 포함되면 거래 등록에 실패한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+
+        val exception = assertBusinessException {
+            transactionService.createTransaction(
+                userId = 1L,
+                tripId = 10L,
+                request = CreateTransactionRequest(
+                    amount = BigDecimal("1000.00"),
+                    currency = "JPY",
+                    payments = listOf(
+                        TransactionPaymentInput(
+                            participantId = 100L,
+                            amount = BigDecimal("600.00"),
+                        ),
+                        TransactionPaymentInput(
+                            participantId = 100L,
+                            amount = BigDecimal("400.00"),
+                        )
+                    ),
+                    shares = listOf(
+                        TransactionShareInput(
+                            participantId = 100L,
+                            shareAmount = BigDecimal("1000.00"),
+                        )
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(TransactionErrorCode.DUPLICATE_TRANSACTION_PARTICIPANT, exception.errorCode)
+        verify(transactionRepository, never()).save(any(Transaction::class.java))
+    }
+
+    @Test
     fun `정산 시작 이후에는 거래 등록에 실패한다`() {
         val user = createUser()
         val trip = createTrip(user).apply {

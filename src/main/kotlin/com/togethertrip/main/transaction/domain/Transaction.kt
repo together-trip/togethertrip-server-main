@@ -60,19 +60,15 @@ class Transaction(
     var version: Long = 0
 
     fun updateSnapshot(
-        transactionType: TransactionType,
-        amount: BigDecimal,
-        currency: String,
-        exchangeRate: BigDecimal,
-        baseCurrency: String,
-        baseAmount: BigDecimal,
+        ledgerEntry: TransactionLedgerEntry,
+        currencySnapshot: TransactionCurrencySnapshot,
     ) {
-        this.transactionType = transactionType
-        this.amount = amount
-        this.currency = currency
-        this.exchangeRate = exchangeRate
-        this.baseCurrency = baseCurrency
-        this.baseAmount = baseAmount
+        this.transactionType = ledgerEntry.transactionType
+        this.amount = ledgerEntry.amount
+        this.currency = currencySnapshot.currency
+        this.exchangeRate = currencySnapshot.exchangeRate
+        this.baseCurrency = currencySnapshot.baseCurrency
+        this.baseAmount = currencySnapshot.convert(ledgerEntry.amount)
     }
 
     fun void() {

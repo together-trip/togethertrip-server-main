@@ -44,6 +44,12 @@ enum class TransactionErrorCode(
         "부담자 금액 합계가 거래 금액과 일치하지 않습니다.",
     ),
 
+    DUPLICATE_TRANSACTION_PARTICIPANT(
+        HttpStatus.BAD_REQUEST,
+        "DUPLICATE_TRANSACTION_PARTICIPANT",
+        "동일한 참여자가 결제자 또는 부담자 목록에 중복 포함될 수 없습니다.",
+    ),
+
     TRANSACTION_LOCKED_BY_SETTLEMENT(
         HttpStatus.CONFLICT,
         "TRANSACTION_LOCKED_BY_SETTLEMENT",

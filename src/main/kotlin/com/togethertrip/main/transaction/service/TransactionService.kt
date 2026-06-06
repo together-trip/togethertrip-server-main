@@ -3,10 +3,14 @@ package com.togethertrip.main.transaction.service
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.response.CursorResponse
+import com.togethertrip.main.transaction.domain.PaymentAllocation
+import com.togethertrip.main.transaction.domain.ShareAllocation
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionCurrencySnapshot
 import com.togethertrip.main.transaction.domain.TransactionEvent
+import com.togethertrip.main.transaction.domain.TransactionEventPayload
 import com.togethertrip.main.transaction.domain.TransactionEventType
+import com.togethertrip.main.transaction.domain.TransactionLedgerEntry
 import com.togethertrip.main.transaction.domain.TransactionPayment
 import com.togethertrip.main.transaction.domain.TransactionShare
 import com.togethertrip.main.transaction.domain.TransactionStatus
@@ -42,8 +46,6 @@ import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.math.BigDecimal
-import java.math.RoundingMode
 
 @Service
 @Transactional(readOnly = true)
@@ -77,45 +79,34 @@ class TransactionService(
             userId = userId,
         )
 
-        validateTransactionAmount(request.amount)
-        validatePaymentTotal(
-            amount = request.amount,
-            payments = request.payments,
-        )
-        validateShareTotal(
-            amount = request.amount,
-            shares = request.shares,
-        )
+        val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
             trip = trip,
-            currency = request.currency,
+            currency = ledgerEntry.currency,
         )
 
         val transaction = transactionRepository.save(
             Transaction(
                 trip = trip,
                 createdBy = user,
-                transactionType = request.transactionType,
-                amount = request.amount,
+                transactionType = ledgerEntry.transactionType,
+                amount = ledgerEntry.amount,
                 currency = currencySnapshot.currency,
                 exchangeRate = currencySnapshot.exchangeRate,
                 baseCurrency = currencySnapshot.baseCurrency,
-                baseAmount = calculateBaseAmount(
-                    amount = request.amount,
-                    exchangeRate = currencySnapshot.exchangeRate,
-                ),
+                baseAmount = currencySnapshot.convert(ledgerEntry.amount),
             )
         )
         val payments = savePayments(
             transaction = transaction,
             tripId = tripId,
-            inputs = request.payments,
+            allocations = ledgerEntry.payments,
             snapshot = currencySnapshot,
         )
         val shares = saveShares(
             transaction = transaction,
             tripId = tripId,
-            inputs = request.shares,
+            allocations = ledgerEntry.shares,
             snapshot = currencySnapshot,
         )
 
@@ -219,41 +210,26 @@ class TransactionService(
             tripId = tripId,
             transactionId = transactionId,
         )
-        validateTransactionAmount(request.amount)
-        validatePaymentTotal(
-            amount = request.amount,
-            payments = request.payments,
-        )
-        validateShareTotal(
-            amount = request.amount,
-            shares = request.shares,
-        )
+        val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
             trip = trip,
-            currency = request.currency,
+            currency = ledgerEntry.currency,
         )
 
         transaction.updateSnapshot(
-            transactionType = request.transactionType,
-            amount = request.amount,
-            currency = currencySnapshot.currency,
-            exchangeRate = currencySnapshot.exchangeRate,
-            baseCurrency = currencySnapshot.baseCurrency,
-            baseAmount = calculateBaseAmount(
-                amount = request.amount,
-                exchangeRate = currencySnapshot.exchangeRate,
-            ),
+            ledgerEntry = ledgerEntry,
+            currencySnapshot = currencySnapshot,
         )
         replacePayments(
             transaction = transaction,
             tripId = tripId,
-            inputs = request.payments,
+            allocations = ledgerEntry.payments,
             snapshot = currencySnapshot,
         )
         replaceShares(
             transaction = transaction,
             tripId = tripId,
-            inputs = request.shares,
+            allocations = ledgerEntry.shares,
             snapshot = currencySnapshot,
         )
 
@@ -386,7 +362,7 @@ class TransactionService(
     private fun replacePayments(
         transaction: Transaction,
         tripId: Long,
-        inputs: List<TransactionPaymentInput>,
+        allocations: List<PaymentAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ) {
         transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
@@ -394,7 +370,7 @@ class TransactionService(
         savePayments(
             transaction = transaction,
             tripId = tripId,
-            inputs = inputs,
+            allocations = allocations,
             snapshot = snapshot,
         )
     }
@@ -402,7 +378,7 @@ class TransactionService(
     private fun replaceShares(
         transaction: Transaction,
         tripId: Long,
-        inputs: List<TransactionShareInput>,
+        allocations: List<ShareAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ) {
         transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
@@ -410,7 +386,7 @@ class TransactionService(
         saveShares(
             transaction = transaction,
             tripId = tripId,
-            inputs = inputs,
+            allocations = allocations,
             snapshot = snapshot,
         )
     }
@@ -418,27 +394,24 @@ class TransactionService(
     private fun savePayments(
         transaction: Transaction,
         tripId: Long,
-        inputs: List<TransactionPaymentInput>,
+        allocations: List<PaymentAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionPayment> {
-        return inputs.map { input ->
+        return allocations.map { allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
-                participantId = input.participantId,
+                participantId = allocation.participantId,
                 userId = null,
             )
             transactionPaymentRepository.save(
                 TransactionPayment(
                     transaction = transaction,
                     tripParticipant = participant,
-                    amount = input.amount,
+                    amount = allocation.amount,
                     currency = snapshot.currency,
                     exchangeRate = snapshot.exchangeRate,
                     baseCurrency = snapshot.baseCurrency,
-                    baseAmount = calculateBaseAmount(
-                        amount = input.amount,
-                        exchangeRate = snapshot.exchangeRate,
-                    ),
+                    baseAmount = snapshot.convert(allocation.amount),
                 )
             )
         }
@@ -447,28 +420,25 @@ class TransactionService(
     private fun saveShares(
         transaction: Transaction,
         tripId: Long,
-        inputs: List<TransactionShareInput>,
+        allocations: List<ShareAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionShare> {
-        return inputs.map { input ->
+        return allocations.map { allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
-                participantId = input.participantId,
+                participantId = allocation.participantId,
                 userId = null,
             )
             transactionShareRepository.save(
                 TransactionShare(
                     transaction = transaction,
                     tripParticipant = participant,
-                    shareAmount = input.shareAmount,
+                    shareAmount = allocation.shareAmount,
                     currency = snapshot.currency,
                     exchangeRate = snapshot.exchangeRate,
                     baseCurrency = snapshot.baseCurrency,
-                    baseShareAmount = calculateBaseAmount(
-                        amount = input.shareAmount,
-                        exchangeRate = snapshot.exchangeRate,
-                    ),
-                    shareRatio = input.shareRatio,
+                    baseShareAmount = snapshot.convert(allocation.shareAmount),
+                    shareRatio = allocation.shareRatio,
                 )
             )
         }
@@ -488,31 +458,13 @@ class TransactionService(
                 trip = trip,
                 eventType = eventType,
                 aggregateVersion = trip.expenseVersion,
-                payload = createEventPayload(
+                payload = TransactionEventPayload.from(
                     transaction = transaction,
                     eventType = eventType,
-                ),
+                ).toJson(),
                 createdBy = createdBy,
             )
         )
-    }
-
-    private fun createEventPayload(
-        transaction: Transaction,
-        eventType: TransactionEventType,
-    ): String {
-        return """
-            {
-              "eventType": "${eventType.name}",
-              "transactionId": ${transaction.id},
-              "amount": "${transaction.amount}",
-              "currency": "${transaction.currency}",
-              "exchangeRate": "${transaction.exchangeRate}",
-              "baseCurrency": "${transaction.baseCurrency}",
-              "baseAmount": "${transaction.baseAmount}",
-              "status": "${transaction.status.name}"
-            }
-        """.trimIndent()
     }
 
     private fun resolveCurrencySnapshot(
@@ -529,7 +481,7 @@ class TransactionService(
             rateDate = rateDate,
         ) ?: throw BusinessException(TransactionErrorCode.EXCHANGE_RATE_NOT_READY)
 
-        return TransactionCurrencySnapshot(
+        return TransactionCurrencySnapshot.of(
             currency = normalizedCurrency,
             baseCurrency = baseCurrency,
             exchangeRate = exchangeRate.rate,
@@ -611,41 +563,6 @@ class TransactionService(
         }
     }
 
-    private fun validateTransactionAmount(amount: BigDecimal) {
-        if (amount <= BigDecimal.ZERO) {
-            throw BusinessException(TransactionErrorCode.INVALID_TRANSACTION_AMOUNT)
-        }
-    }
-
-    private fun validatePaymentTotal(
-        amount: BigDecimal,
-        payments: List<TransactionPaymentInput>,
-    ) {
-        val total = payments.fold(BigDecimal.ZERO) { acc, payment -> acc + payment.amount }
-
-        if (total.compareTo(amount) != 0) {
-            throw BusinessException(TransactionErrorCode.TRANSACTION_PAYMENT_TOTAL_MISMATCH)
-        }
-    }
-
-    private fun validateShareTotal(
-        amount: BigDecimal,
-        shares: List<TransactionShareInput>,
-    ) {
-        val total = shares.fold(BigDecimal.ZERO) { acc, share -> acc + share.shareAmount }
-
-        if (total.compareTo(amount) != 0) {
-            throw BusinessException(TransactionErrorCode.TRANSACTION_SHARE_TOTAL_MISMATCH)
-        }
-    }
-
-    private fun calculateBaseAmount(
-        amount: BigDecimal,
-        exchangeRate: BigDecimal,
-    ): BigDecimal {
-        return amount.multiply(exchangeRate).setScale(2, RoundingMode.HALF_UP)
-    }
-
     private fun parseTransactionType(type: String): TransactionType {
         return try {
             TransactionType.valueOf(type.trim().uppercase())
@@ -666,4 +583,46 @@ class TransactionService(
         private const val DEFAULT_PAGE_SIZE = 20
         private const val MAX_PAGE_SIZE = 100
     }
+}
+
+private fun CreateTransactionRequest.toLedgerEntry(): TransactionLedgerEntry {
+    return TransactionLedgerEntry(
+        transactionType = transactionType,
+        amount = amount,
+        currency = currency,
+        payments = payments.map { payment ->
+            PaymentAllocation(
+                participantId = payment.participantId,
+                amount = payment.amount,
+            )
+        },
+        shares = shares.map { share ->
+            ShareAllocation(
+                participantId = share.participantId,
+                shareAmount = share.shareAmount,
+                shareRatio = share.shareRatio,
+            )
+        },
+    )
+}
+
+private fun UpdateTransactionRequest.toLedgerEntry(): TransactionLedgerEntry {
+    return TransactionLedgerEntry(
+        transactionType = transactionType,
+        amount = amount,
+        currency = currency,
+        payments = payments.map { payment ->
+            PaymentAllocation(
+                participantId = payment.participantId,
+                amount = payment.amount,
+            )
+        },
+        shares = shares.map { share ->
+            ShareAllocation(
+                participantId = share.participantId,
+                shareAmount = share.shareAmount,
+                shareRatio = share.shareRatio,
+            )
+        },
+    )
 }

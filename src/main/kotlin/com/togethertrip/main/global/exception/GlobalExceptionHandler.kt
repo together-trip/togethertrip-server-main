@@ -2,6 +2,7 @@ package com.togethertrip.main.global.exception
 
 import com.togethertrip.main.global.response.ErrorResponse
 import org.springframework.http.ResponseEntity
+import org.springframework.orm.ObjectOptimisticLockingFailureException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -53,6 +54,20 @@ class GlobalExceptionHandler {
                 ErrorResponse(
                     code = CommonErrorCode.INVALID_INPUT.code,
                     message = message,
+                )
+            )
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException::class)
+    fun handleObjectOptimisticLockingFailureException(
+        exception: ObjectOptimisticLockingFailureException,
+    ): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(CommonErrorCode.CONCURRENT_MODIFICATION.status)
+            .body(
+                ErrorResponse(
+                    code = CommonErrorCode.CONCURRENT_MODIFICATION.code,
+                    message = CommonErrorCode.CONCURRENT_MODIFICATION.message,
                 )
             )
     }

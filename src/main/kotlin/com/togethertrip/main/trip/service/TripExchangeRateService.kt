@@ -36,13 +36,18 @@ class TripExchangeRateService(
         userId: Long,
         tripId: Long,
     ): List<TripExchangeRateResponse> {
-        getOwnedTrip(
+        val trip = getOwnedTrip(
             userId = userId,
             tripId = tripId,
         )
 
         return tripExchangeRateRepository
-            .findByTripIdAndDeletedAtIsNullOrderByTargetCurrencyAsc(tripId)
+            .findByTripIdAndBaseCurrencyAndRateDateAndDeletedAtIsNull(
+                tripId = trip.id,
+                baseCurrency = normalizeCurrency(trip.defaultCurrency),
+                rateDate = resolveRateDate(trip),
+            )
+            .sortedBy { exchangeRate -> exchangeRate.targetCurrency }
             .map(TripExchangeRateResponse::from)
     }
 
@@ -63,7 +68,12 @@ class TripExchangeRateService(
         )
 
         return tripExchangeRateRepository
-            .findByTripIdAndDeletedAtIsNullOrderByTargetCurrencyAsc(tripId)
+            .findByTripIdAndBaseCurrencyAndRateDateAndDeletedAtIsNull(
+                tripId = trip.id,
+                baseCurrency = normalizeCurrency(trip.defaultCurrency),
+                rateDate = resolveRateDate(trip),
+            )
+            .sortedBy { exchangeRate -> exchangeRate.targetCurrency }
             .map(TripExchangeRateResponse::from)
     }
 
@@ -74,15 +84,17 @@ class TripExchangeRateService(
         exchangeRateId: Long,
         request: UpdateTripExchangeRateRequest,
     ): TripExchangeRateResponse {
-        getOwnedTrip(
+        val trip = getOwnedTrip(
             userId = userId,
             tripId = tripId,
         )
         validateRate(request.rate)
 
-        val exchangeRate = tripExchangeRateRepository.findByIdAndTripIdAndDeletedAtIsNull(
+        val exchangeRate = tripExchangeRateRepository.findByIdAndTripIdAndBaseCurrencyAndRateDateAndDeletedAtIsNull(
             id = exchangeRateId,
             tripId = tripId,
+            baseCurrency = normalizeCurrency(trip.defaultCurrency),
+            rateDate = resolveRateDate(trip),
         ) ?: throw BusinessException(TripErrorCode.EXCHANGE_RATE_NOT_FOUND)
 
         exchangeRate.updateRate(
@@ -140,6 +152,13 @@ class TripExchangeRateService(
         val quotesByTargetCurrency = quotes.associateBy { quote ->
             normalizeCurrency(quote.targetCurrency)
         }
+        tripExchangeRateRepository.findByTripIdAndBaseCurrencyAndRateDateAndDeletedAtIsNull(
+            tripId = trip.id,
+            baseCurrency = baseCurrency,
+            rateDate = rateDate,
+        )
+            .filterNot { exchangeRate -> exchangeRate.targetCurrency in targetCurrencies }
+            .forEach { exchangeRate -> exchangeRate.markDeleted() }
 
         targetCurrencies.forEach { targetCurrency ->
             val quote = quotesByTargetCurrency[targetCurrency]

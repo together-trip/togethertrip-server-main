@@ -6,7 +6,11 @@ import java.time.LocalDate
 
 interface TripExchangeRateRepository : JpaRepository<TripExchangeRate, Long> {
 
-    fun findByTripIdAndDeletedAtIsNullOrderByTargetCurrencyAsc(tripId: Long): List<TripExchangeRate>
+    fun findByTripIdAndBaseCurrencyAndRateDateAndDeletedAtIsNull(
+        tripId: Long,
+        baseCurrency: String,
+        rateDate: LocalDate,
+    ): List<TripExchangeRate>
 
     fun findByTripIdAndBaseCurrencyAndTargetCurrencyAndRateDateAndDeletedAtIsNull(
         tripId: Long,
@@ -15,8 +19,10 @@ interface TripExchangeRateRepository : JpaRepository<TripExchangeRate, Long> {
         rateDate: LocalDate,
     ): TripExchangeRate?
 
-    fun findByIdAndTripIdAndDeletedAtIsNull(
+    fun findByIdAndTripIdAndBaseCurrencyAndRateDateAndDeletedAtIsNull(
         id: Long,
         tripId: Long,
+        baseCurrency: String,
+        rateDate: LocalDate,
     ): TripExchangeRate?
 }
