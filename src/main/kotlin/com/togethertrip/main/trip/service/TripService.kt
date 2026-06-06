@@ -42,6 +42,7 @@ class TripService(
     private val tripCountryRepository: TripCountryRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val userRepository: UserRepository,
+    private val tripExchangeRateService: TripExchangeRateService,
 ) {
 
     @Transactional
@@ -80,8 +81,12 @@ class TripService(
             )
         )
 
-        saveTripCountries(trip, request.countries)
+        val countries = saveTripCountries(trip, request.countries)
         saveCompanions(trip, request.participants)
+        tripExchangeRateService.initializeExchangeRates(
+            trip = trip,
+            countries = countries,
+        )
 
         return buildTripDetailResponse(trip)
     }
@@ -155,6 +160,17 @@ class TripService(
             startDate = trip.startDate,
             endDate = trip.endDate,
         )
+        if (
+            request.defaultCurrency != null ||
+            request.exchangeRateBaseDate != null ||
+            request.startDate != null
+        ) {
+            val countries = tripCountryRepository.findByTripIdAndDeletedAtIsNullOrderBySortOrderAsc(trip.id)
+            tripExchangeRateService.initializeExchangeRates(
+                trip = trip,
+                countries = countries,
+            )
+        }
 
         return buildTripDetailResponse(trip)
     }
@@ -181,7 +197,13 @@ class TripService(
 
         existingCountries.forEach { it.markDeleted() }
 
-        val countries = saveTripCountries(trip, request.countries)
+        val savedCountries = saveTripCountries(trip, request.countries)
+        tripExchangeRateService.initializeExchangeRates(
+            trip = trip,
+            countries = savedCountries,
+        )
+
+        val countries = savedCountries
             .map(TripCountryResponse::from)
 
         return TripCountriesResponse.from(

@@ -1,5 +1,44 @@
 package com.togethertrip.main.transaction.dto.request
 
+import com.togethertrip.main.transaction.domain.TransactionType
+import jakarta.validation.Valid
+import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Size
+import java.math.BigDecimal
+
 data class CreateTransactionRequest(
-    val placeholder: Unit? = null,
+    @field:NotNull
+    val transactionType: TransactionType = TransactionType.EXPENSE,
+    @field:NotNull
+    @field:DecimalMin(value = "0.01")
+    val amount: BigDecimal,
+    @field:NotBlank
+    @field:Size(min = 3, max = 3)
+    val currency: String,
+    @field:Valid
+    @field:NotEmpty
+    val payments: List<TransactionPaymentInput>,
+    @field:Valid
+    @field:NotEmpty
+    val shares: List<TransactionShareInput>,
+)
+
+data class TransactionPaymentInput(
+    @field:NotNull
+    val participantId: Long,
+    @field:NotNull
+    @field:DecimalMin(value = "0.00")
+    val amount: BigDecimal,
+)
+
+data class TransactionShareInput(
+    @field:NotNull
+    val participantId: Long,
+    @field:NotNull
+    @field:DecimalMin(value = "0.00")
+    val shareAmount: BigDecimal,
+    val shareRatio: BigDecimal? = null,
 )

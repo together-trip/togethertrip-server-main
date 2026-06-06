@@ -51,6 +51,7 @@
 - 결제자 금액 합계와 부담자 금액 합계가 거래 금액과 일치하는지 검증한다.
 - 거래 변경 시 `Trip.expenseVersion`을 증가시키고 `TransactionEvent`를 기록한다.
 - `TripSettlementStatus.NOT_STARTED`가 아니면 거래 등록/수정/삭제를 차단한다.
+- Transaction API는 Post API와 같은 `@RequireActiveTripParticipant` 어노테이션으로 활성 여행 참여자 접근을 먼저 보장한다.
 - Transaction API용 request/response DTO를 실제 계약으로 확정한다.
 - 환율/거래 API 성공/실패 경로 테스트를 추가한다.
 
@@ -201,7 +202,7 @@ fun findFirstByTripIdAndBaseCurrencyAndTargetCurrencyAndRateDateAndDeletedAtIsNu
 
 ### 8. 거래 변경 이벤트
 
-거래 생성 시 `TransactionEventType.CREATED`, 수정 시 `ADJUSTED`, 무효 처리 시 `VOIDED` 이벤트를 기록한다.
+거래 생성 시 `TransactionEventType.CREATED`, 수정 시 `UPDATED`, 무효 처리 시 `VOIDED` 이벤트를 기록한다.
 
 `aggregateVersion`은 변경 후 `Trip.expenseVersion` 또는 `Transaction.version` 중 하나로 통일해야 한다. 정산 스냅샷 기준이 `Trip.expenseVersion`이므로, 이번 작업에서는 `Trip.expenseVersion` 증가 후 그 값을 이벤트 버전으로 사용하는 방향을 우선 검토한다.
 
@@ -235,9 +236,10 @@ fun findFirstByTripIdAndBaseCurrencyAndTargetCurrencyAndRateDateAndDeletedAtIsNu
 9. 거래 등록 서비스에서 여행/참여자/환율 조회, 금액 계산, 합계 검증, 원장 저장, 이벤트 기록, `expenseVersion` 증가를 구현한다.
 10. 거래 목록/상세 조회를 구현한다.
 11. 거래 수정 서비스에서 기존 결제자/부담자 soft delete 또는 교체 저장 정책을 구현한다.
-12. 거래 삭제는 물리 삭제가 아니라 `status = VOIDED`와 `deletedAt` 또는 status 기반 무효 처리로 구현한다.
+12. 거래 삭제는 원장 보존을 위해 물리 삭제나 `deletedAt` 처리 없이 `status = VOIDED` 상태 변경으로 구현한다.
 13. 컨트롤러와 Swagger spec 반환 타입을 `ApiResponse<T>` 형태로 맞춘다.
-14. 단위/통합 테스트를 추가하고 `./gradlew test`로 검증한다.
+14. Transaction 컨트롤러에 `@RequireActiveTripParticipant`를 적용해 Post API와 동일한 활성 여행 참여자 접근 제어를 적용한다.
+15. 단위/통합 테스트를 추가하고 `./gradlew test`로 검증한다.
 
 ## 테스트 계획
 
@@ -261,7 +263,7 @@ fun findFirstByTripIdAndBaseCurrencyAndTargetCurrencyAndRateDateAndDeletedAtIsNu
 - 결제 금액 합계와 거래 금액이 다르면 실패하는지 검증한다.
 - 부담 금액 합계와 거래 금액이 다르면 실패하는지 검증한다.
 - 거래 생성 시 `Trip.expenseVersion`이 증가하고 `CREATED` 이벤트가 기록되는지 검증한다.
-- 거래 수정 시 `Trip.expenseVersion`이 증가하고 `ADJUSTED` 이벤트가 기록되는지 검증한다.
+- 거래 수정 시 `Trip.expenseVersion`이 증가하고 `UPDATED` 이벤트가 기록되는지 검증한다.
 - 거래 무효 처리 시 `Trip.expenseVersion`이 증가하고 `VOIDED` 이벤트가 기록되는지 검증한다.
 - 정산 상태가 `IN_PROGRESS` 또는 `SETTLED`이면 등록/수정/삭제가 실패하는지 검증한다.
 - 목록 조회가 해당 여행의 활성 거래만 반환하는지 검증한다.

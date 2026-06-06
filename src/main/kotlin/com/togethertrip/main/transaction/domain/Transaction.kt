@@ -12,10 +12,12 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.Version
+import org.hibernate.annotations.SQLRestriction
 import java.math.BigDecimal
 
 @Entity
 @Table(name = "transactions")
+@SQLRestriction("deleted_at IS NULL")
 class Transaction(
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -56,4 +58,24 @@ class Transaction(
     @Version
     @Column(nullable = false)
     var version: Long = 0
+
+    fun updateSnapshot(
+        transactionType: TransactionType,
+        amount: BigDecimal,
+        currency: String,
+        exchangeRate: BigDecimal,
+        baseCurrency: String,
+        baseAmount: BigDecimal,
+    ) {
+        this.transactionType = transactionType
+        this.amount = amount
+        this.currency = currency
+        this.exchangeRate = exchangeRate
+        this.baseCurrency = baseCurrency
+        this.baseAmount = baseAmount
+    }
+
+    fun void() {
+        status = TransactionStatus.VOIDED
+    }
 }

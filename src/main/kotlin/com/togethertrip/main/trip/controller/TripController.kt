@@ -4,11 +4,14 @@ import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.trip.controller.spec.TripApiSpec
 import com.togethertrip.main.trip.dto.request.CreateTripRequest
+import com.togethertrip.main.trip.dto.request.UpdateTripExchangeRateRequest
 import com.togethertrip.main.trip.dto.request.UpdateTripCountriesRequest
 import com.togethertrip.main.trip.dto.request.UpdateTripRequest
 import com.togethertrip.main.trip.dto.response.TripCountriesResponse
 import com.togethertrip.main.trip.dto.response.TripDetailResponse
+import com.togethertrip.main.trip.dto.response.TripExchangeRateResponse
 import com.togethertrip.main.trip.dto.response.TripListResponse
+import com.togethertrip.main.trip.service.TripExchangeRateService
 import com.togethertrip.main.trip.service.TripService
 import jakarta.validation.Valid
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/trips")
 class TripController(
     private val tripService: TripService,
+    private val tripExchangeRateService: TripExchangeRateService,
 ) : TripApiSpec {
 
     @PostMapping
@@ -110,6 +114,49 @@ class TripController(
             tripService.updateTripCountries(
                 userId = authUser.userId,
                 tripId = tripId,
+                request = request,
+            )
+        )
+    }
+
+    @GetMapping("/{tripId}/exchange-rates")
+    override fun getTripExchangeRates(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+    ): ApiResponse<List<TripExchangeRateResponse>> {
+        return ApiResponse.success(
+            tripExchangeRateService.getExchangeRates(
+                userId = authUser.userId,
+                tripId = tripId,
+            )
+        )
+    }
+
+    @PostMapping("/{tripId}/exchange-rates/refresh")
+    override fun refreshTripExchangeRates(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+    ): ApiResponse<List<TripExchangeRateResponse>> {
+        return ApiResponse.success(
+            tripExchangeRateService.refreshExchangeRates(
+                userId = authUser.userId,
+                tripId = tripId,
+            )
+        )
+    }
+
+    @PatchMapping("/{tripId}/exchange-rates/{exchangeRateId}")
+    override fun updateTripExchangeRate(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+        @PathVariable exchangeRateId: Long,
+        @Valid @RequestBody request: UpdateTripExchangeRateRequest,
+    ): ApiResponse<TripExchangeRateResponse> {
+        return ApiResponse.success(
+            tripExchangeRateService.updateExchangeRate(
+                userId = authUser.userId,
+                tripId = tripId,
+                exchangeRateId = exchangeRateId,
                 request = request,
             )
         )

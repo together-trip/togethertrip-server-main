@@ -1,0 +1,449 @@
+package com.togethertrip.main.transaction.service
+
+import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.transaction.domain.Transaction
+import com.togethertrip.main.transaction.domain.TransactionEvent
+import com.togethertrip.main.transaction.domain.TransactionEventType
+import com.togethertrip.main.transaction.domain.TransactionPayment
+import com.togethertrip.main.transaction.domain.TransactionShare
+import com.togethertrip.main.transaction.domain.TransactionStatus
+import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
+import com.togethertrip.main.transaction.dto.request.TransactionPaymentInput
+import com.togethertrip.main.transaction.dto.request.TransactionShareInput
+import com.togethertrip.main.transaction.exception.TransactionErrorCode
+import com.togethertrip.main.transaction.pagination.TransactionCursor
+import com.togethertrip.main.transaction.repository.TransactionEventRepository
+import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
+import com.togethertrip.main.transaction.repository.TransactionRepository
+import com.togethertrip.main.transaction.repository.TransactionShareRepository
+import com.togethertrip.main.trip.domain.Trip
+import com.togethertrip.main.trip.domain.TripExchangeRate
+import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.trip.domain.TripParticipantRole
+import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
+import com.togethertrip.main.trip.repository.TripExchangeRateRepository
+import com.togethertrip.main.trip.repository.TripParticipantRepository
+import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.TripExchangeRateService
+import com.togethertrip.main.user.domain.User
+import com.togethertrip.main.user.repository.UserRepository
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
+import org.springframework.data.domain.PageRequest
+import java.math.BigDecimal
+import java.time.Instant
+import java.time.LocalDate
+import kotlin.test.assertEquals
+
+class TransactionServiceTest {
+
+    private lateinit var transactionRepository: TransactionRepository
+    private lateinit var transactionShareRepository: TransactionShareRepository
+    private lateinit var transactionPaymentRepository: TransactionPaymentRepository
+    private lateinit var transactionEventRepository: TransactionEventRepository
+    private lateinit var tripRepository: TripRepository
+    private lateinit var tripParticipantRepository: TripParticipantRepository
+    private lateinit var tripExchangeRateRepository: TripExchangeRateRepository
+    private lateinit var tripExchangeRateService: TripExchangeRateService
+    private lateinit var userRepository: UserRepository
+    private lateinit var transactionService: TransactionService
+
+    @BeforeEach
+    fun setUp() {
+        transactionRepository = mock(TransactionRepository::class.java)
+        transactionShareRepository = mock(TransactionShareRepository::class.java)
+        transactionPaymentRepository = mock(TransactionPaymentRepository::class.java)
+        transactionEventRepository = mock(TransactionEventRepository::class.java)
+        tripRepository = mock(TripRepository::class.java)
+        tripParticipantRepository = mock(TripParticipantRepository::class.java)
+        tripExchangeRateRepository = mock(TripExchangeRateRepository::class.java)
+        tripExchangeRateService = mock(TripExchangeRateService::class.java)
+        userRepository = mock(UserRepository::class.java)
+        transactionService = TransactionService(
+            transactionRepository = transactionRepository,
+            transactionShareRepository = transactionShareRepository,
+            transactionPaymentRepository = transactionPaymentRepository,
+            transactionEventRepository = transactionEventRepository,
+            tripRepository = tripRepository,
+            tripParticipantRepository = tripParticipantRepository,
+            tripExchangeRateRepository = tripExchangeRateRepository,
+            tripExchangeRateService = tripExchangeRateService,
+            userRepository = userRepository,
+        )
+    }
+
+    @Test
+    fun `거래 등록 시 여행 환율표를 적용하고 이벤트를 기록한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val exchangeRate = createExchangeRate(trip)
+        val savedEvents = mutableListOf<TransactionEvent>()
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(tripExchangeRateService.resolveRateDate(trip)).thenReturn(LocalDate.of(2026, 7, 1))
+        `when`(
+            tripExchangeRateRepository.findByTripIdAndBaseCurrencyAndTargetCurrencyAndRateDateAndDeletedAtIsNull(
+                tripId = 10L,
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 7, 1),
+            )
+        ).thenReturn(exchangeRate)
+        `when`(transactionRepository.save(any(Transaction::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Transaction).apply { id = 300L }
+        }
+        `when`(transactionPaymentRepository.save(any(TransactionPayment::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionPayment).apply { id = 400L }
+        }
+        `when`(transactionShareRepository.save(any(TransactionShare::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionShare).apply { id = 500L }
+        }
+        `when`(transactionEventRepository.save(any(TransactionEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionEvent).apply {
+                id = 600L
+                savedEvents.add(this)
+            }
+        }
+
+        val response = transactionService.createTransaction(
+            userId = 1L,
+            tripId = 10L,
+            request = CreateTransactionRequest(
+                amount = BigDecimal("1000.00"),
+                currency = "jpy",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("1000.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("1000.00"),
+                    )
+                ),
+            ),
+        )
+
+        assertEquals(BigDecimal("9.150000"), response.summary.exchangeRate)
+        assertEquals(BigDecimal("9150.00"), response.summary.baseAmount)
+        assertEquals(BigDecimal("9150.00"), response.payments.first().baseAmount)
+        assertEquals(BigDecimal("9150.00"), response.shares.first().baseShareAmount)
+        assertEquals(1L, trip.expenseVersion)
+        assertEquals(TransactionEventType.CREATED, savedEvents.first().eventType)
+    }
+
+    @Test
+    fun `결제 금액 합계가 거래 금액과 다르면 거래 등록에 실패한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+
+        val exception = assertBusinessException {
+            transactionService.createTransaction(
+                userId = 1L,
+                tripId = 10L,
+                request = CreateTransactionRequest(
+                    amount = BigDecimal("1000.00"),
+                    currency = "JPY",
+                    payments = listOf(
+                        TransactionPaymentInput(
+                            participantId = 100L,
+                            amount = BigDecimal("900.00"),
+                        )
+                    ),
+                    shares = listOf(
+                        TransactionShareInput(
+                            participantId = 100L,
+                            shareAmount = BigDecimal("1000.00"),
+                        )
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(TransactionErrorCode.TRANSACTION_PAYMENT_TOTAL_MISMATCH, exception.errorCode)
+        verify(transactionRepository, never()).save(any(Transaction::class.java))
+    }
+
+    @Test
+    fun `정산 시작 이후에는 거래 등록에 실패한다`() {
+        val user = createUser()
+        val trip = createTrip(user).apply {
+            settlementStatus = TripSettlementStatus.IN_PROGRESS
+        }
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+
+        val exception = assertBusinessException {
+            transactionService.createTransaction(
+                userId = 1L,
+                tripId = 10L,
+                request = CreateTransactionRequest(
+                    amount = BigDecimal("1000.00"),
+                    currency = "JPY",
+                    payments = listOf(
+                        TransactionPaymentInput(
+                            participantId = 100L,
+                            amount = BigDecimal("1000.00"),
+                        )
+                    ),
+                    shares = listOf(
+                        TransactionShareInput(
+                            participantId = 100L,
+                            shareAmount = BigDecimal("1000.00"),
+                        )
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(TransactionErrorCode.TRANSACTION_LOCKED_BY_SETTLEMENT, exception.errorCode)
+        verify(transactionRepository, never()).save(any(Transaction::class.java))
+    }
+
+    @Test
+    fun `거래 삭제는 물리 삭제가 아니라 무효 상태로 변경한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val transaction = Transaction(
+            trip = trip,
+            createdBy = user,
+            amount = BigDecimal("1000.00"),
+            currency = "JPY",
+            exchangeRate = BigDecimal("9.150000"),
+            baseCurrency = "KRW",
+            baseAmount = BigDecimal("9150.00"),
+            transactionType = com.togethertrip.main.transaction.domain.TransactionType.EXPENSE,
+        ).apply {
+            id = 300L
+        }
+        val savedEvents = mutableListOf<TransactionEvent>()
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+        `when`(transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L)).thenReturn(emptyList())
+        `when`(transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L)).thenReturn(emptyList())
+        `when`(transactionEventRepository.save(any(TransactionEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionEvent).apply {
+                id = 600L
+                savedEvents.add(this)
+            }
+        }
+
+        transactionService.deleteTransaction(
+            userId = 1L,
+            tripId = 10L,
+            transactionId = 300L,
+        )
+
+        assertEquals(TransactionStatus.VOIDED, transaction.status)
+        assertEquals(null, transaction.deletedAt)
+        assertEquals(1L, trip.expenseVersion)
+        assertEquals(TransactionEventType.VOIDED, savedEvents.first().eventType)
+    }
+
+    @Test
+    fun `거래 목록은 cursor 기반으로 조회한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val firstTransaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-02T10:00:00Z"),
+        )
+        val secondTransaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 299L,
+            createdAt = Instant.parse("2026-07-02T09:00:00Z"),
+        )
+        val extraTransaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 298L,
+            createdAt = Instant.parse("2026-07-02T08:00:00Z"),
+        )
+        val cursor = TransactionCursor(
+            createdAt = Instant.parse("2026-07-02T11:00:00Z"),
+            id = 301L,
+        ).encode()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            transactionRepository.findTransactions(
+                tripId = 10L,
+                status = TransactionStatus.ACTIVE,
+                transactionType = null,
+                participantId = null,
+                cursorCreatedAt = Instant.parse("2026-07-02T11:00:00Z"),
+                cursorId = 301L,
+                pageable = PageRequest.of(0, 3),
+            )
+        ).thenReturn(listOf(firstTransaction, secondTransaction, extraTransaction))
+
+        val response = transactionService.getTransactions(
+            userId = 1L,
+            tripId = 10L,
+            type = null,
+            participantId = null,
+            cursor = cursor,
+            size = 2,
+        )
+
+        assertEquals(2, response.items.size)
+        assertEquals(true, response.hasNext)
+        val nextCursor = TransactionCursor.decode(response.nextCursor ?: error("nextCursor가 있어야 합니다."))
+        assertEquals(Instant.parse("2026-07-02T09:00:00Z"), nextCursor.createdAt)
+        assertEquals(299L, nextCursor.id)
+    }
+
+    private fun mockWritableTrip(
+        user: User,
+        trip: Trip,
+        participant: TripParticipant,
+    ) {
+        `when`(userRepository.findByIdAndDeletedAtIsNull(user.id)).thenReturn(user)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(trip.id)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = trip.id,
+                userId = user.id,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                id = participant.id,
+                tripId = trip.id,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+    }
+
+    private fun createUser(): User {
+        return User(
+            nickname = "재완",
+            profileImageUrl = null,
+        ).apply {
+            id = 1L
+        }
+    }
+
+    private fun createTrip(owner: User): Trip {
+        return Trip(
+            ownerUser = owner,
+            title = "일본 여행",
+            defaultCurrency = "KRW",
+            startDate = LocalDate.of(2026, 7, 1),
+            endDate = LocalDate.of(2026, 7, 5),
+        ).apply {
+            id = 10L
+        }
+    }
+
+    private fun createParticipant(
+        id: Long,
+        trip: Trip,
+        user: User,
+    ): TripParticipant {
+        return TripParticipant(
+            trip = trip,
+            user = user,
+            displayName = user.nickname,
+            participantRole = TripParticipantRole.LEADER,
+            participantStatus = TripParticipantStatus.ACTIVE,
+        ).apply {
+            this.id = id
+        }
+    }
+
+    private fun createExchangeRate(trip: Trip): TripExchangeRate {
+        return TripExchangeRate(
+            trip = trip,
+            baseCurrency = "KRW",
+            targetCurrency = "JPY",
+            rate = BigDecimal("9.150000"),
+            rateDate = LocalDate.of(2026, 7, 1),
+            source = "TEST",
+        ).apply {
+            id = 200L
+        }
+    }
+
+    private fun createTransaction(
+        trip: Trip,
+        user: User,
+        id: Long,
+        createdAt: Instant,
+    ): Transaction {
+        return Transaction(
+            trip = trip,
+            createdBy = user,
+            amount = BigDecimal("1000.00"),
+            currency = "JPY",
+            exchangeRate = BigDecimal("9.150000"),
+            baseCurrency = "KRW",
+            baseAmount = BigDecimal("9150.00"),
+            transactionType = com.togethertrip.main.transaction.domain.TransactionType.EXPENSE,
+        ).apply {
+            this.id = id
+            this.createdAt = createdAt
+        }
+    }
+
+    private fun assertBusinessException(block: () -> Unit): BusinessException {
+        return try {
+            block()
+            throw AssertionError("BusinessException이 발생해야 합니다.")
+        } catch (exception: BusinessException) {
+            exception
+        }
+    }
+}

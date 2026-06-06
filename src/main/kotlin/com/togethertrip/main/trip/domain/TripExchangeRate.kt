@@ -9,9 +9,11 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import java.math.BigDecimal
 import java.time.LocalDate
+import org.hibernate.annotations.SQLRestriction
 
 @Entity
 @Table(name = "trip_exchange_rates")
+@SQLRestriction("deleted_at IS NULL")
 class TripExchangeRate(
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -33,4 +35,13 @@ class TripExchangeRate(
     @Column(length = 50)
     var source: String? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun updateRate(
+        rate: BigDecimal,
+        source: String,
+    ) {
+        this.rate = rate
+        this.source = source
+    }
+}

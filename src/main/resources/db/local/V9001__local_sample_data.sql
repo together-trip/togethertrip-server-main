@@ -98,9 +98,13 @@ SELECT t.id, sample.base_currency, sample.target_currency, sample.rate, sample.r
        sample.created_at, sample.updated_at, sample.deleted_at
 FROM (
     VALUES
-        ('오사카 3박4일 맛집 여행', 'KRW', 'JPY', 0.109300::numeric, DATE '2026-05-10', 'KEB_HANA_DAILY', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
-        ('다낭 여름 휴가', 'KRW', 'VND', 18.420000::numeric, DATE '2026-06-01', 'KEB_HANA_DAILY', TIMESTAMPTZ '2026-06-01T08:00:00+09:00', TIMESTAMPTZ '2026-06-01T08:00:00+09:00', NULL::timestamptz),
-        ('방콕 송크란 여행 취소 기록', 'KRW', 'THB', 0.026200::numeric, DATE '2026-04-10', 'KEB_HANA_DAILY', TIMESTAMPTZ '2026-04-10T08:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
+        ('오사카 3박4일 맛집 여행', 'KRW', 'KRW', 1.000000::numeric, DATE '2026-05-10', 'BASE_CURRENCY', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
+        ('오사카 3박4일 맛집 여행', 'KRW', 'JPY', 9.149131::numeric, DATE '2026-05-10', 'KEB_HANA_DAILY', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', 'KRW', 'KRW', 1.000000::numeric, DATE '2026-06-01', 'BASE_CURRENCY', TIMESTAMPTZ '2026-06-01T08:00:00+09:00', TIMESTAMPTZ '2026-06-01T08:00:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', 'KRW', 'VND', 0.054289::numeric, DATE '2026-06-01', 'KEB_HANA_DAILY', TIMESTAMPTZ '2026-06-01T08:00:00+09:00', TIMESTAMPTZ '2026-06-01T08:00:00+09:00', NULL::timestamptz),
+        ('제주 렌터카 여행 준비', 'KRW', 'KRW', 1.000000::numeric, DATE '2026-07-12', 'BASE_CURRENCY', TIMESTAMPTZ '2026-07-12T08:00:00+09:00', TIMESTAMPTZ '2026-07-12T08:00:00+09:00', NULL::timestamptz),
+        ('방콕 송크란 여행 취소 기록', 'KRW', 'KRW', 1.000000::numeric, DATE '2026-04-10', 'BASE_CURRENCY', TIMESTAMPTZ '2026-04-10T08:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00'),
+        ('방콕 송크란 여행 취소 기록', 'KRW', 'THB', 38.167939::numeric, DATE '2026-04-10', 'KEB_HANA_DAILY', TIMESTAMPTZ '2026-04-10T08:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
 ) AS sample(trip_title, base_currency, target_currency, rate, rate_date, source, created_at, updated_at, deleted_at)
 JOIN trips t ON t.title = sample.trip_title
 ON CONFLICT (trip_id, base_currency, target_currency, rate_date) WHERE deleted_at IS NULL DO NOTHING;
