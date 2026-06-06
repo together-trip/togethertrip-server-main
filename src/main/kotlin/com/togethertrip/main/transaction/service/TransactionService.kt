@@ -4,6 +4,7 @@ import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.transaction.domain.Transaction
+import com.togethertrip.main.transaction.domain.TransactionCurrencySnapshot
 import com.togethertrip.main.transaction.domain.TransactionEvent
 import com.togethertrip.main.transaction.domain.TransactionEventType
 import com.togethertrip.main.transaction.domain.TransactionPayment
@@ -386,7 +387,7 @@ class TransactionService(
         transaction: Transaction,
         tripId: Long,
         inputs: List<TransactionPaymentInput>,
-        snapshot: CurrencySnapshot,
+        snapshot: TransactionCurrencySnapshot,
     ) {
         transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
             .forEach { it.markDeleted() }
@@ -402,7 +403,7 @@ class TransactionService(
         transaction: Transaction,
         tripId: Long,
         inputs: List<TransactionShareInput>,
-        snapshot: CurrencySnapshot,
+        snapshot: TransactionCurrencySnapshot,
     ) {
         transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
             .forEach { it.markDeleted() }
@@ -418,7 +419,7 @@ class TransactionService(
         transaction: Transaction,
         tripId: Long,
         inputs: List<TransactionPaymentInput>,
-        snapshot: CurrencySnapshot,
+        snapshot: TransactionCurrencySnapshot,
     ): List<TransactionPayment> {
         return inputs.map { input ->
             val participant = getActiveParticipant(
@@ -447,7 +448,7 @@ class TransactionService(
         transaction: Transaction,
         tripId: Long,
         inputs: List<TransactionShareInput>,
-        snapshot: CurrencySnapshot,
+        snapshot: TransactionCurrencySnapshot,
     ): List<TransactionShare> {
         return inputs.map { input ->
             val participant = getActiveParticipant(
@@ -517,7 +518,7 @@ class TransactionService(
     private fun resolveCurrencySnapshot(
         trip: Trip,
         currency: String,
-    ): CurrencySnapshot {
+    ): TransactionCurrencySnapshot {
         val normalizedCurrency = currency.trim().uppercase()
         val baseCurrency = trip.defaultCurrency.trim().uppercase()
         val rateDate = tripExchangeRateService.resolveRateDate(trip)
@@ -528,7 +529,7 @@ class TransactionService(
             rateDate = rateDate,
         ) ?: throw BusinessException(TransactionErrorCode.EXCHANGE_RATE_NOT_READY)
 
-        return CurrencySnapshot(
+        return TransactionCurrencySnapshot(
             currency = normalizedCurrency,
             baseCurrency = baseCurrency,
             exchangeRate = exchangeRate.rate,
@@ -660,12 +661,6 @@ class TransactionService(
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
     }
-
-    private data class CurrencySnapshot(
-        val currency: String,
-        val baseCurrency: String,
-        val exchangeRate: BigDecimal,
-    )
 
     companion object {
         private const val DEFAULT_PAGE_SIZE = 20
