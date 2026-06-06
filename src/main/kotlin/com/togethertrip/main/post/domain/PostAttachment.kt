@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.SQLRestriction
 
 /**
  * 여행 게시글 첨부 파일.
@@ -16,6 +17,7 @@ import jakarta.persistence.Table
  */
 @Entity
 @Table(name = "post_attachments")
+@SQLRestriction("deleted_at IS NULL")
 class PostAttachment(
 
     @ManyToOne(fetch = FetchType.LAZY)

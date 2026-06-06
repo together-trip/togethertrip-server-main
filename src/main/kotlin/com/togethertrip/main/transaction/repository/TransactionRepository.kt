@@ -3,4 +3,6 @@ package com.togethertrip.main.transaction.repository
 import com.togethertrip.main.transaction.domain.Transaction
 import org.springframework.data.jpa.repository.JpaRepository
 
-interface TransactionRepository : JpaRepository<Transaction, Long>
+interface TransactionRepository : JpaRepository<Transaction, Long> {
+    fun findByIdAndDeletedAtIsNull(id: Long): Transaction?
+}
