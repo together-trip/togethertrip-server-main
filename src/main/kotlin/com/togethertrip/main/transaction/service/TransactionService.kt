@@ -23,6 +23,8 @@ import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequ
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
 import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
+import com.togethertrip.main.transaction.dto.response.TransactionPaymentResponse
+import com.togethertrip.main.transaction.dto.response.TransactionShareResponse
 import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import com.togethertrip.main.transaction.exception.TransactionErrorCode
 import com.togethertrip.main.transaction.pagination.TransactionCursor
@@ -328,24 +330,16 @@ class TransactionService(
             tripId = tripId,
             transactionId = transactionId,
         )
+        val updateRequest = createPaymentsUpdateRequest(
+            transaction = transaction,
+            payments = request.payments,
+        )
 
         return updateTransaction(
             userId = userId,
             tripId = tripId,
             transactionId = transactionId,
-            request = UpdateTransactionRequest(
-                transactionType = transaction.summary.transactionType,
-                amount = transaction.summary.amount,
-                currency = transaction.summary.currency,
-                payments = request.payments,
-                shares = transaction.shares.map { share ->
-                    TransactionShareInput(
-                        participantId = share.participantId,
-                        shareAmount = share.shareAmount,
-                        shareRatio = share.shareRatio,
-                    )
-                },
-            ),
+            request = updateRequest,
         )
     }
 
@@ -361,23 +355,57 @@ class TransactionService(
             tripId = tripId,
             transactionId = transactionId,
         )
+        val updateRequest = createSharesUpdateRequest(
+            transaction = transaction,
+            shares = request.shares,
+        )
 
         return updateTransaction(
             userId = userId,
             tripId = tripId,
             transactionId = transactionId,
-            request = UpdateTransactionRequest(
-                transactionType = transaction.summary.transactionType,
-                amount = transaction.summary.amount,
-                currency = transaction.summary.currency,
-                payments = transaction.payments.map { payment ->
-                    TransactionPaymentInput(
-                        participantId = payment.participantId,
-                        amount = payment.amount,
-                    )
-                },
-                shares = request.shares,
-            ),
+            request = updateRequest,
+        )
+    }
+
+    private fun createPaymentsUpdateRequest(
+        transaction: TransactionDetailResponse,
+        payments: List<TransactionPaymentInput>,
+    ): UpdateTransactionRequest {
+        return UpdateTransactionRequest(
+            transactionType = transaction.summary.transactionType,
+            amount = transaction.summary.amount,
+            currency = transaction.summary.currency,
+            payments = payments,
+            shares = transaction.shares.map(::toShareInput),
+        )
+    }
+
+    private fun createSharesUpdateRequest(
+        transaction: TransactionDetailResponse,
+        shares: List<TransactionShareInput>,
+    ): UpdateTransactionRequest {
+        return UpdateTransactionRequest(
+            transactionType = transaction.summary.transactionType,
+            amount = transaction.summary.amount,
+            currency = transaction.summary.currency,
+            payments = transaction.payments.map(::toPaymentInput),
+            shares = shares,
+        )
+    }
+
+    private fun toPaymentInput(payment: TransactionPaymentResponse): TransactionPaymentInput {
+        return TransactionPaymentInput(
+            participantId = payment.participantId,
+            amount = payment.amount,
+        )
+    }
+
+    private fun toShareInput(share: TransactionShareResponse): TransactionShareInput {
+        return TransactionShareInput(
+            participantId = share.participantId,
+            shareAmount = share.shareAmount,
+            shareRatio = share.shareRatio,
         )
     }
 
