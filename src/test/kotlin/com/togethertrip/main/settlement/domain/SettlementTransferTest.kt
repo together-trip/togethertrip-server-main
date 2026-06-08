@@ -13,6 +13,47 @@ import kotlin.test.assertEquals
 class SettlementTransferTest {
 
     @Test
+    fun `송금자 확인 시 송금자 확인 상태로 전이한다`() {
+        val transfer = createTransfer()
+        val confirmedAt = Instant.parse("2026-06-08T01:00:00Z")
+
+        transfer.confirmAsSender(confirmedAt)
+
+        assertEquals(confirmedAt, transfer.senderConfirmedAt)
+        assertEquals(null, transfer.receiverConfirmedAt)
+        assertEquals(null, transfer.completedAt)
+        assertEquals(SettlementTransferStatus.SENDER_CONFIRMED, transfer.status)
+    }
+
+    @Test
+    fun `수금자 확인 시 수금자 확인 상태로 전이한다`() {
+        val transfer = createTransfer()
+        val confirmedAt = Instant.parse("2026-06-08T01:00:00Z")
+
+        transfer.confirmAsReceiver(confirmedAt)
+
+        assertEquals(null, transfer.senderConfirmedAt)
+        assertEquals(confirmedAt, transfer.receiverConfirmedAt)
+        assertEquals(null, transfer.completedAt)
+        assertEquals(SettlementTransferStatus.RECEIVER_CONFIRMED, transfer.status)
+    }
+
+    @Test
+    fun `송금자와 수금자가 모두 확인하면 완료 처리한다`() {
+        val transfer = createTransfer()
+        val senderConfirmedAt = Instant.parse("2026-06-08T01:00:00Z")
+        val receiverConfirmedAt = Instant.parse("2026-06-08T02:00:00Z")
+
+        transfer.confirmAsSender(senderConfirmedAt)
+        transfer.confirmAsReceiver(receiverConfirmedAt)
+
+        assertEquals(senderConfirmedAt, transfer.senderConfirmedAt)
+        assertEquals(receiverConfirmedAt, transfer.receiverConfirmedAt)
+        assertEquals(receiverConfirmedAt, transfer.completedAt)
+        assertEquals(SettlementTransferStatus.COMPLETED, transfer.status)
+    }
+
+    @Test
     fun `송금자 재확인은 기존 확인 시각을 덮어쓰지 않는다`() {
         val transfer = createTransfer()
         val firstConfirmedAt = Instant.parse("2026-06-08T01:00:00Z")

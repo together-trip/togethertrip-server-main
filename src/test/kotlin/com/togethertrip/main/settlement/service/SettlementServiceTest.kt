@@ -188,6 +188,202 @@ class SettlementServiceTest {
         assertEquals(SettlementErrorCode.SETTLEMENT_ALREADY_CONFIRMED, exception.errorCode)
     }
 
+    @Test
+    fun `정산 확정 시 탈퇴 송금자는 자동 동의 처리된다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val sender = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = owner,
+            displayName = "보낼 사람",
+        )
+        val receiver = createParticipant(
+            id = 200L,
+            trip = trip,
+            user = null,
+            displayName = "받을 사람",
+        )
+        val calculation = createCalculation()
+        val participants = createParticipantSnapshots(
+            senderWithdrawn = true,
+            receiverWithdrawn = false,
+        )
+        val savedTransfers = mutableListOf<SettlementTransfer>()
+
+        mockConfirmBase(
+            user = owner,
+            trip = trip,
+            calculation = calculation,
+            participants = participants,
+        )
+        `when`(tripParticipantRepository.getReferenceById(100L)).thenReturn(sender)
+        `when`(tripParticipantRepository.getReferenceById(200L)).thenReturn(receiver)
+        `when`(settlementRepository.saveAndFlush(any(Settlement::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Settlement).apply { id = 30L }
+        }
+        `when`(settlementTransferRepository.save(any(SettlementTransfer::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as SettlementTransfer).apply {
+                id = 40L
+                savedTransfers.add(this)
+            }
+        }
+        `when`(tripRepository.saveAndFlush(trip)).thenReturn(trip)
+        `when`(settlementTransferRepository.findTransferRowsBySettlementId(30L)).thenReturn(
+            listOf(
+                transferRow(
+                    id = 40L,
+                    status = SettlementTransferStatus.SENDER_CONFIRMED,
+                    senderConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+                )
+            )
+        )
+
+        settlementService.confirmSettlement(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        val savedTransfer = savedTransfers.single()
+        assertEquals(true, savedTransfer.autoConfirmed)
+        assertEquals("WITHDRAWN_USER_AUTO_CONFIRMED", savedTransfer.autoConfirmReason)
+        assertEquals(true, savedTransfer.senderConfirmedAt != null)
+        assertEquals(null, savedTransfer.receiverConfirmedAt)
+        assertEquals(SettlementTransferStatus.SENDER_CONFIRMED, savedTransfer.status)
+    }
+
+    @Test
+    fun `정산 확정 시 탈퇴 수금자는 자동 동의 처리된다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val sender = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = owner,
+            displayName = "보낼 사람",
+        )
+        val receiver = createParticipant(
+            id = 200L,
+            trip = trip,
+            user = null,
+            displayName = "받을 사람",
+        )
+        val calculation = createCalculation()
+        val participants = createParticipantSnapshots(
+            senderWithdrawn = false,
+            receiverWithdrawn = true,
+        )
+        val savedTransfers = mutableListOf<SettlementTransfer>()
+
+        mockConfirmBase(
+            user = owner,
+            trip = trip,
+            calculation = calculation,
+            participants = participants,
+        )
+        `when`(tripParticipantRepository.getReferenceById(100L)).thenReturn(sender)
+        `when`(tripParticipantRepository.getReferenceById(200L)).thenReturn(receiver)
+        `when`(settlementRepository.saveAndFlush(any(Settlement::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Settlement).apply { id = 30L }
+        }
+        `when`(settlementTransferRepository.save(any(SettlementTransfer::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as SettlementTransfer).apply {
+                id = 40L
+                savedTransfers.add(this)
+            }
+        }
+        `when`(tripRepository.saveAndFlush(trip)).thenReturn(trip)
+        `when`(settlementTransferRepository.findTransferRowsBySettlementId(30L)).thenReturn(
+            listOf(
+                transferRow(
+                    id = 40L,
+                    status = SettlementTransferStatus.RECEIVER_CONFIRMED,
+                    receiverConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+                )
+            )
+        )
+
+        settlementService.confirmSettlement(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        val savedTransfer = savedTransfers.single()
+        assertEquals(true, savedTransfer.autoConfirmed)
+        assertEquals("WITHDRAWN_USER_AUTO_CONFIRMED", savedTransfer.autoConfirmReason)
+        assertEquals(null, savedTransfer.senderConfirmedAt)
+        assertEquals(true, savedTransfer.receiverConfirmedAt != null)
+        assertEquals(SettlementTransferStatus.RECEIVER_CONFIRMED, savedTransfer.status)
+    }
+
+    @Test
+    fun `정산 확정 시 송금자와 수금자가 모두 탈퇴 사용자면 완료 처리된다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val sender = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = owner,
+            displayName = "보낼 사람",
+        )
+        val receiver = createParticipant(
+            id = 200L,
+            trip = trip,
+            user = null,
+            displayName = "받을 사람",
+        )
+        val calculation = createCalculation()
+        val participants = createParticipantSnapshots(
+            senderWithdrawn = true,
+            receiverWithdrawn = true,
+        )
+        val savedTransfers = mutableListOf<SettlementTransfer>()
+
+        mockConfirmBase(
+            user = owner,
+            trip = trip,
+            calculation = calculation,
+            participants = participants,
+        )
+        `when`(tripParticipantRepository.getReferenceById(100L)).thenReturn(sender)
+        `when`(tripParticipantRepository.getReferenceById(200L)).thenReturn(receiver)
+        `when`(settlementRepository.saveAndFlush(any(Settlement::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Settlement).apply { id = 30L }
+        }
+        `when`(settlementTransferRepository.save(any(SettlementTransfer::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as SettlementTransfer).apply {
+                id = 40L
+                savedTransfers.add(this)
+            }
+        }
+        `when`(tripRepository.saveAndFlush(trip)).thenReturn(trip)
+        `when`(settlementTransferRepository.findTransferRowsBySettlementId(30L)).thenReturn(
+            listOf(
+                transferRow(
+                    id = 40L,
+                    status = SettlementTransferStatus.COMPLETED,
+                    senderConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+                    receiverConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+                    completedAt = Instant.parse("2026-06-08T01:00:00Z"),
+                )
+            )
+        )
+
+        val response = settlementService.confirmSettlement(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        val savedTransfer = savedTransfers.single()
+        assertEquals(true, savedTransfer.autoConfirmed)
+        assertEquals(true, savedTransfer.senderConfirmedAt != null)
+        assertEquals(true, savedTransfer.receiverConfirmedAt != null)
+        assertEquals(true, savedTransfer.completedAt != null)
+        assertEquals(SettlementTransferStatus.COMPLETED, savedTransfer.status)
+        assertEquals(40L, response.transfers.single().id)
+        assertEquals(SettlementTransferStatus.COMPLETED, response.transfers.single().status)
+    }
+
     private fun mockConfirmBase(
         user: User,
         trip: Trip,
@@ -259,23 +455,26 @@ class SettlementServiceTest {
         )
     }
 
-    private fun createParticipantSnapshots(): Map<Long, SettlementParticipantSnapshot> {
+    private fun createParticipantSnapshots(
+        senderWithdrawn: Boolean = false,
+        receiverWithdrawn: Boolean = false,
+    ): Map<Long, SettlementParticipantSnapshot> {
         return mapOf(
             100L to SettlementParticipantSnapshot(
                 participantId = 100L,
-                userId = 1L,
-                displayName = "보낼 사람",
+                userId = if (senderWithdrawn) null else 1L,
+                displayName = if (senderWithdrawn) "탈퇴한 사용자" else "보낼 사람",
                 profileImageUrl = null,
                 participantStatus = TripParticipantStatus.ACTIVE,
-                isWithdrawnUser = false,
+                isWithdrawnUser = senderWithdrawn,
             ),
             200L to SettlementParticipantSnapshot(
                 participantId = 200L,
                 userId = null,
-                displayName = "받을 사람",
+                displayName = if (receiverWithdrawn) "탈퇴한 사용자" else "받을 사람",
                 profileImageUrl = null,
                 participantStatus = TripParticipantStatus.ACTIVE,
-                isWithdrawnUser = false,
+                isWithdrawnUser = receiverWithdrawn,
             ),
         )
     }
@@ -313,7 +512,13 @@ class SettlementServiceTest {
         }
     }
 
-    private fun transferRow(id: Long): SettlementTransferRow {
+    private fun transferRow(
+        id: Long,
+        status: SettlementTransferStatus = SettlementTransferStatus.PENDING,
+        senderConfirmedAt: Instant? = null,
+        receiverConfirmedAt: Instant? = null,
+        completedAt: Instant? = null,
+    ): SettlementTransferRow {
         return object : SettlementTransferRow {
             override fun getId(): Long = id
 
@@ -333,13 +538,13 @@ class SettlementServiceTest {
 
             override fun getCurrency(): String = "KRW"
 
-            override fun getStatus(): String = SettlementTransferStatus.PENDING.name
+            override fun getStatus(): String = status.name
 
-            override fun getSenderConfirmedAt(): Instant? = null
+            override fun getSenderConfirmedAt(): Instant? = senderConfirmedAt
 
-            override fun getReceiverConfirmedAt(): Instant? = null
+            override fun getReceiverConfirmedAt(): Instant? = receiverConfirmedAt
 
-            override fun getCompletedAt(): Instant? = null
+            override fun getCompletedAt(): Instant? = completedAt
         }
     }
 

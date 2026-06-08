@@ -35,6 +35,7 @@ class SettlementTransferService(
             tripId = tripId,
         )
         val requestedStatus = status?.let(::parseTransferStatus)
+        val requestedDirection = parseTransferDirection(direction)
         val transfers = settlementTransferRepository.findTransferRows(
             tripId = tripId,
             settlementFilterEnabled = settlementId != null,
@@ -46,7 +47,7 @@ class SettlementTransferService(
         )
 
         return transfers
-            .filter { transfer -> matchesDirection(transfer, currentParticipant, direction) }
+            .filter { transfer -> matchesDirection(transfer, currentParticipant, requestedDirection) }
             .map(SettlementTransferResponse::from)
     }
 
@@ -117,13 +118,12 @@ class SettlementTransferService(
     private fun matchesDirection(
         transfer: SettlementTransferRow,
         participant: TripParticipant,
-        direction: String?,
+        direction: TransferDirection?,
     ): Boolean {
-        return when (direction?.trim()?.uppercase()) {
+        return when (direction) {
             null -> true
-            "SENT", "SEND", "SENDER" -> transfer.getSenderParticipantId() == participant.id
-            "RECEIVED", "RECEIVE", "RECEIVER" -> transfer.getReceiverParticipantId() == participant.id
-            else -> throw BusinessException(SettlementErrorCode.INVALID_SETTLEMENT_TRANSFER_DIRECTION)
+            TransferDirection.SENT -> transfer.getSenderParticipantId() == participant.id
+            TransferDirection.RECEIVED -> transfer.getReceiverParticipantId() == participant.id
         }
     }
 
@@ -144,8 +144,22 @@ class SettlementTransferService(
         }
     }
 
+    private fun parseTransferDirection(direction: String?): TransferDirection? {
+        return when (direction?.trim()?.uppercase()) {
+            null -> null
+            "SENT", "SEND", "SENDER" -> TransferDirection.SENT
+            "RECEIVED", "RECEIVE", "RECEIVER" -> TransferDirection.RECEIVED
+            else -> throw BusinessException(SettlementErrorCode.INVALID_SETTLEMENT_TRANSFER_DIRECTION)
+        }
+    }
+
     private companion object {
         private const val UNUSED_FILTER_ID = 0L
         private const val UNUSED_FILTER_VALUE = ""
+    }
+
+    private enum class TransferDirection {
+        SENT,
+        RECEIVED
     }
 }
