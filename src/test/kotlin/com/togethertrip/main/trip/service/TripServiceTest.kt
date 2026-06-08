@@ -149,8 +149,6 @@ class TripServiceTest {
             tripRepository.findAccessibleTrips(
                 1L,
                 TripStatus.ONGOING,
-                null,
-                null,
                 PageRequest.of(0, 21),
             )
         ).thenReturn(listOf(trip))
@@ -204,7 +202,7 @@ class TripServiceTest {
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
         `when`(
-            tripRepository.findAccessibleTrips(
+            tripRepository.findAccessibleTripsAfterCursor(
                 1L,
                 null,
                 Instant.parse("2026-06-05T13:00:00Z"),
