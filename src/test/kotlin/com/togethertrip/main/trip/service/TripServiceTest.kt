@@ -41,7 +41,6 @@ class TripServiceTest {
     private lateinit var tripCountryRepository: TripCountryRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var userRepository: UserRepository
-    private lateinit var tripExchangeRateService: TripExchangeRateService
     private lateinit var tripService: TripService
 
     @BeforeEach
@@ -50,13 +49,11 @@ class TripServiceTest {
         tripCountryRepository = mock(TripCountryRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         userRepository = mock(UserRepository::class.java)
-        tripExchangeRateService = mock(TripExchangeRateService::class.java)
         tripService = TripService(
             tripRepository = tripRepository,
             tripCountryRepository = tripCountryRepository,
             tripParticipantRepository = tripParticipantRepository,
             userRepository = userRepository,
-            tripExchangeRateService = tripExchangeRateService,
         )
     }
 
@@ -117,10 +114,6 @@ class TripServiceTest {
         assertEquals(2, response.participants.size)
         assertEquals(TripParticipantRole.LEADER, response.participants.first().participantRole)
         assertEquals("동행자1", response.participants.last().displayName)
-        verify(tripExchangeRateService).initializeExchangeRates(
-            trip = response.let { savedParticipants.first().trip },
-            countries = savedCountries,
-        )
     }
 
     @Test
@@ -351,10 +344,6 @@ class TripServiceTest {
         assertEquals(2, response.countries.size)
         assertEquals("KR", response.countries.first().countryCode)
         assertEquals("JP", response.countries.last().countryCode)
-        verify(tripExchangeRateService).initializeExchangeRates(
-            trip = trip,
-            countries = savedCountries,
-        )
     }
 
     @Test

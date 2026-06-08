@@ -10,6 +10,7 @@ import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequest
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
+import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
 import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import com.togethertrip.main.transaction.service.TransactionService
 import com.togethertrip.main.trip.security.RequireActiveTripParticipant
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 
 @RestController
 @RequestMapping("/api/trips/{tripId}")
@@ -69,6 +71,24 @@ class TransactionController(
                 participantId = participantId,
                 cursor = cursor,
                 size = size,
+            )
+        )
+    }
+
+    @GetMapping("/transactions/exchange-rate")
+    @RequireActiveTripParticipant
+    override fun getTransactionExchangeRatePreview(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+        @RequestParam currency: String,
+        @RequestParam(required = false) spendingDate: LocalDate?,
+    ): ApiResponse<TransactionExchangeRatePreviewResponse> {
+        return ApiResponse.success(
+            transactionService.getTransactionExchangeRatePreview(
+                userId = authUser.userId,
+                tripId = tripId,
+                currency = currency,
+                spendingDate = spendingDate,
             )
         )
     }

@@ -10,6 +10,7 @@ import com.togethertrip.main.transaction.domain.TransactionCurrencySnapshot
 import com.togethertrip.main.transaction.domain.TransactionEvent
 import com.togethertrip.main.transaction.domain.TransactionEventPayload
 import com.togethertrip.main.transaction.domain.TransactionEventType
+import com.togethertrip.main.transaction.domain.TransactionExchangeRatePreview
 import com.togethertrip.main.transaction.domain.TransactionLedgerEntry
 import com.togethertrip.main.transaction.domain.TransactionPayment
 import com.togethertrip.main.transaction.domain.TransactionShare
@@ -23,6 +24,7 @@ import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequest
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
+import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
 import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import com.togethertrip.main.transaction.exception.TransactionErrorCode
 import com.togethertrip.main.transaction.pagination.TransactionCursor
@@ -35,10 +37,9 @@ import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
-import com.togethertrip.main.trip.repository.TripExchangeRateRepository
+import com.togethertrip.main.trip.repository.ExchangeRateRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
-import com.togethertrip.main.trip.service.TripExchangeRateService
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.exception.UserErrorCode
@@ -46,6 +47,9 @@ import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
+import java.time.Clock
+import java.time.LocalDate
 
 @Service
 @Transactional(readOnly = true)
@@ -56,9 +60,9 @@ class TransactionService(
     private val transactionEventRepository: TransactionEventRepository,
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
-    private val tripExchangeRateRepository: TripExchangeRateRepository,
-    private val tripExchangeRateService: TripExchangeRateService,
+    private val exchangeRateRepository: ExchangeRateRepository,
     private val userRepository: UserRepository,
+    private val clock: Clock,
 ) {
 
     @Transactional
@@ -81,7 +85,6 @@ class TransactionService(
 
         val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
-            trip = trip,
             currency = ledgerEntry.currency,
         )
 
@@ -169,6 +172,27 @@ class TransactionService(
         )
     }
 
+    fun getTransactionExchangeRatePreview(
+        userId: Long,
+        tripId: Long,
+        currency: String,
+        spendingDate: LocalDate?,
+    ): TransactionExchangeRatePreviewResponse {
+        getActiveUser(userId)
+        val trip = getAccessibleTrip(
+            userId = userId,
+            tripId = tripId,
+        )
+        validateWritableTrip(trip)
+        getActiveParticipant(
+            tripId = tripId,
+            participantId = null,
+            userId = userId,
+        )
+
+        return TransactionExchangeRatePreviewResponse.from(resolveApplicableExchangeRate(currency, spendingDate))
+    }
+
     fun getTransaction(
         userId: Long,
         tripId: Long,
@@ -212,7 +236,6 @@ class TransactionService(
         )
         val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
-            trip = trip,
             currency = ledgerEntry.currency,
         )
 
@@ -468,23 +491,58 @@ class TransactionService(
     }
 
     private fun resolveCurrencySnapshot(
-        trip: Trip,
         currency: String,
     ): TransactionCurrencySnapshot {
+        return resolveApplicableExchangeRate(
+            currency = currency,
+            spendingDate = null,
+        ).toCurrencySnapshot()
+    }
+
+    private fun resolveApplicableExchangeRate(
+        currency: String,
+        spendingDate: LocalDate?,
+    ): TransactionExchangeRatePreview {
         val normalizedCurrency = currency.trim().uppercase()
-        val baseCurrency = trip.defaultCurrency.trim().uppercase()
-        val rateDate = tripExchangeRateService.resolveRateDate(trip)
-        val exchangeRate = tripExchangeRateRepository.findByTripIdAndBaseCurrencyAndTargetCurrencyAndRateDateAndDeletedAtIsNull(
-            tripId = trip.id,
+        val baseCurrency = BASE_CURRENCY
+        val rateDate = spendingDate ?: LocalDate.now(clock)
+
+        if (normalizedCurrency == baseCurrency) {
+            return resolveBaseCurrencyExchangeRate(
+                currency = normalizedCurrency,
+                rateDate = rateDate,
+            )
+        }
+
+        val exchangeRate = exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
             baseCurrency = baseCurrency,
             targetCurrency = normalizedCurrency,
             rateDate = rateDate,
         ) ?: throw BusinessException(TransactionErrorCode.EXCHANGE_RATE_NOT_READY)
 
-        return TransactionCurrencySnapshot.of(
+        if (exchangeRate.rate <= BigDecimal.ZERO) {
+            throw BusinessException(TransactionErrorCode.EXCHANGE_RATE_NOT_READY)
+        }
+
+        return TransactionExchangeRatePreview(
             currency = normalizedCurrency,
             baseCurrency = baseCurrency,
-            exchangeRate = exchangeRate.rate,
+            rate = exchangeRate.rate,
+            rateDate = exchangeRate.rateDate,
+            source = exchangeRate.source,
+        )
+    }
+
+    private fun resolveBaseCurrencyExchangeRate(
+        currency: String,
+        rateDate: LocalDate,
+    ): TransactionExchangeRatePreview {
+        return TransactionExchangeRatePreview(
+            currency = currency,
+            baseCurrency = BASE_CURRENCY,
+            rate = BASE_CURRENCY_EXCHANGE_RATE,
+            rateDate = rateDate,
+            source = SOURCE_BASE_CURRENCY,
         )
     }
 
@@ -582,6 +640,9 @@ class TransactionService(
     companion object {
         private const val DEFAULT_PAGE_SIZE = 20
         private const val MAX_PAGE_SIZE = 100
+        private const val BASE_CURRENCY = "KRW"
+        private const val SOURCE_BASE_CURRENCY = "BASE_CURRENCY"
+        private val BASE_CURRENCY_EXCHANGE_RATE = BigDecimal("1.000000")
     }
 }
 

@@ -9,10 +9,12 @@ import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequest
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
+import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
 import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import java.time.LocalDate
 
 @Tag(name = "Transaction", description = "거래 API")
 @SecurityRequirement(name = "bearerAuth")
@@ -37,6 +39,14 @@ interface TransactionApiSpec {
         cursor: String?,
         size: Int?,
     ): ApiResponse<CursorResponse<TransactionSummaryResponse>>
+
+    @Operation(summary = "거래 적용 환율 미리보기", description = "소비일 기준으로 거래 등록/수정 시 적용될 KRW 기준 환율을 조회합니다.")
+    fun getTransactionExchangeRatePreview(
+        authUser: AuthUser,
+        tripId: Long,
+        currency: String,
+        spendingDate: LocalDate?,
+    ): ApiResponse<TransactionExchangeRatePreviewResponse>
 
     @Operation(summary = "거래 상세 조회", description = "특정 거래의 결제자와 부담자 정보를 조회합니다.")
     fun getTransaction(

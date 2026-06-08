@@ -109,6 +109,20 @@ FROM (
 JOIN trips t ON t.title = sample.trip_title
 ON CONFLICT (trip_id, base_currency, target_currency, rate_date) WHERE deleted_at IS NULL DO NOTHING;
 
+INSERT INTO exchange_rates (
+    base_currency, target_currency, rate, rate_date, source, created_at, updated_at, deleted_at
+)
+SELECT sample.base_currency, sample.target_currency, sample.rate, sample.rate_date, sample.source,
+       sample.created_at, sample.updated_at, NULL
+FROM (
+    VALUES
+        ('KRW', 'JPY', 9.150000::numeric, DATE '2026-06-08', 'LOCAL_BATCH_SAMPLE', TIMESTAMPTZ '2026-06-08T08:00:00+09:00', TIMESTAMPTZ '2026-06-08T08:00:00+09:00'),
+        ('KRW', 'VND', 0.054000::numeric, DATE '2026-06-08', 'LOCAL_BATCH_SAMPLE', TIMESTAMPTZ '2026-06-08T08:00:00+09:00', TIMESTAMPTZ '2026-06-08T08:00:00+09:00'),
+        ('KRW', 'THB', 38.170000::numeric, DATE '2026-06-08', 'LOCAL_BATCH_SAMPLE', TIMESTAMPTZ '2026-06-08T08:00:00+09:00', TIMESTAMPTZ '2026-06-08T08:00:00+09:00'),
+        ('KRW', 'USD', 1350.000000::numeric, DATE '2026-06-08', 'LOCAL_BATCH_SAMPLE', TIMESTAMPTZ '2026-06-08T08:00:00+09:00', TIMESTAMPTZ '2026-06-08T08:00:00+09:00')
+) AS sample(base_currency, target_currency, rate, rate_date, source, created_at, updated_at)
+ON CONFLICT (base_currency, target_currency, rate_date) WHERE deleted_at IS NULL DO NOTHING;
+
 INSERT INTO trip_participants (
     trip_id, user_id, display_name, profile_image_url, participant_role, participant_status,
     joined_at, left_at, created_at, updated_at, deleted_at

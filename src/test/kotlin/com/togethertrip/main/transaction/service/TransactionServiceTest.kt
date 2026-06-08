@@ -10,22 +10,22 @@ import com.togethertrip.main.transaction.domain.TransactionStatus
 import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.TransactionPaymentInput
 import com.togethertrip.main.transaction.dto.request.TransactionShareInput
+import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.exception.TransactionErrorCode
 import com.togethertrip.main.transaction.pagination.TransactionCursor
 import com.togethertrip.main.transaction.repository.TransactionEventRepository
 import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
+import com.togethertrip.main.trip.domain.ExchangeRate
 import com.togethertrip.main.trip.domain.Trip
-import com.togethertrip.main.trip.domain.TripExchangeRate
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
-import com.togethertrip.main.trip.repository.TripExchangeRateRepository
+import com.togethertrip.main.trip.repository.ExchangeRateRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
-import com.togethertrip.main.trip.service.TripExchangeRateService
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
@@ -34,11 +34,14 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.springframework.data.domain.PageRequest
 import java.math.BigDecimal
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import kotlin.test.assertEquals
 
 class TransactionServiceTest {
@@ -49,8 +52,7 @@ class TransactionServiceTest {
     private lateinit var transactionEventRepository: TransactionEventRepository
     private lateinit var tripRepository: TripRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
-    private lateinit var tripExchangeRateRepository: TripExchangeRateRepository
-    private lateinit var tripExchangeRateService: TripExchangeRateService
+    private lateinit var exchangeRateRepository: ExchangeRateRepository
     private lateinit var userRepository: UserRepository
     private lateinit var transactionService: TransactionService
 
@@ -62,8 +64,7 @@ class TransactionServiceTest {
         transactionEventRepository = mock(TransactionEventRepository::class.java)
         tripRepository = mock(TripRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
-        tripExchangeRateRepository = mock(TripExchangeRateRepository::class.java)
-        tripExchangeRateService = mock(TripExchangeRateService::class.java)
+        exchangeRateRepository = mock(ExchangeRateRepository::class.java)
         userRepository = mock(UserRepository::class.java)
         transactionService = TransactionService(
             transactionRepository = transactionRepository,
@@ -72,14 +73,17 @@ class TransactionServiceTest {
             transactionEventRepository = transactionEventRepository,
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
-            tripExchangeRateRepository = tripExchangeRateRepository,
-            tripExchangeRateService = tripExchangeRateService,
+            exchangeRateRepository = exchangeRateRepository,
             userRepository = userRepository,
+            clock = Clock.fixed(
+                Instant.parse("2026-07-02T00:30:00Z"),
+                ZoneId.of("Asia/Seoul"),
+            ),
         )
     }
 
     @Test
-    fun `거래 등록 시 여행 환율표를 적용하고 이벤트를 기록한다`() {
+    fun `거래 등록 시 배치 환율 DB를 적용하고 이벤트를 기록한다`() {
         val user = createUser()
         val trip = createTrip(user)
         val participant = createParticipant(
@@ -87,7 +91,7 @@ class TransactionServiceTest {
             trip = trip,
             user = user,
         )
-        val exchangeRate = createExchangeRate(trip)
+        val exchangeRate = createExchangeRate()
         val savedEvents = mutableListOf<TransactionEvent>()
 
         mockWritableTrip(
@@ -95,13 +99,11 @@ class TransactionServiceTest {
             trip = trip,
             participant = participant,
         )
-        `when`(tripExchangeRateService.resolveRateDate(trip)).thenReturn(LocalDate.of(2026, 7, 1))
         `when`(
-            tripExchangeRateRepository.findByTripIdAndBaseCurrencyAndTargetCurrencyAndRateDateAndDeletedAtIsNull(
-                tripId = 10L,
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
                 baseCurrency = "KRW",
                 targetCurrency = "JPY",
-                rateDate = LocalDate.of(2026, 7, 1),
+                rateDate = LocalDate.of(2026, 7, 2),
             )
         ).thenReturn(exchangeRate)
         `when`(transactionRepository.save(any(Transaction::class.java))).thenAnswer { invocation ->
@@ -147,6 +149,270 @@ class TransactionServiceTest {
         assertEquals(BigDecimal("9150.00"), response.shares.first().baseShareAmount)
         assertEquals(1L, trip.expenseVersion)
         assertEquals(TransactionEventType.CREATED, savedEvents.first().eventType)
+    }
+
+    @Test
+    fun `KRW 거래 등록 시 환율 DB를 조회하지 않고 1대1 환율을 적용한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        mockTransactionSaves()
+
+        val response = transactionService.createTransaction(
+            userId = 1L,
+            tripId = 10L,
+            request = CreateTransactionRequest(
+                amount = BigDecimal("12000.00"),
+                currency = "krw",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("12000.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("12000.00"),
+                    )
+                ),
+            ),
+        )
+
+        assertEquals("KRW", response.summary.currency)
+        assertEquals("KRW", response.summary.baseCurrency)
+        assertEquals(BigDecimal("1.000000"), response.summary.exchangeRate)
+        assertEquals(BigDecimal("12000.00"), response.summary.baseAmount)
+        verifyNoInteractions(exchangeRateRepository)
+    }
+
+    @Test
+    fun `외화 거래 등록 시 환율 DB row가 없으면 실패한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 7, 2),
+            )
+        ).thenReturn(null)
+
+        val exception = assertBusinessException {
+            transactionService.createTransaction(
+                userId = 1L,
+                tripId = 10L,
+                request = CreateTransactionRequest(
+                    amount = BigDecimal("1000.00"),
+                    currency = "JPY",
+                    payments = listOf(
+                        TransactionPaymentInput(
+                            participantId = 100L,
+                            amount = BigDecimal("1000.00"),
+                        )
+                    ),
+                    shares = listOf(
+                        TransactionShareInput(
+                            participantId = 100L,
+                            shareAmount = BigDecimal("1000.00"),
+                        )
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(TransactionErrorCode.EXCHANGE_RATE_NOT_READY, exception.errorCode)
+        verify(transactionRepository, never()).save(any(Transaction::class.java))
+    }
+
+    @Test
+    fun `외화 거래 적용 환율을 미리 조회한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 7, 2),
+            )
+        ).thenReturn(createExchangeRate())
+
+        val response = transactionService.getTransactionExchangeRatePreview(
+            userId = 1L,
+            tripId = 10L,
+            currency = "jpy",
+            spendingDate = LocalDate.of(2026, 7, 2),
+        )
+
+        assertEquals("KRW", response.baseCurrency)
+        assertEquals("JPY", response.targetCurrency)
+        assertEquals(BigDecimal("9.150000"), response.rate)
+        assertEquals(LocalDate.of(2026, 7, 2), response.rateDate)
+        assertEquals("TEST", response.source)
+    }
+
+    @Test
+    fun `KRW 거래 적용 환율 미리보기는 환율 DB를 조회하지 않는다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+
+        val response = transactionService.getTransactionExchangeRatePreview(
+            userId = 1L,
+            tripId = 10L,
+            currency = "krw",
+            spendingDate = null,
+        )
+
+        assertEquals("KRW", response.baseCurrency)
+        assertEquals("KRW", response.targetCurrency)
+        assertEquals(BigDecimal("1.000000"), response.rate)
+        assertEquals(LocalDate.of(2026, 7, 2), response.rateDate)
+        assertEquals("BASE_CURRENCY", response.source)
+        verifyNoInteractions(exchangeRateRepository)
+    }
+
+    @Test
+    fun `미래 소비일 환율 미리보기는 소비일 이하 최신 적재 환율을 조회한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 8, 10),
+            )
+        ).thenReturn(
+            createExchangeRate(
+                rate = BigDecimal("9.300000"),
+                rateDate = LocalDate.of(2026, 7, 2),
+            )
+        )
+
+        val response = transactionService.getTransactionExchangeRatePreview(
+            userId = 1L,
+            tripId = 10L,
+            currency = "JPY",
+            spendingDate = LocalDate.of(2026, 8, 10),
+        )
+
+        assertEquals(BigDecimal("9.300000"), response.rate)
+        assertEquals(LocalDate.of(2026, 7, 2), response.rateDate)
+    }
+
+    @Test
+    fun `거래 수정 시 수정 시점 환율을 다시 적용한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val transaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-01T12:00:00Z"),
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 7, 2),
+            )
+        ).thenReturn(createExchangeRate(rate = BigDecimal("10.000000")))
+        `when`(transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L))
+            .thenReturn(emptyList())
+        `when`(transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L))
+            .thenReturn(emptyList())
+        mockTransactionSaves()
+
+        val response = transactionService.updateTransaction(
+            userId = 1L,
+            tripId = 10L,
+            transactionId = 300L,
+            request = UpdateTransactionRequest(
+                amount = BigDecimal("1000.00"),
+                currency = "JPY",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("1000.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("1000.00"),
+                    )
+                ),
+            ),
+        )
+
+        assertEquals(BigDecimal("10.000000"), response.summary.exchangeRate)
+        assertEquals(BigDecimal("10000.00"), response.summary.baseAmount)
+        assertEquals(1L, trip.expenseVersion)
     }
 
     @Test
@@ -414,6 +680,21 @@ class TransactionServiceTest {
         ).thenReturn(participant)
     }
 
+    private fun mockTransactionSaves() {
+        `when`(transactionRepository.save(any(Transaction::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Transaction).apply { id = 300L }
+        }
+        `when`(transactionPaymentRepository.save(any(TransactionPayment::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionPayment).apply { id = 400L }
+        }
+        `when`(transactionShareRepository.save(any(TransactionShare::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionShare).apply { id = 500L }
+        }
+        `when`(transactionEventRepository.save(any(TransactionEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionEvent).apply { id = 600L }
+        }
+    }
+
     private fun createUser(): User {
         return User(
             nickname = "재완",
@@ -451,13 +732,15 @@ class TransactionServiceTest {
         }
     }
 
-    private fun createExchangeRate(trip: Trip): TripExchangeRate {
-        return TripExchangeRate(
-            trip = trip,
+    private fun createExchangeRate(
+        rate: BigDecimal = BigDecimal("9.150000"),
+        rateDate: LocalDate = LocalDate.of(2026, 7, 2),
+    ): ExchangeRate {
+        return ExchangeRate(
             baseCurrency = "KRW",
             targetCurrency = "JPY",
-            rate = BigDecimal("9.150000"),
-            rateDate = LocalDate.of(2026, 7, 1),
+            rate = rate,
+            rateDate = rateDate,
             source = "TEST",
         ).apply {
             id = 200L

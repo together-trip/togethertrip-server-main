@@ -23,7 +23,7 @@ enum class TransactionErrorCode(
     EXCHANGE_RATE_NOT_READY(
         HttpStatus.BAD_REQUEST,
         "EXCHANGE_RATE_NOT_READY",
-        "거래에 사용할 여행 환율 정보가 없습니다.",
+        "거래에 사용할 환율 정보가 없습니다.",
     ),
 
     INVALID_TRANSACTION_AMOUNT(
