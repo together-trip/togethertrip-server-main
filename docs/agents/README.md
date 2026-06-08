@@ -8,6 +8,7 @@
 - 작업은 작은 단위로 나누고, 각 에이전트는 자기 산출물을 검증 가능한 형태로 남긴다.
 - 문서와 에이전트 산출물은 한국어로 작성한다.
 - 명령어, 코드 식별자, 파일 경로, 라이브러리명은 원문을 유지한다.
+- 산출물은 공용 디렉터리에 직접 쓰지 않고 작업자별 네임스페이스 디렉터리(`docs/work-plans-<owner>/`, `docs/reviews-<owner>/`, `docs/verifications-<owner>/`, `docs/handoffs-<owner>/`)에 남긴다.
 
 ## 에이전트
 
@@ -42,7 +43,7 @@
 
 에이전트는 직접 채팅한다고 가정하지 않는다. 다음 산출물을 통해 비동기 소통한다.
 
-1. Planner가 `docs/work-plans/<task-slug>.md` 초안을 만든다.
+1. Planner가 `docs/work-plans-<owner>/<task-slug>.md` 초안을 만든다.
 2. Architect가 설계와 경계를 승인하거나 수정 요청을 남긴다.
 3. TDD Guide가 실패하는 테스트 또는 테스트 목록을 먼저 제안한다.
 4. 구현 담당자가 변경한다.
@@ -50,4 +51,3 @@
 6. Code Reviewer, Security Reviewer, E2E Test, Verify Agent가 독립 검증한다.
 7. Refactor Cleaner가 요청 범위 안에서만 정리한다.
 8. Doc Updater가 실제 변경과 문서 차이를 맞춘다.
-

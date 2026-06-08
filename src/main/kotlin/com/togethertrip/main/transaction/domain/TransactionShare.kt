@@ -8,10 +8,12 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.SQLRestriction
 import java.math.BigDecimal
 
 @Entity
 @Table(name = "transaction_shares")
+@SQLRestriction("deleted_at IS NULL")
 class TransactionShare(
 
     @ManyToOne(fetch = FetchType.LAZY)

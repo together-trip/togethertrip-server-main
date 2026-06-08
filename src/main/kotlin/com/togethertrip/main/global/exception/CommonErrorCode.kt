@@ -31,6 +31,12 @@ enum class CommonErrorCode(
         "유효하지 않은 전화번호입니다.",
     ),
 
+    CONCURRENT_MODIFICATION(
+        HttpStatus.CONFLICT,
+        "CONCURRENT_MODIFICATION",
+        "동시에 변경된 데이터가 있습니다. 다시 시도해주세요.",
+    ),
+
     INTERNAL_SERVER_ERROR(
         HttpStatus.INTERNAL_SERVER_ERROR,
         "INTERNAL_SERVER_ERROR",

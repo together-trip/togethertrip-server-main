@@ -12,6 +12,7 @@ TogetherTrip 기획과 리포 책임에 맞춰 구현 가능한 작업 계획을
 
 ## 출력
 
-- `docs/work-plans/<task-slug>.md` 형식의 계획서
+- `docs/work-plans-<owner>/<task-slug>.md` 형식의 계획서
 - 범위, 제외 범위, 테스트 계획, 남은 질문
 
+`<owner>`는 작업자 이름, GitHub 핸들, 팀명 등 충돌을 피할 수 있는 짧은 식별자를 사용한다. 기존 작업에서 이미 사용 중인 owner 디렉터리가 있으면 그 디렉터리를 계속 사용한다.

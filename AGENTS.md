@@ -13,11 +13,15 @@
 
 ## 산출물 위치
 
-- 작업 계획: `docs/work-plans/`
-- 리뷰 리포트: `docs/reviews/`
-- 검증 리포트: `docs/verifications/`
-- 인수인계: `docs/handoffs/`
-- 아키텍처 결정: `docs/adr/`
+공용 디렉터리(`docs/work-plans/`, `docs/reviews/`, `docs/verifications/`, `docs/handoffs/`)에 직접 산출물을 남기지 않는다. 작업자별 네임스페이스가 붙은 디렉터리를 사용한다.
+
+- 작업 계획: `docs/work-plans-<owner>/`
+- 리뷰 리포트: `docs/reviews-<owner>/`
+- 검증 리포트: `docs/verifications-<owner>/`
+- 인수인계: `docs/handoffs-<owner>/`
+- 아키텍처 결정: `docs/adr-<owner>/`
+
+`<owner>`는 작업자 이름, GitHub 핸들, 팀명 등 충돌을 피할 수 있는 짧은 식별자로 정한다. 이미 해당 작업에서 사용 중인 owner 디렉터리가 있으면 그 디렉터리를 계속 사용한다.
 
 ## 기본 검증
 

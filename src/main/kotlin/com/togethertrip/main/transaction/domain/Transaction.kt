@@ -1,6 +1,8 @@
 package com.togethertrip.main.transaction.domain
 
 import com.togethertrip.main.global.domain.BaseEntity
+import com.togethertrip.main.transaction.domain.exchange.TransactionCurrencySnapshot
+import com.togethertrip.main.transaction.domain.ledger.TransactionLedgerEntry
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.user.domain.User
 import jakarta.persistence.Column
@@ -12,10 +14,12 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.Version
+import org.hibernate.annotations.SQLRestriction
 import java.math.BigDecimal
 
 @Entity
 @Table(name = "transactions")
+@SQLRestriction("deleted_at IS NULL")
 class Transaction(
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -56,4 +60,20 @@ class Transaction(
     @Version
     @Column(nullable = false)
     var version: Long = 0
+
+    fun updateSnapshot(
+        ledgerEntry: TransactionLedgerEntry,
+        currencySnapshot: TransactionCurrencySnapshot,
+    ) {
+        this.transactionType = ledgerEntry.transactionType
+        this.amount = ledgerEntry.amount
+        this.currency = currencySnapshot.currency
+        this.exchangeRate = currencySnapshot.exchangeRate
+        this.baseCurrency = currencySnapshot.baseCurrency
+        this.baseAmount = currencySnapshot.convert(ledgerEntry.amount)
+    }
+
+    fun void() {
+        status = TransactionStatus.VOIDED
+    }
 }

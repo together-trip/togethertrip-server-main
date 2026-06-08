@@ -46,3 +46,5 @@ src/main/resources/secret.yml
 
 ### Agent Notes ###
 .agent-notes/
+.agents/plugins/marketplace.json
+plugins/togethertrip/
