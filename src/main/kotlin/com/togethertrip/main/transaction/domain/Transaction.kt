@@ -1,6 +1,8 @@
 package com.togethertrip.main.transaction.domain
 
 import com.togethertrip.main.global.domain.BaseEntity
+import com.togethertrip.main.transaction.domain.exchange.TransactionCurrencySnapshot
+import com.togethertrip.main.transaction.domain.ledger.TransactionLedgerEntry
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.user.domain.User
 import jakarta.persistence.Column

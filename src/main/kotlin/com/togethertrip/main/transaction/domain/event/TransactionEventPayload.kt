@@ -1,4 +1,8 @@
-package com.togethertrip.main.transaction.domain
+package com.togethertrip.main.transaction.domain.event
+
+import com.togethertrip.main.transaction.domain.Transaction
+import com.togethertrip.main.transaction.domain.TransactionEventType
+import com.togethertrip.main.transaction.domain.TransactionStatus
 
 data class TransactionEventPayload(
     val eventType: TransactionEventType,

@@ -1,7 +1,7 @@
 package com.togethertrip.main.transaction.service
 
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.transaction.domain.TransactionExchangeRatePreview
+import com.togethertrip.main.transaction.domain.exchange.TransactionExchangeRatePreview
 import com.togethertrip.main.transaction.exception.TransactionErrorCode
 import com.togethertrip.main.trip.repository.ExchangeRateRepository
 import org.springframework.stereotype.Component

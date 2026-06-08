@@ -604,6 +604,99 @@ class TransactionServiceTest {
     }
 
     @Test
+    fun `무효 처리된 거래는 수정할 수 없다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val transaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-01T12:00:00Z"),
+        ).apply {
+            void()
+        }
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+
+        val exception = assertBusinessException {
+            transactionService.updateTransaction(
+                userId = 1L,
+                tripId = 10L,
+                transactionId = 300L,
+                request = UpdateTransactionRequest(
+                    amount = BigDecimal("1000.00"),
+                    currency = "JPY",
+                    payments = listOf(
+                        TransactionPaymentInput(
+                            participantId = 100L,
+                            amount = BigDecimal("1000.00"),
+                        )
+                    ),
+                    shares = listOf(
+                        TransactionShareInput(
+                            participantId = 100L,
+                            shareAmount = BigDecimal("1000.00"),
+                        )
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(TransactionErrorCode.TRANSACTION_ALREADY_VOIDED, exception.errorCode)
+        assertEquals(0L, trip.expenseVersion)
+        verifyNoInteractions(exchangeRateRepository)
+        verify(transactionEventRepository, never()).save(any(TransactionEvent::class.java))
+    }
+
+    @Test
+    fun `무효 처리된 거래는 다시 삭제할 수 없다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val transaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-01T12:00:00Z"),
+        ).apply {
+            void()
+        }
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+
+        val exception = assertBusinessException {
+            transactionService.deleteTransaction(
+                userId = 1L,
+                tripId = 10L,
+                transactionId = 300L,
+            )
+        }
+
+        assertEquals(TransactionErrorCode.TRANSACTION_ALREADY_VOIDED, exception.errorCode)
+        assertEquals(0L, trip.expenseVersion)
+        verify(transactionEventRepository, never()).save(any(TransactionEvent::class.java))
+    }
+
+    @Test
     fun `거래 목록은 cursor 기반으로 조회한다`() {
         val user = createUser()
         val trip = createTrip(user)

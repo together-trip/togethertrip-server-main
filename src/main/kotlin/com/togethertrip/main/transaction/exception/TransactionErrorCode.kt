@@ -54,5 +54,11 @@ enum class TransactionErrorCode(
         HttpStatus.CONFLICT,
         "TRANSACTION_LOCKED_BY_SETTLEMENT",
         "정산이 시작된 여행에서는 거래를 변경할 수 없습니다.",
+    ),
+
+    TRANSACTION_ALREADY_VOIDED(
+        HttpStatus.CONFLICT,
+        "TRANSACTION_ALREADY_VOIDED",
+        "무효 처리된 거래는 변경할 수 없습니다.",
     )
 }

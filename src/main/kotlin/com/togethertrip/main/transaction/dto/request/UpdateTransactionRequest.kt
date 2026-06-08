@@ -1,7 +1,7 @@
 package com.togethertrip.main.transaction.dto.request
 
-import com.togethertrip.main.transaction.domain.TransactionLedgerEntry
 import com.togethertrip.main.transaction.domain.TransactionType
+import com.togethertrip.main.transaction.domain.ledger.TransactionLedgerEntry
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotBlank

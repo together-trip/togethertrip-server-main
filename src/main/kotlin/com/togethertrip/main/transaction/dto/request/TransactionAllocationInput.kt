@@ -1,7 +1,7 @@
 package com.togethertrip.main.transaction.dto.request
 
-import com.togethertrip.main.transaction.domain.PaymentAllocation
-import com.togethertrip.main.transaction.domain.ShareAllocation
+import com.togethertrip.main.transaction.domain.ledger.PaymentAllocation
+import com.togethertrip.main.transaction.domain.ledger.ShareAllocation
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotNull
 import java.math.BigDecimal

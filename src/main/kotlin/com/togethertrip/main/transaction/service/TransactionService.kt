@@ -3,17 +3,17 @@ package com.togethertrip.main.transaction.service
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.response.CursorResponse
-import com.togethertrip.main.transaction.domain.PaymentAllocation
-import com.togethertrip.main.transaction.domain.ShareAllocation
 import com.togethertrip.main.transaction.domain.Transaction
-import com.togethertrip.main.transaction.domain.TransactionCurrencySnapshot
 import com.togethertrip.main.transaction.domain.TransactionEvent
-import com.togethertrip.main.transaction.domain.TransactionEventPayload
 import com.togethertrip.main.transaction.domain.TransactionEventType
 import com.togethertrip.main.transaction.domain.TransactionPayment
 import com.togethertrip.main.transaction.domain.TransactionShare
 import com.togethertrip.main.transaction.domain.TransactionStatus
 import com.togethertrip.main.transaction.domain.TransactionType
+import com.togethertrip.main.transaction.domain.event.TransactionEventPayload
+import com.togethertrip.main.transaction.domain.exchange.TransactionCurrencySnapshot
+import com.togethertrip.main.transaction.domain.ledger.PaymentAllocation
+import com.togethertrip.main.transaction.domain.ledger.ShareAllocation
 import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.TransactionPaymentInput
 import com.togethertrip.main.transaction.dto.request.TransactionShareInput
@@ -241,6 +241,7 @@ class TransactionService(
             tripId = tripId,
             transactionId = transactionId,
         )
+        validateActiveTransaction(transaction)
         val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
             currency = ledgerEntry.currency,
@@ -293,6 +294,7 @@ class TransactionService(
             tripId = tripId,
             transactionId = transactionId,
         )
+        validateActiveTransaction(transaction)
 
         transaction.void()
 
@@ -606,6 +608,12 @@ class TransactionService(
     private fun validateWritableTrip(trip: Trip) {
         if (trip.settlementStatus != TripSettlementStatus.NOT_STARTED) {
             throw BusinessException(TransactionErrorCode.TRANSACTION_LOCKED_BY_SETTLEMENT)
+        }
+    }
+
+    private fun validateActiveTransaction(transaction: Transaction) {
+        if (transaction.status != TransactionStatus.ACTIVE) {
+            throw BusinessException(TransactionErrorCode.TRANSACTION_ALREADY_VOIDED)
         }
     }
 

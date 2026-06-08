@@ -32,10 +32,7 @@ interface TransactionApiSpec {
         authUser: AuthUser,
         tripId: Long,
         type: String?,
-        category: String?,
         participantId: Long?,
-        from: String?,
-        to: String?,
         cursor: String?,
         size: Int?,
     ): ApiResponse<CursorResponse<TransactionSummaryResponse>>

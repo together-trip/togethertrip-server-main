@@ -1,6 +1,7 @@
-package com.togethertrip.main.transaction.domain
+package com.togethertrip.main.transaction.domain.ledger
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.transaction.domain.TransactionType
 import com.togethertrip.main.transaction.exception.TransactionErrorCode
 import java.math.BigDecimal
 
@@ -30,14 +31,3 @@ data class TransactionLedgerEntry(
         }
     }
 }
-
-data class PaymentAllocation(
-    val participantId: Long,
-    val amount: BigDecimal,
-)
-
-data class ShareAllocation(
-    val participantId: Long,
-    val shareAmount: BigDecimal,
-    val shareRatio: BigDecimal? = null,
-)

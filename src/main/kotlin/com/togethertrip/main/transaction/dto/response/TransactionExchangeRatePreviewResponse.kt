@@ -1,6 +1,6 @@
 package com.togethertrip.main.transaction.dto.response
 
-import com.togethertrip.main.transaction.domain.TransactionExchangeRatePreview
+import com.togethertrip.main.transaction.domain.exchange.TransactionExchangeRatePreview
 import java.math.BigDecimal
 import java.time.LocalDate
 

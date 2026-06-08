@@ -1,4 +1,4 @@
-package com.togethertrip.main.transaction.domain
+package com.togethertrip.main.transaction.domain.exchange
 
 import java.math.BigDecimal
 import java.time.LocalDate

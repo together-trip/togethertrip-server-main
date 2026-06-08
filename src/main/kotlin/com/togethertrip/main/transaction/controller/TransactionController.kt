@@ -56,10 +56,7 @@ class TransactionController(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @RequestParam(required = false) type: String?,
-        @RequestParam(required = false) category: String?,
         @RequestParam(required = false) participantId: Long?,
-        @RequestParam(required = false) from: String?,
-        @RequestParam(required = false) to: String?,
         @RequestParam(required = false) cursor: String?,
         @RequestParam(required = false) size: Int?,
     ): ApiResponse<CursorResponse<TransactionSummaryResponse>> {
