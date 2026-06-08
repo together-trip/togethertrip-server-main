@@ -16,10 +16,10 @@ import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementRepository
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
+import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
 import com.togethertrip.main.settlement.service.support.SettlementCalculationService
-import com.togethertrip.main.settlement.service.support.SettlementShareTokenGenerator
+import com.togethertrip.main.settlement.service.support.SettlementShareTokenIssuer
 import com.togethertrip.main.settlement.service.support.SettlementSnapshotMapper
-import com.togethertrip.main.settlement.service.support.SettlementTripAccessGuard
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripSettlementStatus
@@ -40,8 +40,8 @@ class SettlementService(
     private val settlementTransferRepository: SettlementTransferRepository,
     private val settlementCalculationService: SettlementCalculationService,
     private val settlementSnapshotMapper: SettlementSnapshotMapper,
-    private val settlementShareTokenGenerator: SettlementShareTokenGenerator,
-    private val settlementTripAccessGuard: SettlementTripAccessGuard,
+    private val settlementShareTokenIssuer: SettlementShareTokenIssuer,
+    private val settlementAccessResolver: SettlementAccessResolver,
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
 ) {
@@ -53,7 +53,7 @@ class SettlementService(
         userId: Long,
         tripId: Long,
     ): SettlementPreviewResponse {
-        val trip = settlementTripAccessGuard.getAccessibleTrip(
+        val trip = settlementAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -105,8 +105,8 @@ class SettlementService(
         userId: Long,
         tripId: Long,
     ): SettlementResponse {
-        val user = settlementTripAccessGuard.getActiveUser(userId)
-        val trip = settlementTripAccessGuard.getOwnedTrip(
+        val user = settlementAccessResolver.getActiveUser(userId)
+        val trip = settlementAccessResolver.getOwnedTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -145,10 +145,6 @@ class SettlementService(
         tripId: Long,
         settlementId: Long,
     ): SettlementResponse {
-        settlementTripAccessGuard.getAccessibleTrip(
-            userId = userId,
-            tripId = tripId,
-        )
         val settlement = getSettlementOrThrow(settlementId)
         validateSettlementTrip(
             settlement = settlement,
@@ -170,10 +166,6 @@ class SettlementService(
         tripId: Long,
         settlementId: Long,
     ): SettlementShareTokenResponse {
-        settlementTripAccessGuard.getOwnedTrip(
-            userId = userId,
-            tripId = tripId,
-        )
         val settlement = getSettlementOrThrow(settlementId)
         validateSettlementTrip(
             settlement = settlement,
@@ -181,14 +173,9 @@ class SettlementService(
         )
         validateConfirmedSettlement(settlement)
 
-        if (settlement.shareToken == null) {
-            settlement.shareToken = settlementShareTokenGenerator.generate()
-        }
-
         return SettlementShareTokenResponse(
             settlementId = settlement.id,
-            shareToken = settlement.shareToken
-                ?: throw BusinessException(SettlementErrorCode.SETTLEMENT_SHARE_TOKEN_NOT_FOUND),
+            shareToken = settlementShareTokenIssuer.issue(settlement),
         )
     }
 

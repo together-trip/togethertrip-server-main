@@ -3,8 +3,10 @@ package com.togethertrip.main.settlement.repository
 import com.togethertrip.main.settlement.domain.SettlementTransfer
 import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import java.time.Instant
 
 interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long> {
 
@@ -113,5 +115,73 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
     fun findTransferRowById(
         @Param("transferId") transferId: Long,
     ): SettlementTransferRow?
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        value = """
+        update settlement_transfers transfer
+        set sender_confirmed_at = :confirmedAt,
+            status = case
+                when transfer.receiver_confirmed_at is not null then 'COMPLETED'
+                else 'SENDER_CONFIRMED'
+            end,
+            completed_at = case
+                when transfer.receiver_confirmed_at is not null then coalesce(transfer.completed_at, :confirmedAt)
+                else transfer.completed_at
+            end,
+            updated_at = :confirmedAt
+        from settlements settlement
+        where settlement.id = transfer.settlement_id
+          and settlement.deleted_at is null
+          and settlement.trip_id = :tripId
+          and settlement.status = 'CONFIRMED'
+          and transfer.deleted_at is null
+          and transfer.id = :transferId
+          and transfer.sender_participant_id = :participantId
+          and transfer.sender_confirmed_at is null
+          and transfer.status <> 'CANCELLED'
+        """,
+        nativeQuery = true
+    )
+    fun confirmAsSenderIfNeeded(
+        @Param("transferId") transferId: Long,
+        @Param("tripId") tripId: Long,
+        @Param("participantId") participantId: Long,
+        @Param("confirmedAt") confirmedAt: Instant,
+    ): Int
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        value = """
+        update settlement_transfers transfer
+        set receiver_confirmed_at = :confirmedAt,
+            status = case
+                when transfer.sender_confirmed_at is not null then 'COMPLETED'
+                else 'RECEIVER_CONFIRMED'
+            end,
+            completed_at = case
+                when transfer.sender_confirmed_at is not null then coalesce(transfer.completed_at, :confirmedAt)
+                else transfer.completed_at
+            end,
+            updated_at = :confirmedAt
+        from settlements settlement
+        where settlement.id = transfer.settlement_id
+          and settlement.deleted_at is null
+          and settlement.trip_id = :tripId
+          and settlement.status = 'CONFIRMED'
+          and transfer.deleted_at is null
+          and transfer.id = :transferId
+          and transfer.receiver_participant_id = :participantId
+          and transfer.receiver_confirmed_at is null
+          and transfer.status <> 'CANCELLED'
+        """,
+        nativeQuery = true
+    )
+    fun confirmAsReceiverIfNeeded(
+        @Param("transferId") transferId: Long,
+        @Param("tripId") tripId: Long,
+        @Param("participantId") participantId: Long,
+        @Param("confirmedAt") confirmedAt: Instant,
+    ): Int
 
 }

@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 
 @Component
-class SettlementTripAccessGuard(
+class SettlementAccessResolver(
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val userRepository: UserRepository,

@@ -14,10 +14,11 @@ import com.togethertrip.main.settlement.dto.response.SettlementParticipantBalanc
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementRepository
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
+import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
 import com.togethertrip.main.settlement.service.support.SettlementCalculationService
 import com.togethertrip.main.settlement.service.support.SettlementShareTokenGenerator
+import com.togethertrip.main.settlement.service.support.SettlementShareTokenIssuer
 import com.togethertrip.main.settlement.service.support.SettlementSnapshotMapper
-import com.togethertrip.main.settlement.service.support.SettlementTripAccessGuard
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -28,6 +29,7 @@ import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
 import org.springframework.dao.DataIntegrityViolationException
@@ -42,7 +44,8 @@ class SettlementServiceTest {
     private lateinit var settlementTransferRepository: SettlementTransferRepository
     private lateinit var settlementCalculationService: SettlementCalculationService
     private lateinit var settlementSnapshotMapper: SettlementSnapshotMapper
-    private lateinit var settlementTripAccessGuard: SettlementTripAccessGuard
+    private lateinit var settlementAccessResolver: SettlementAccessResolver
+    private lateinit var settlementShareTokenGenerator: SettlementShareTokenGenerator
     private lateinit var tripRepository: TripRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var settlementService: SettlementService
@@ -53,7 +56,8 @@ class SettlementServiceTest {
         settlementTransferRepository = mock(SettlementTransferRepository::class.java)
         settlementCalculationService = mock(SettlementCalculationService::class.java)
         settlementSnapshotMapper = mock(SettlementSnapshotMapper::class.java)
-        settlementTripAccessGuard = mock(SettlementTripAccessGuard::class.java)
+        settlementAccessResolver = mock(SettlementAccessResolver::class.java)
+        settlementShareTokenGenerator = mock(SettlementShareTokenGenerator::class.java)
         tripRepository = mock(TripRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         settlementService = SettlementService(
@@ -61,8 +65,11 @@ class SettlementServiceTest {
             settlementTransferRepository = settlementTransferRepository,
             settlementCalculationService = settlementCalculationService,
             settlementSnapshotMapper = settlementSnapshotMapper,
-            settlementShareTokenGenerator = mock(SettlementShareTokenGenerator::class.java),
-            settlementTripAccessGuard = settlementTripAccessGuard,
+            settlementShareTokenIssuer = SettlementShareTokenIssuer(
+                settlementRepository = settlementRepository,
+                settlementShareTokenGenerator = settlementShareTokenGenerator,
+            ),
+            settlementAccessResolver = settlementAccessResolver,
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
         )
@@ -186,6 +193,63 @@ class SettlementServiceTest {
         }
 
         assertEquals(SettlementErrorCode.SETTLEMENT_ALREADY_CONFIRMED, exception.errorCode)
+    }
+
+    @Test
+    fun `공유 토큰이 없으면 조건부 update 성공 시 생성한 토큰을 반환한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val settlement = createSettlement(trip = trip, confirmedBy = owner)
+
+        `when`(settlementRepository.findByIdAndDeletedAtIsNull(30L)).thenReturn(settlement)
+        `when`(settlementShareTokenGenerator.generate()).thenReturn("generated-token")
+        `when`(
+            settlementRepository.updateShareTokenIfAbsent(
+                settlementId = eqLong(30L),
+                shareToken = eqString("generated-token"),
+                updatedAt = anyInstant(),
+            )
+        ).thenReturn(1)
+
+        val response = settlementService.createShareToken(
+            userId = 1L,
+            tripId = 10L,
+            settlementId = 30L,
+        )
+
+        assertEquals(30L, response.settlementId)
+        assertEquals("generated-token", response.shareToken)
+    }
+
+    @Test
+    fun `공유 토큰 조건부 update가 실패하면 다른 요청이 저장한 토큰을 재조회해 반환한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val initialSettlement = createSettlement(trip = trip, confirmedBy = owner)
+        val latestSettlement = createSettlement(
+            trip = trip,
+            confirmedBy = owner,
+            shareToken = "existing-token",
+        )
+
+        `when`(settlementRepository.findByIdAndDeletedAtIsNull(30L)).thenReturn(initialSettlement, latestSettlement)
+        `when`(settlementShareTokenGenerator.generate()).thenReturn("generated-token")
+        `when`(
+            settlementRepository.updateShareTokenIfAbsent(
+                settlementId = eqLong(30L),
+                shareToken = eqString("generated-token"),
+                updatedAt = anyInstant(),
+            )
+        ).thenReturn(0)
+
+        val response = settlementService.createShareToken(
+            userId = 1L,
+            tripId = 10L,
+            settlementId = 30L,
+        )
+
+        assertEquals(30L, response.settlementId)
+        assertEquals("existing-token", response.shareToken)
     }
 
     @Test
@@ -390,8 +454,8 @@ class SettlementServiceTest {
         calculation: SettlementCalculationResult,
         participants: Map<Long, SettlementParticipantSnapshot>,
     ) {
-        `when`(settlementTripAccessGuard.getActiveUser(1L)).thenReturn(user)
-        `when`(settlementTripAccessGuard.getOwnedTrip(1L, 10L)).thenReturn(trip)
+        `when`(settlementAccessResolver.getActiveUser(1L)).thenReturn(user)
+        `when`(settlementAccessResolver.getOwnedTrip(1L, 10L)).thenReturn(trip)
         `when`(
             settlementRepository.findFirstByTripIdAndStatusAndDeletedAtIsNull(
                 tripId = 10L,
@@ -479,6 +543,28 @@ class SettlementServiceTest {
         )
     }
 
+    private fun createSettlement(
+        trip: Trip,
+        confirmedBy: User,
+        shareToken: String? = null,
+    ): Settlement {
+        return Settlement(
+            trip = trip,
+            status = SettlementStatus.CONFIRMED,
+            tripExpenseVersion = 1L,
+            calculationVersion = "settlement-v1",
+            baseCurrency = "KRW",
+            totalExpenseAmount = BigDecimal("10000.00"),
+            totalShareAmount = BigDecimal("10000.00"),
+            snapshotPayload = "{}",
+            confirmedAt = Instant.parse("2026-06-08T00:00:00Z"),
+            confirmedBy = confirmedBy,
+            shareToken = shareToken,
+        ).apply {
+            id = 30L
+        }
+    }
+
     private fun createUser(): User {
         return User(nickname = "방장").apply {
             id = 1L
@@ -555,5 +641,17 @@ class SettlementServiceTest {
         } catch (exception: BusinessException) {
             exception
         }
+    }
+
+    private fun anyInstant(): Instant {
+        return any(Instant::class.java) ?: Instant.EPOCH
+    }
+
+    private fun eqLong(value: Long): Long {
+        return eq(value) ?: value
+    }
+
+    private fun eqString(value: String): String {
+        return eq(value) ?: value
     }
 }

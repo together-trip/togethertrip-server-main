@@ -8,7 +8,8 @@ import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
-import com.togethertrip.main.settlement.service.support.SettlementTripAccessGuard
+import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
+import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationProcessor
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -16,6 +17,8 @@ import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
@@ -26,16 +29,19 @@ import kotlin.test.assertEquals
 class SettlementTransferServiceTest {
 
     private lateinit var settlementTransferRepository: SettlementTransferRepository
-    private lateinit var settlementTripAccessGuard: SettlementTripAccessGuard
+    private lateinit var settlementAccessResolver: SettlementAccessResolver
     private lateinit var settlementTransferService: SettlementTransferService
 
     @BeforeEach
     fun setUp() {
         settlementTransferRepository = mock(SettlementTransferRepository::class.java)
-        settlementTripAccessGuard = mock(SettlementTripAccessGuard::class.java)
+        settlementAccessResolver = mock(SettlementAccessResolver::class.java)
         settlementTransferService = SettlementTransferService(
             settlementTransferRepository = settlementTransferRepository,
-            settlementTripAccessGuard = settlementTripAccessGuard,
+            settlementAccessResolver = settlementAccessResolver,
+            settlementTransferConfirmationProcessor = SettlementTransferConfirmationProcessor(
+                settlementTransferRepository = settlementTransferRepository,
+            ),
         )
     }
 
@@ -53,7 +59,7 @@ class SettlementTransferServiceTest {
             receiverParticipantId = 100L,
         )
 
-        `when`(settlementTripAccessGuard.getActiveParticipant(1L, 10L)).thenReturn(participant)
+        `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
                 tripId = 10L,
@@ -92,7 +98,7 @@ class SettlementTransferServiceTest {
             receiverParticipantId = 100L,
         )
 
-        `when`(settlementTripAccessGuard.getActiveParticipant(1L, 10L)).thenReturn(participant)
+        `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
                 tripId = 10L,
@@ -128,7 +134,7 @@ class SettlementTransferServiceTest {
             receiverUserStatus = "ACTIVE",
         )
 
-        `when`(settlementTripAccessGuard.getActiveParticipant(1L, 10L)).thenReturn(participant)
+        `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
                 tripId = 10L,
@@ -157,7 +163,7 @@ class SettlementTransferServiceTest {
     fun `송금 목록은 status와 participant 필터를 repository에 전달한다`() {
         val participant = createParticipant(id = 100L)
 
-        `when`(settlementTripAccessGuard.getActiveParticipant(1L, 10L)).thenReturn(participant)
+        `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
                 tripId = 10L,
@@ -210,6 +216,14 @@ class SettlementTransferServiceTest {
             transfer = transfer,
             transferRow = transferRow,
         )
+        `when`(
+            settlementTransferRepository.confirmAsSenderIfNeeded(
+                transferId = eqLong(40L),
+                tripId = eqLong(10L),
+                participantId = eqLong(100L),
+                confirmedAt = anyInstant(),
+            )
+        ).thenReturn(1)
 
         val response = settlementTransferService.confirmAsSender(
             userId = 1L,
@@ -219,7 +233,7 @@ class SettlementTransferServiceTest {
 
         assertEquals(40L, response.id)
         assertEquals(SettlementTransferStatus.SENDER_CONFIRMED, response.status)
-        assertEquals(true, transfer.senderConfirmedAt != null)
+        assertEquals(true, response.senderConfirmedAt != null)
     }
 
     @Test
@@ -305,6 +319,14 @@ class SettlementTransferServiceTest {
             transfer = transfer,
             transferRow = transferRow,
         )
+        `when`(
+            settlementTransferRepository.confirmAsReceiverIfNeeded(
+                transferId = eqLong(40L),
+                tripId = eqLong(10L),
+                participantId = eqLong(200L),
+                confirmedAt = anyInstant(),
+            )
+        ).thenReturn(1)
 
         val response = settlementTransferService.confirmAsReceiver(
             userId = 1L,
@@ -314,7 +336,7 @@ class SettlementTransferServiceTest {
 
         assertEquals(40L, response.id)
         assertEquals(SettlementTransferStatus.RECEIVER_CONFIRMED, response.status)
-        assertEquals(true, transfer.receiverConfirmedAt != null)
+        assertEquals(true, response.receiverConfirmedAt != null)
     }
 
     @Test
@@ -326,7 +348,7 @@ class SettlementTransferServiceTest {
             receiver = createParticipant(id = 200L),
         )
 
-        `when`(settlementTripAccessGuard.getActiveParticipant(1L, 10L)).thenReturn(participant)
+        `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(settlementTransferRepository.findByIdAndDeletedAtIsNull(40L)).thenReturn(transfer)
 
         val exception = assertBusinessException {
@@ -377,7 +399,7 @@ class SettlementTransferServiceTest {
     fun `잘못된 송금 방향은 실패한다`() {
         val participant = createParticipant(id = 100L)
 
-        `when`(settlementTripAccessGuard.getActiveParticipant(1L, 10L)).thenReturn(participant)
+        `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
                 tripId = 10L,
@@ -425,7 +447,7 @@ class SettlementTransferServiceTest {
         transfer: SettlementTransfer,
         transferRow: SettlementTransferRow,
     ) {
-        `when`(settlementTripAccessGuard.getActiveParticipant(1L, 10L)).thenReturn(activeParticipant)
+        `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(activeParticipant)
         `when`(settlementTransferRepository.findByIdAndDeletedAtIsNull(40L)).thenReturn(transfer)
         `when`(settlementTransferRepository.findTransferRowById(40L)).thenReturn(transferRow)
     }
@@ -540,5 +562,13 @@ class SettlementTransferServiceTest {
         } catch (exception: BusinessException) {
             exception
         }
+    }
+
+    private fun anyInstant(): Instant {
+        return any(Instant::class.java) ?: Instant.EPOCH
+    }
+
+    private fun eqLong(value: Long): Long {
+        return eq(value) ?: value
     }
 }

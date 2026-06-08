@@ -3,6 +3,10 @@ package com.togethertrip.main.settlement.repository
 import com.togethertrip.main.settlement.domain.Settlement
 import com.togethertrip.main.settlement.domain.SettlementStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
+import java.time.Instant
 
 interface SettlementRepository : JpaRepository<Settlement, Long> {
 
@@ -20,4 +24,22 @@ interface SettlementRepository : JpaRepository<Settlement, Long> {
     ): Settlement?
 
     fun findByShareTokenAndDeletedAtIsNull(shareToken: String): Settlement?
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        value = """
+        update settlements
+        set share_token = :shareToken,
+            updated_at = :updatedAt
+        where id = :settlementId
+          and deleted_at is null
+          and share_token is null
+        """,
+        nativeQuery = true
+    )
+    fun updateShareTokenIfAbsent(
+        @Param("settlementId") settlementId: Long,
+        @Param("shareToken") shareToken: String,
+        @Param("updatedAt") updatedAt: Instant,
+    ): Int
 }
