@@ -2,6 +2,8 @@ package com.togethertrip.main.post.dto.request
 
 import com.togethertrip.main.post.domain.PostAttachmentType
 import com.togethertrip.main.post.domain.PostType
+import java.math.BigDecimal
+import java.time.Instant
 
 /**
  * 게시글 작성 요청.
@@ -13,6 +15,10 @@ data class CreatePostRequest(
     val category: String? = null,
     val content: String? = null,
     val postType: PostType = PostType.RECORD,
+    val occurredAt: Instant? = null,
+    val placeName: String? = null,
+    val latitude: BigDecimal? = null,
+    val longitude: BigDecimal? = null,
     val attachments: List<PostAttachmentRequest> = emptyList(),
 )
 
