@@ -19,14 +19,14 @@ interface TransactionRepository : JpaRepository<Transaction, Long> {
         where tx.deletedAt is null
           and tx.trip.id = :tripId
           and tx.status = :status
-          and (:transactionType is null or tx.transactionType = :transactionType)
+          and (:transactionTypeFilterEnabled = false or tx.transactionType = :transactionType)
           and (
-            :cursorCreatedAt is null
+            :cursorFilterEnabled = false
             or tx.createdAt < :cursorCreatedAt
             or (tx.createdAt = :cursorCreatedAt and tx.id < :cursorId)
           )
           and (
-            :participantId is null
+            :participantFilterEnabled = false
             or exists (
               select 1
               from TransactionPayment payment
@@ -49,9 +49,12 @@ interface TransactionRepository : JpaRepository<Transaction, Long> {
         @Param("tripId") tripId: Long,
         @Param("status") status: TransactionStatus,
         @Param("transactionType") transactionType: TransactionType?,
+        @Param("transactionTypeFilterEnabled") transactionTypeFilterEnabled: Boolean,
         @Param("participantId") participantId: Long?,
+        @Param("participantFilterEnabled") participantFilterEnabled: Boolean,
         @Param("cursorCreatedAt") cursorCreatedAt: Instant?,
         @Param("cursorId") cursorId: Long?,
+        @Param("cursorFilterEnabled") cursorFilterEnabled: Boolean,
         pageable: Pageable,
     ): List<Transaction>
 }

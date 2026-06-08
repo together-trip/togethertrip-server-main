@@ -143,9 +143,12 @@ class TransactionService(
             tripId = tripId,
             status = TransactionStatus.ACTIVE,
             transactionType = transactionType,
+            transactionTypeFilterEnabled = transactionType != null,
             participantId = participantId,
+            participantFilterEnabled = participantId != null,
             cursorCreatedAt = parsedCursor?.createdAt,
             cursorId = parsedCursor?.id,
+            cursorFilterEnabled = parsedCursor != null,
             pageable = PageRequest.of(0, requestedSize + 1),
         )
         val responseItems = transactions.take(requestedSize)

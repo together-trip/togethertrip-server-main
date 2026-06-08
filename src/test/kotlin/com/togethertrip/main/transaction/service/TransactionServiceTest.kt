@@ -637,9 +637,12 @@ class TransactionServiceTest {
                 tripId = 10L,
                 status = TransactionStatus.ACTIVE,
                 transactionType = null,
+                transactionTypeFilterEnabled = false,
                 participantId = null,
+                participantFilterEnabled = false,
                 cursorCreatedAt = Instant.parse("2026-07-02T11:00:00Z"),
                 cursorId = 301L,
+                cursorFilterEnabled = true,
                 pageable = PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(firstTransaction, secondTransaction, extraTransaction))
