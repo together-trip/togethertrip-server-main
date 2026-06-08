@@ -41,11 +41,29 @@
 - 기준일 이하 환율 row가 전혀 없으면 거래 환율 오류로 실패시킨다. 이 경우 환율 카테고리/통화 선택 차단 UI는 프론트에서 처리한다.
 - 거래 요청/엔티티에 `transactionDate`, `spentAt`, `occurredAt` 같은 소비일 필드가 확정되면 저장 API도 같은 기준일 정책에 해당 필드를 넘긴다.
 
+## 거래 등록/수정 화면 환율 미리보기 정책
+
+- 거래 등록/수정 플로우에서는 사용자가 저장 전에 적용 예정 환율을 확인할 수 있어야 한다.
+- `TransactionService.getTransactionExchangeRatePreview(...)`는 거래 쓰기와 동일한 `TransactionExchangeRateResolver` 정책을 사용한다.
+- 거래 통화가 `KRW`이면 기준 통화 환율 `1.000000`을 반환한다.
+- 외화이면 배치/크론이 적재한 전역 환율 DB에서 `baseCurrency = KRW`, `targetCurrency = 요청 통화`, `rateDate <= 기준일` 조건의 최신 환율을 반환한다.
+- 기준일 이하 환율이 전혀 없으면 환율 미리보기와 거래 쓰기 모두 `EXCHANGE_RATE_NOT_READY`로 실패한다.
+
 ## 수정 시점 스냅샷 정책
 
 - 거래 수정 시에도 수정 시점의 환율을 다시 조회해 새 스냅샷을 저장한다.
 - `updateTransactionPayments(...)`, `updateTransactionShares(...)`처럼 결제자/부담자만 수정하는 API도 현재 전체 거래 수정 흐름으로 위임하므로 동일하게 수정 시점 환율을 다시 적용한다.
 - 기존 이벤트 payload는 수정 후 거래 요약을 저장하므로, 환율 변경 이력은 이벤트 payload의 변경 전후 비교로 확인한다.
+
+## Transaction 서비스 리팩토링 기준
+
+- `TransactionService`는 공개 메서드 레벨에서 트랜잭션 경계를 명시한다.
+- 조회 메서드는 `@Transactional(readOnly = true)`를 메서드에 직접 둔다.
+- 쓰기 메서드는 기존처럼 `@Transactional`을 메서드에 직접 둔다.
+- private helper는 Spring 프록시 트랜잭션 적용 대상이 아니므로 트랜잭션 애너테이션을 붙이지 않는다.
+- 오케스트레이션 메서드의 호출 인자 안에서 컬렉션 매핑과 DTO 조립을 중첩하지 않는다.
+- 결제자/부담자 부분 수정처럼 기존 응답을 기반으로 수정 요청을 재구성해야 하는 경우, 서비스 private helper에서 `UpdateTransactionRequest`를 조립하고 공개 메서드는 `updateRequest` 값을 만든 뒤 위임한다.
+- Request DTO는 같은 request 입력을 원장 입력으로 바꾸는 책임만 갖고, Response DTO를 알지 않는다.
 
 ## 구현 계획
 

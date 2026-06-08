@@ -49,7 +49,6 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 
 @Service
-@Transactional(readOnly = true)
 class TransactionService(
     private val transactionRepository: TransactionRepository,
     private val transactionShareRepository: TransactionShareRepository,
@@ -123,6 +122,7 @@ class TransactionService(
         )
     }
 
+    @Transactional(readOnly = true)
     fun getTransactions(
         userId: Long,
         tripId: Long,
@@ -168,6 +168,7 @@ class TransactionService(
         )
     }
 
+    @Transactional(readOnly = true)
     fun getTransactionExchangeRatePreview(
         userId: Long,
         tripId: Long,
@@ -185,15 +186,15 @@ class TransactionService(
             participantId = null,
             userId = userId,
         )
-
-        return TransactionExchangeRatePreviewResponse.from(
-            transactionExchangeRateResolver.resolve(
-                currency = currency,
-                spendingDate = spendingDate,
-            )
+        val preview = transactionExchangeRateResolver.resolve(
+            currency = currency,
+            spendingDate = spendingDate,
         )
+
+        return TransactionExchangeRatePreviewResponse.from(preview)
     }
 
+    @Transactional(readOnly = true)
     fun getTransaction(
         userId: Long,
         tripId: Long,
@@ -208,8 +209,10 @@ class TransactionService(
             tripId = tripId,
             transactionId = transactionId,
         )
-        val payments = transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
-        val shares = transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
+        val payments = transactionPaymentRepository
+            .findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
+        val shares = transactionShareRepository
+            .findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
 
         return TransactionDetailResponse.from(
             transaction = transaction,
@@ -298,6 +301,7 @@ class TransactionService(
         )
     }
 
+    @Transactional(readOnly = true)
     fun getTransactionEvents(
         userId: Long,
         tripId: Long,
@@ -453,17 +457,17 @@ class TransactionService(
                 participantId = allocation.participantId,
                 userId = null,
             )
-            transactionPaymentRepository.save(
-                TransactionPayment(
-                    transaction = transaction,
-                    tripParticipant = participant,
-                    amount = allocation.amount,
-                    currency = snapshot.currency,
-                    exchangeRate = snapshot.exchangeRate,
-                    baseCurrency = snapshot.baseCurrency,
-                    baseAmount = snapshot.convert(allocation.amount),
-                )
+            val payment = TransactionPayment(
+                transaction = transaction,
+                tripParticipant = participant,
+                amount = allocation.amount,
+                currency = snapshot.currency,
+                exchangeRate = snapshot.exchangeRate,
+                baseCurrency = snapshot.baseCurrency,
+                baseAmount = snapshot.convert(allocation.amount),
             )
+
+            transactionPaymentRepository.save(payment)
         }
     }
 
@@ -479,18 +483,18 @@ class TransactionService(
                 participantId = allocation.participantId,
                 userId = null,
             )
-            transactionShareRepository.save(
-                TransactionShare(
-                    transaction = transaction,
-                    tripParticipant = participant,
-                    shareAmount = allocation.shareAmount,
-                    currency = snapshot.currency,
-                    exchangeRate = snapshot.exchangeRate,
-                    baseCurrency = snapshot.baseCurrency,
-                    baseShareAmount = snapshot.convert(allocation.shareAmount),
-                    shareRatio = allocation.shareRatio,
-                )
+            val share = TransactionShare(
+                transaction = transaction,
+                tripParticipant = participant,
+                shareAmount = allocation.shareAmount,
+                currency = snapshot.currency,
+                exchangeRate = snapshot.exchangeRate,
+                baseCurrency = snapshot.baseCurrency,
+                baseShareAmount = snapshot.convert(allocation.shareAmount),
+                shareRatio = allocation.shareRatio,
             )
+
+            transactionShareRepository.save(share)
         }
     }
 
@@ -502,19 +506,20 @@ class TransactionService(
     ) {
         trip.expenseVersion += 1
 
-        transactionEventRepository.save(
-            TransactionEvent(
-                transaction = transaction,
-                trip = trip,
-                eventType = eventType,
-                aggregateVersion = trip.expenseVersion,
-                payload = TransactionEventPayload.from(
-                    transaction = transaction,
-                    eventType = eventType,
-                ).toJson(),
-                createdBy = createdBy,
-            )
+        val payload = TransactionEventPayload.from(
+            transaction = transaction,
+            eventType = eventType,
+        ).toJson()
+        val event = TransactionEvent(
+            transaction = transaction,
+            trip = trip,
+            eventType = eventType,
+            aggregateVersion = trip.expenseVersion,
+            payload = payload,
+            createdBy = createdBy,
         )
+
+        transactionEventRepository.save(event)
     }
 
     private fun resolveCurrencySnapshot(
