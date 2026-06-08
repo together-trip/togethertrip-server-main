@@ -1,5 +1,6 @@
 package com.togethertrip.main.transaction.dto.request
 
+import com.togethertrip.main.transaction.domain.TransactionLedgerEntry
 import com.togethertrip.main.transaction.domain.TransactionType
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMin
@@ -24,21 +25,14 @@ data class CreateTransactionRequest(
     @field:Valid
     @field:NotEmpty
     val shares: List<TransactionShareInput>,
-)
-
-data class TransactionPaymentInput(
-    @field:NotNull
-    val participantId: Long,
-    @field:NotNull
-    @field:DecimalMin(value = "0.00")
-    val amount: BigDecimal,
-)
-
-data class TransactionShareInput(
-    @field:NotNull
-    val participantId: Long,
-    @field:NotNull
-    @field:DecimalMin(value = "0.00")
-    val shareAmount: BigDecimal,
-    val shareRatio: BigDecimal? = null,
-)
+) {
+    fun toLedgerEntry(): TransactionLedgerEntry {
+        return TransactionLedgerEntry(
+            transactionType = transactionType,
+            amount = amount,
+            currency = currency,
+            payments = payments.map(TransactionPaymentInput::toAllocation),
+            shares = shares.map(TransactionShareInput::toAllocation),
+        )
+    }
+}

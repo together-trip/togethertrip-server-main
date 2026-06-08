@@ -66,6 +66,13 @@ class TransactionServiceTest {
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         exchangeRateRepository = mock(ExchangeRateRepository::class.java)
         userRepository = mock(UserRepository::class.java)
+        val transactionExchangeRateResolver = TransactionExchangeRateResolver(
+            exchangeRateRepository = exchangeRateRepository,
+            clock = Clock.fixed(
+                Instant.parse("2026-07-02T00:30:00Z"),
+                ZoneId.of("Asia/Seoul"),
+            ),
+        )
         transactionService = TransactionService(
             transactionRepository = transactionRepository,
             transactionShareRepository = transactionShareRepository,
@@ -73,12 +80,8 @@ class TransactionServiceTest {
             transactionEventRepository = transactionEventRepository,
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
-            exchangeRateRepository = exchangeRateRepository,
+            transactionExchangeRateResolver = transactionExchangeRateResolver,
             userRepository = userRepository,
-            clock = Clock.fixed(
-                Instant.parse("2026-07-02T00:30:00Z"),
-                ZoneId.of("Asia/Seoul"),
-            ),
         )
     }
 

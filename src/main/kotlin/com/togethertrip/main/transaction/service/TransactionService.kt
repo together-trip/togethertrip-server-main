@@ -10,8 +10,6 @@ import com.togethertrip.main.transaction.domain.TransactionCurrencySnapshot
 import com.togethertrip.main.transaction.domain.TransactionEvent
 import com.togethertrip.main.transaction.domain.TransactionEventPayload
 import com.togethertrip.main.transaction.domain.TransactionEventType
-import com.togethertrip.main.transaction.domain.TransactionExchangeRatePreview
-import com.togethertrip.main.transaction.domain.TransactionLedgerEntry
 import com.togethertrip.main.transaction.domain.TransactionPayment
 import com.togethertrip.main.transaction.domain.TransactionShare
 import com.togethertrip.main.transaction.domain.TransactionStatus
@@ -37,7 +35,6 @@ import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
-import com.togethertrip.main.trip.repository.ExchangeRateRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.user.domain.User
@@ -47,8 +44,6 @@ import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.math.BigDecimal
-import java.time.Clock
 import java.time.LocalDate
 
 @Service
@@ -60,9 +55,8 @@ class TransactionService(
     private val transactionEventRepository: TransactionEventRepository,
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
-    private val exchangeRateRepository: ExchangeRateRepository,
+    private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
     private val userRepository: UserRepository,
-    private val clock: Clock,
 ) {
 
     @Transactional
@@ -190,7 +184,12 @@ class TransactionService(
             userId = userId,
         )
 
-        return TransactionExchangeRatePreviewResponse.from(resolveApplicableExchangeRate(currency, spendingDate))
+        return TransactionExchangeRatePreviewResponse.from(
+            transactionExchangeRateResolver.resolve(
+                currency = currency,
+                spendingDate = spendingDate,
+            )
+        )
     }
 
     fun getTransaction(
@@ -493,57 +492,10 @@ class TransactionService(
     private fun resolveCurrencySnapshot(
         currency: String,
     ): TransactionCurrencySnapshot {
-        return resolveApplicableExchangeRate(
+        return transactionExchangeRateResolver.resolve(
             currency = currency,
             spendingDate = null,
         ).toCurrencySnapshot()
-    }
-
-    private fun resolveApplicableExchangeRate(
-        currency: String,
-        spendingDate: LocalDate?,
-    ): TransactionExchangeRatePreview {
-        val normalizedCurrency = currency.trim().uppercase()
-        val baseCurrency = BASE_CURRENCY
-        val rateDate = spendingDate ?: LocalDate.now(clock)
-
-        if (normalizedCurrency == baseCurrency) {
-            return resolveBaseCurrencyExchangeRate(
-                currency = normalizedCurrency,
-                rateDate = rateDate,
-            )
-        }
-
-        val exchangeRate = exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
-            baseCurrency = baseCurrency,
-            targetCurrency = normalizedCurrency,
-            rateDate = rateDate,
-        ) ?: throw BusinessException(TransactionErrorCode.EXCHANGE_RATE_NOT_READY)
-
-        if (exchangeRate.rate <= BigDecimal.ZERO) {
-            throw BusinessException(TransactionErrorCode.EXCHANGE_RATE_NOT_READY)
-        }
-
-        return TransactionExchangeRatePreview(
-            currency = normalizedCurrency,
-            baseCurrency = baseCurrency,
-            rate = exchangeRate.rate,
-            rateDate = exchangeRate.rateDate,
-            source = exchangeRate.source,
-        )
-    }
-
-    private fun resolveBaseCurrencyExchangeRate(
-        currency: String,
-        rateDate: LocalDate,
-    ): TransactionExchangeRatePreview {
-        return TransactionExchangeRatePreview(
-            currency = currency,
-            baseCurrency = BASE_CURRENCY,
-            rate = BASE_CURRENCY_EXCHANGE_RATE,
-            rateDate = rateDate,
-            source = SOURCE_BASE_CURRENCY,
-        )
     }
 
     private fun getTransactionOrThrow(
@@ -640,50 +592,5 @@ class TransactionService(
     companion object {
         private const val DEFAULT_PAGE_SIZE = 20
         private const val MAX_PAGE_SIZE = 100
-        private const val BASE_CURRENCY = "KRW"
-        private const val SOURCE_BASE_CURRENCY = "BASE_CURRENCY"
-        private val BASE_CURRENCY_EXCHANGE_RATE = BigDecimal("1.000000")
     }
-}
-
-private fun CreateTransactionRequest.toLedgerEntry(): TransactionLedgerEntry {
-    return TransactionLedgerEntry(
-        transactionType = transactionType,
-        amount = amount,
-        currency = currency,
-        payments = payments.map { payment ->
-            PaymentAllocation(
-                participantId = payment.participantId,
-                amount = payment.amount,
-            )
-        },
-        shares = shares.map { share ->
-            ShareAllocation(
-                participantId = share.participantId,
-                shareAmount = share.shareAmount,
-                shareRatio = share.shareRatio,
-            )
-        },
-    )
-}
-
-private fun UpdateTransactionRequest.toLedgerEntry(): TransactionLedgerEntry {
-    return TransactionLedgerEntry(
-        transactionType = transactionType,
-        amount = amount,
-        currency = currency,
-        payments = payments.map { payment ->
-            PaymentAllocation(
-                participantId = payment.participantId,
-                amount = payment.amount,
-            )
-        },
-        shares = shares.map { share ->
-            ShareAllocation(
-                participantId = share.participantId,
-                shareAmount = share.shareAmount,
-                shareRatio = share.shareRatio,
-            )
-        },
-    )
 }
