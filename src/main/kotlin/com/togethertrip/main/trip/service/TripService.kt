@@ -98,13 +98,21 @@ class TripService(
         val pageable = PageRequest.of(0, requestedSize + 1)
         val tripStatus = status?.let(::parseTripStatus)
         val tripCursor = cursor?.let(::parseTripCursor)
-        val trips = tripRepository.findAccessibleTrips(
-            userId = userId,
-            status = tripStatus,
-            cursorCreatedAt = tripCursor?.createdAt,
-            cursorId = tripCursor?.id,
-            pageable = pageable,
-        )
+        val trips = if (tripCursor == null) {
+            tripRepository.findAccessibleTrips(
+                userId = userId,
+                status = tripStatus,
+                pageable = pageable,
+            )
+        } else {
+            tripRepository.findAccessibleTripsAfterCursor(
+                userId = userId,
+                status = tripStatus,
+                cursorCreatedAt = tripCursor.createdAt,
+                cursorId = tripCursor.id,
+                pageable = pageable,
+            )
+        }
         val hasNext = trips.size > requestedSize
         val visibleTrips = if (hasNext) trips.take(requestedSize) else trips
 
