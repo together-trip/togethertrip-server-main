@@ -1,0 +1,118 @@
+package com.togethertrip.main.settlement.service.support
+
+import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.settlement.domain.calculation.SettlementCalculationInput
+import com.togethertrip.main.settlement.domain.calculation.SettlementCalculationResult
+import com.togethertrip.main.settlement.domain.calculation.SettlementCalculator
+import com.togethertrip.main.settlement.domain.calculation.SettlementParticipantBalance
+import com.togethertrip.main.settlement.domain.calculation.SettlementPaymentInput
+import com.togethertrip.main.settlement.domain.calculation.SettlementShareInput
+import com.togethertrip.main.settlement.dto.response.SettlementParticipantBalanceResponse
+import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
+import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
+import com.togethertrip.main.transaction.repository.TransactionShareRepository
+import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.trip.exception.TripErrorCode
+import com.togethertrip.main.trip.repository.TripParticipantRepository
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
+
+@Service
+class SettlementCalculationService(
+    private val transactionPaymentRepository: TransactionPaymentRepository,
+    private val transactionShareRepository: TransactionShareRepository,
+    private val tripParticipantRepository: TripParticipantRepository,
+) {
+
+    private val settlementCalculator = SettlementCalculator()
+
+    @Transactional(readOnly = true)
+    fun calculate(tripId: Long): SettlementCalculationResult {
+        val payments = transactionPaymentRepository.findSettlementPayments(tripId)
+        val shares = transactionShareRepository.findSettlementShares(tripId)
+
+        return settlementCalculator.calculate(
+            SettlementCalculationInput(
+                baseCurrency = BASE_CURRENCY,
+                payments = payments.map { payment ->
+                    SettlementPaymentInput(
+                        participantId = payment.tripParticipant.id,
+                        amount = payment.baseAmount,
+                    )
+                },
+                shares = shares.map { share ->
+                    SettlementShareInput(
+                        participantId = share.tripParticipant.id,
+                        amount = share.baseShareAmount,
+                    )
+                },
+            )
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun getParticipantsById(
+        tripId: Long,
+        calculation: SettlementCalculationResult,
+    ): Map<Long, TripParticipant> {
+        val calculationParticipantIds = calculation.balances.map(SettlementParticipantBalance::participantId).toSet()
+        val participants = tripParticipantRepository
+            .findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(tripId)
+            .associateBy(TripParticipant::id)
+        val missingParticipantId = calculationParticipantIds.firstOrNull { participantId ->
+            participants[participantId] == null
+        }
+
+        if (missingParticipantId != null) {
+            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
+        }
+
+        return participants
+    }
+
+    fun createBalanceResponses(
+        balances: List<SettlementParticipantBalance>,
+        participants: Map<Long, TripParticipant>,
+    ): List<SettlementParticipantBalanceResponse> {
+        val balanceByParticipantId = balances.associateBy(SettlementParticipantBalance::participantId)
+
+        return participants.values.map { participant ->
+            val balance = balanceByParticipantId[participant.id]
+                ?: SettlementParticipantBalance(
+                    participantId = participant.id,
+                    paidAmount = ZERO_AMOUNT,
+                    shareAmount = ZERO_AMOUNT,
+                    netAmount = ZERO_AMOUNT,
+                )
+            SettlementParticipantBalanceResponse.from(
+                balance = balance,
+                participant = participant,
+            )
+        }
+    }
+
+    fun createTransferResponses(
+        calculation: SettlementCalculationResult,
+        participants: Map<Long, TripParticipant>,
+    ): List<SettlementTransferResponse> {
+        return calculation.transfers.map { plan ->
+            val sender = participants[plan.senderParticipantId]
+                ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
+            val receiver = participants[plan.receiverParticipantId]
+                ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
+
+            SettlementTransferResponse.from(
+                plan = plan,
+                sender = sender,
+                receiver = receiver,
+                currency = calculation.baseCurrency,
+            )
+        }
+    }
+
+    private companion object {
+        private const val BASE_CURRENCY = "KRW"
+        private val ZERO_AMOUNT = BigDecimal("0.00")
+    }
+}

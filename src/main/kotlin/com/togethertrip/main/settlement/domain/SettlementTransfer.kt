@@ -57,4 +57,31 @@ class SettlementTransfer(
     @Column(name = "completed_at")
     var completedAt: Instant? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun confirmAsSender(confirmedAt: Instant = Instant.now()) {
+        senderConfirmedAt = confirmedAt
+        status = when (status) {
+            SettlementTransferStatus.PENDING -> SettlementTransferStatus.SENDER_CONFIRMED
+            SettlementTransferStatus.RECEIVER_CONFIRMED -> SettlementTransferStatus.COMPLETED
+            else -> status
+        }
+        if (status == SettlementTransferStatus.COMPLETED) {
+            completedAt = confirmedAt
+        }
+        updatedAt = confirmedAt
+    }
+
+    fun confirmAsReceiver(confirmedAt: Instant = Instant.now()) {
+        receiverConfirmedAt = confirmedAt
+        status = when (status) {
+            SettlementTransferStatus.PENDING -> SettlementTransferStatus.RECEIVER_CONFIRMED
+            SettlementTransferStatus.SENDER_CONFIRMED -> SettlementTransferStatus.COMPLETED
+            else -> status
+        }
+        if (status == SettlementTransferStatus.COMPLETED) {
+            completedAt = confirmedAt
+        }
+        updatedAt = confirmedAt
+    }
+}
