@@ -1,0 +1,134 @@
+package com.togethertrip.main.settlement.service.support
+
+import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantRow
+import com.togethertrip.main.settlement.repository.SettlementTransactionQueryRepository
+import com.togethertrip.main.settlement.repository.projection.SettlementPaymentRow
+import com.togethertrip.main.settlement.repository.projection.SettlementShareRow
+import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.repository.TripParticipantRepository
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
+import java.math.BigDecimal
+import kotlin.test.assertEquals
+
+class SettlementCalculationServiceTest {
+
+    private lateinit var settlementTransactionQueryRepository: SettlementTransactionQueryRepository
+    private lateinit var tripParticipantRepository: TripParticipantRepository
+    private lateinit var settlementCalculationService: SettlementCalculationService
+
+    @BeforeEach
+    fun setUp() {
+        settlementTransactionQueryRepository = mock(SettlementTransactionQueryRepository::class.java)
+        tripParticipantRepository = mock(TripParticipantRepository::class.java)
+        settlementCalculationService = SettlementCalculationService(
+            settlementTransactionQueryRepository = settlementTransactionQueryRepository,
+            tripParticipantRepository = tripParticipantRepository,
+        )
+    }
+
+    @Test
+    fun `정산 계산은 거래에 남은 soft delete 참여자 id도 포함한다`() {
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(
+            listOf(paymentRow(participantId = 100L, amount = BigDecimal("10000.00")))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(
+            listOf(
+                shareRow(participantId = 100L, amount = BigDecimal("5000.00")),
+                shareRow(participantId = 200L, amount = BigDecimal("5000.00")),
+            )
+        )
+
+        val calculation = settlementCalculationService.calculate(10L)
+
+        assertEquals(setOf(100L, 200L), calculation.balances.map { it.participantId }.toSet())
+        assertEquals(BigDecimal("-5000.00"), calculation.balances.first { it.participantId == 200L }.netAmount)
+    }
+
+    @Test
+    fun `탈퇴 사용자는 정산 snapshot 응답에서 개인정보를 마스킹한다`() {
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(
+            listOf(paymentRow(participantId = 100L, amount = BigDecimal("10000.00")))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(
+            listOf(shareRow(participantId = 100L, amount = BigDecimal("10000.00")))
+        )
+        val calculation = settlementCalculationService.calculate(10L)
+        `when`(
+            tripParticipantRepository.findSettlementParticipantRows(
+                tripId = 10L,
+                participantIds = calculation.balances.map { it.participantId }.toSet(),
+            )
+        ).thenReturn(
+            listOf(
+                participantRow(
+                    participantId = 100L,
+                    userId = 1L,
+                    displayName = "가나다",
+                    profileImageUrl = "https://image.example/profile.png",
+                    participantStatus = TripParticipantStatus.LEFT,
+                    userStatus = "WITHDRAWN",
+                )
+            )
+        )
+
+        val participants = settlementCalculationService.getParticipantsById(
+            tripId = 10L,
+            calculation = calculation,
+        )
+        val balances = settlementCalculationService.createBalanceResponses(
+            balances = calculation.balances,
+            participants = participants,
+        )
+
+        assertEquals("탈퇴한 사용자", balances.single().displayName)
+        assertEquals(null, balances.single().userId)
+        assertEquals(null, balances.single().profileImageUrl)
+        assertEquals(TripParticipantStatus.LEFT, balances.single().participantStatus)
+    }
+
+    private fun paymentRow(
+        participantId: Long,
+        amount: BigDecimal,
+    ): SettlementPaymentRow {
+        return SettlementPaymentRow(
+            participantId = participantId,
+            amount = amount,
+        )
+    }
+
+    private fun shareRow(
+        participantId: Long,
+        amount: BigDecimal,
+    ): SettlementShareRow {
+        return SettlementShareRow(
+            participantId = participantId,
+            amount = amount,
+        )
+    }
+
+    private fun participantRow(
+        participantId: Long,
+        userId: Long?,
+        displayName: String,
+        profileImageUrl: String?,
+        participantStatus: TripParticipantStatus,
+        userStatus: String?,
+    ): SettlementParticipantRow {
+        return object : SettlementParticipantRow {
+            override fun getParticipantId(): Long = participantId
+
+            override fun getUserId(): Long? = userId
+
+            override fun getDisplayName(): String = displayName
+
+            override fun getProfileImageUrl(): String? = profileImageUrl
+
+            override fun getParticipantStatus(): String = participantStatus.name
+
+            override fun getUserStatus(): String? = userStatus
+        }
+    }
+}

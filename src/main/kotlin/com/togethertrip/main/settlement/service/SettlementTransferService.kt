@@ -2,6 +2,7 @@ package com.togethertrip.main.settlement.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.settlement.domain.SettlementTransfer
+import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
@@ -34,11 +35,14 @@ class SettlementTransferService(
             tripId = tripId,
         )
         val requestedStatus = status?.let(::parseTransferStatus)
-        val transfers = settlementTransferRepository.findTransfers(
+        val transfers = settlementTransferRepository.findTransferRows(
             tripId = tripId,
-            settlementId = settlementId,
-            participantId = participantId,
-            status = requestedStatus,
+            settlementFilterEnabled = settlementId != null,
+            settlementId = settlementId ?: UNUSED_FILTER_ID,
+            participantFilterEnabled = participantId != null,
+            participantId = participantId ?: UNUSED_FILTER_ID,
+            statusFilterEnabled = requestedStatus != null,
+            status = requestedStatus?.name ?: UNUSED_FILTER_VALUE,
         )
 
         return transfers
@@ -60,14 +64,15 @@ class SettlementTransferService(
             transferId = transferId,
             tripId = tripId,
         )
+        val transferRow = getTransferRowOrThrow(transferId)
 
-        if (transfer.sender.id != participant.id) {
+        if (transferRow.getSenderParticipantId() != participant.id) {
             throw BusinessException(SettlementErrorCode.SETTLEMENT_TRANSFER_ACCESS_DENIED)
         }
 
         transfer.confirmAsSender(Instant.now(clock))
 
-        return SettlementTransferResponse.from(transfer)
+        return readTransferResponse(transferId)
     }
 
     @Transactional
@@ -84,14 +89,15 @@ class SettlementTransferService(
             transferId = transferId,
             tripId = tripId,
         )
+        val transferRow = getTransferRowOrThrow(transferId)
 
-        if (transfer.receiver.id != participant.id) {
+        if (transferRow.getReceiverParticipantId() != participant.id) {
             throw BusinessException(SettlementErrorCode.SETTLEMENT_TRANSFER_ACCESS_DENIED)
         }
 
         transfer.confirmAsReceiver(Instant.now(clock))
 
-        return SettlementTransferResponse.from(transfer)
+        return readTransferResponse(transferId)
     }
 
     private fun getTransferInTrip(
@@ -109,16 +115,25 @@ class SettlementTransferService(
     }
 
     private fun matchesDirection(
-        transfer: SettlementTransfer,
+        transfer: SettlementTransferRow,
         participant: TripParticipant,
         direction: String?,
     ): Boolean {
         return when (direction?.trim()?.uppercase()) {
             null -> true
-            "SENT", "SEND", "SENDER" -> transfer.sender.id == participant.id
-            "RECEIVED", "RECEIVE", "RECEIVER" -> transfer.receiver.id == participant.id
+            "SENT", "SEND", "SENDER" -> transfer.getSenderParticipantId() == participant.id
+            "RECEIVED", "RECEIVE", "RECEIVER" -> transfer.getReceiverParticipantId() == participant.id
             else -> throw BusinessException(SettlementErrorCode.INVALID_SETTLEMENT_TRANSFER_DIRECTION)
         }
+    }
+
+    private fun readTransferResponse(transferId: Long): SettlementTransferResponse {
+        return SettlementTransferResponse.from(getTransferRowOrThrow(transferId))
+    }
+
+    private fun getTransferRowOrThrow(transferId: Long): SettlementTransferRow {
+        return settlementTransferRepository.findTransferRowById(transferId)
+            ?: throw BusinessException(SettlementErrorCode.SETTLEMENT_TRANSFER_NOT_FOUND)
     }
 
     private fun parseTransferStatus(status: String): SettlementTransferStatus {
@@ -129,4 +144,8 @@ class SettlementTransferService(
         }
     }
 
+    private companion object {
+        private const val UNUSED_FILTER_ID = 0L
+        private const val UNUSED_FILTER_VALUE = ""
+    }
 }

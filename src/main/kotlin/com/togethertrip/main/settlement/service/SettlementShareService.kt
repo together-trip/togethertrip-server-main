@@ -5,7 +5,7 @@ import com.togethertrip.main.settlement.domain.Settlement
 import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.snapshot.SettlementSnapshotPayload
 import com.togethertrip.main.settlement.dto.response.SettlementParticipantBalanceResponse
-import com.togethertrip.main.settlement.dto.response.SettlementResponse
+import com.togethertrip.main.settlement.dto.response.SettlementShareResponse
 import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementRepository
@@ -22,7 +22,7 @@ class SettlementShareService(
 ) {
 
     @Transactional(readOnly = true)
-    fun getSettlementByShareToken(token: String): SettlementResponse {
+    fun getSettlementByShareToken(token: String): SettlementShareResponse {
         val settlement = settlementRepository.findByShareTokenAndDeletedAtIsNull(token)
             ?: throw BusinessException(SettlementErrorCode.SETTLEMENT_SHARE_TOKEN_NOT_FOUND)
 
@@ -33,10 +33,10 @@ class SettlementShareService(
             .balances
             .map(SettlementParticipantBalanceResponse::from)
         val transfers = settlementTransferRepository
-            .findBySettlementIdAndDeletedAtIsNullOrderByIdAsc(settlement.id)
+            .findTransferRowsBySettlementId(settlement.id)
             .map(SettlementTransferResponse::from)
 
-        return SettlementResponse.from(
+        return SettlementShareResponse.from(
             settlement = settlement,
             balances = balances,
             transfers = transfers,

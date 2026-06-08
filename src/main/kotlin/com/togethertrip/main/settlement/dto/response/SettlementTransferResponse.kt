@@ -1,9 +1,10 @@
 package com.togethertrip.main.settlement.dto.response
 
-import com.togethertrip.main.settlement.domain.SettlementTransfer
+import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.settlement.domain.calculation.SettlementTransferPlan
-import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantSnapshot
+import com.togethertrip.main.user.domain.UserStatus
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -21,35 +22,39 @@ data class SettlementTransferResponse(
     val completedAt: Instant?,
 ) {
     companion object {
-        fun from(
-            transfer: SettlementTransfer,
-        ): SettlementTransferResponse {
+        fun from(row: SettlementTransferRow): SettlementTransferResponse {
             return SettlementTransferResponse(
-                id = transfer.id,
-                senderParticipantId = transfer.sender.id,
-                senderDisplayName = transfer.sender.displayName,
-                receiverParticipantId = transfer.receiver.id,
-                receiverDisplayName = transfer.receiver.displayName,
-                amount = transfer.amount,
-                currency = transfer.currency,
-                status = transfer.status,
-                senderConfirmedAt = transfer.senderConfirmedAt,
-                receiverConfirmedAt = transfer.receiverConfirmedAt,
-                completedAt = transfer.completedAt,
+                id = row.getId(),
+                senderParticipantId = row.getSenderParticipantId(),
+                senderDisplayName = displayNameFor(
+                    displayName = row.getSenderDisplayName(),
+                    userStatus = row.getSenderUserStatus(),
+                ),
+                receiverParticipantId = row.getReceiverParticipantId(),
+                receiverDisplayName = displayNameFor(
+                    displayName = row.getReceiverDisplayName(),
+                    userStatus = row.getReceiverUserStatus(),
+                ),
+                amount = row.getAmount(),
+                currency = row.getCurrency(),
+                status = SettlementTransferStatus.valueOf(row.getStatus()),
+                senderConfirmedAt = row.getSenderConfirmedAt(),
+                receiverConfirmedAt = row.getReceiverConfirmedAt(),
+                completedAt = row.getCompletedAt(),
             )
         }
 
         fun from(
             plan: SettlementTransferPlan,
-            sender: TripParticipant,
-            receiver: TripParticipant,
+            sender: SettlementParticipantSnapshot,
+            receiver: SettlementParticipantSnapshot,
             currency: String,
         ): SettlementTransferResponse {
             return SettlementTransferResponse(
                 id = null,
-                senderParticipantId = sender.id,
+                senderParticipantId = sender.participantId,
                 senderDisplayName = sender.displayName,
-                receiverParticipantId = receiver.id,
+                receiverParticipantId = receiver.participantId,
                 receiverDisplayName = receiver.displayName,
                 amount = plan.amount,
                 currency = currency,
@@ -59,5 +64,20 @@ data class SettlementTransferResponse(
                 completedAt = null,
             )
         }
+
+        private fun displayNameFor(
+            displayName: String,
+            userStatus: String?,
+        ): String {
+            val status = userStatus?.let(UserStatus::valueOf)
+
+            return if (status != null && status != UserStatus.ACTIVE) {
+                WITHDRAWN_USER_DISPLAY_NAME
+            } else {
+                displayName
+            }
+        }
+
+        private const val WITHDRAWN_USER_DISPLAY_NAME = "탈퇴한 사용자"
     }
 }

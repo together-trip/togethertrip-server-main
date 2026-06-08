@@ -7,11 +7,10 @@ import com.togethertrip.main.settlement.domain.calculation.SettlementCalculator
 import com.togethertrip.main.settlement.domain.calculation.SettlementParticipantBalance
 import com.togethertrip.main.settlement.domain.calculation.SettlementPaymentInput
 import com.togethertrip.main.settlement.domain.calculation.SettlementShareInput
+import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantSnapshot
 import com.togethertrip.main.settlement.dto.response.SettlementParticipantBalanceResponse
 import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
-import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
-import com.togethertrip.main.transaction.repository.TransactionShareRepository
-import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.settlement.repository.SettlementTransactionQueryRepository
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import org.springframework.stereotype.Service
@@ -20,8 +19,7 @@ import java.math.BigDecimal
 
 @Service
 class SettlementCalculationService(
-    private val transactionPaymentRepository: TransactionPaymentRepository,
-    private val transactionShareRepository: TransactionShareRepository,
+    private val settlementTransactionQueryRepository: SettlementTransactionQueryRepository,
     private val tripParticipantRepository: TripParticipantRepository,
 ) {
 
@@ -29,22 +27,22 @@ class SettlementCalculationService(
 
     @Transactional(readOnly = true)
     fun calculate(tripId: Long): SettlementCalculationResult {
-        val payments = transactionPaymentRepository.findSettlementPayments(tripId)
-        val shares = transactionShareRepository.findSettlementShares(tripId)
+        val payments = settlementTransactionQueryRepository.findSettlementPaymentRows(tripId)
+        val shares = settlementTransactionQueryRepository.findSettlementShareRows(tripId)
 
         return settlementCalculator.calculate(
             SettlementCalculationInput(
                 baseCurrency = BASE_CURRENCY,
                 payments = payments.map { payment ->
                     SettlementPaymentInput(
-                        participantId = payment.tripParticipant.id,
-                        amount = payment.baseAmount,
+                        participantId = payment.participantId,
+                        amount = payment.amount,
                     )
                 },
                 shares = shares.map { share ->
                     SettlementShareInput(
-                        participantId = share.tripParticipant.id,
-                        amount = share.baseShareAmount,
+                        participantId = share.participantId,
+                        amount = share.amount,
                     )
                 },
             )
@@ -55,11 +53,19 @@ class SettlementCalculationService(
     fun getParticipantsById(
         tripId: Long,
         calculation: SettlementCalculationResult,
-    ): Map<Long, TripParticipant> {
+    ): Map<Long, SettlementParticipantSnapshot> {
         val calculationParticipantIds = calculation.balances.map(SettlementParticipantBalance::participantId).toSet()
+        if (calculationParticipantIds.isEmpty()) {
+            return emptyMap()
+        }
+
         val participants = tripParticipantRepository
-            .findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(tripId)
-            .associateBy(TripParticipant::id)
+            .findSettlementParticipantRows(
+                tripId = tripId,
+                participantIds = calculationParticipantIds,
+            )
+            .map(SettlementParticipantSnapshot::from)
+            .associateBy(SettlementParticipantSnapshot::participantId)
         val missingParticipantId = calculationParticipantIds.firstOrNull { participantId ->
             participants[participantId] == null
         }
@@ -73,14 +79,14 @@ class SettlementCalculationService(
 
     fun createBalanceResponses(
         balances: List<SettlementParticipantBalance>,
-        participants: Map<Long, TripParticipant>,
+        participants: Map<Long, SettlementParticipantSnapshot>,
     ): List<SettlementParticipantBalanceResponse> {
         val balanceByParticipantId = balances.associateBy(SettlementParticipantBalance::participantId)
 
         return participants.values.map { participant ->
-            val balance = balanceByParticipantId[participant.id]
+            val balance = balanceByParticipantId[participant.participantId]
                 ?: SettlementParticipantBalance(
-                    participantId = participant.id,
+                    participantId = participant.participantId,
                     paidAmount = ZERO_AMOUNT,
                     shareAmount = ZERO_AMOUNT,
                     netAmount = ZERO_AMOUNT,
@@ -94,7 +100,7 @@ class SettlementCalculationService(
 
     fun createTransferResponses(
         calculation: SettlementCalculationResult,
-        participants: Map<Long, TripParticipant>,
+        participants: Map<Long, SettlementParticipantSnapshot>,
     ): List<SettlementTransferResponse> {
         return calculation.transfers.map { plan ->
             val sender = participants[plan.senderParticipantId]

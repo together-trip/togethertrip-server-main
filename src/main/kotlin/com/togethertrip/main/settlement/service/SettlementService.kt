@@ -6,6 +6,7 @@ import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.SettlementTransfer
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.settlement.domain.calculation.SettlementCalculationResult
+import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantSnapshot
 import com.togethertrip.main.settlement.dto.response.BalanceSummaryResponse
 import com.togethertrip.main.settlement.dto.response.SettlementParticipantBalanceResponse
 import com.togethertrip.main.settlement.dto.response.SettlementPreviewResponse
@@ -22,9 +23,12 @@ import com.togethertrip.main.settlement.service.support.SettlementTripAccessGuar
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripSettlementStatus
-import com.togethertrip.main.trip.exception.TripErrorCode
+import com.togethertrip.main.trip.repository.TripParticipantRepository
+import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.user.domain.User
+import jakarta.persistence.OptimisticLockException
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.orm.ObjectOptimisticLockingFailureException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -38,6 +42,8 @@ class SettlementService(
     private val settlementSnapshotMapper: SettlementSnapshotMapper,
     private val settlementShareTokenGenerator: SettlementShareTokenGenerator,
     private val settlementTripAccessGuard: SettlementTripAccessGuard,
+    private val tripRepository: TripRepository,
+    private val tripParticipantRepository: TripParticipantRepository,
 ) {
 
     private val clock = Clock.systemDefaultZone()
@@ -117,23 +123,19 @@ class SettlementService(
             participants = participants,
         )
         val snapshotPayload = settlementSnapshotMapper.write(balances)
-        val settlement = saveConfirmedSettlement(
+        val settlement = saveConfirmedSettlementSnapshot(
             trip = trip,
             user = user,
             calculation = calculation,
             snapshotPayload = snapshotPayload,
-        )
-        val transfers = saveTransfers(
-            settlement = settlement,
-            calculation = calculation,
             participants = participants,
         )
-        trip.markSettled(Instant.now(clock))
+        val transfers = readTransferResponses(settlement)
 
         return SettlementResponse.from(
             settlement = settlement,
             balances = balances,
-            transfers = transfers.map(SettlementTransferResponse::from),
+            transfers = transfers,
         )
     }
 
@@ -153,9 +155,7 @@ class SettlementService(
             tripId = tripId,
         )
         val balances = readBalanceResponses(settlement)
-        val transfers = settlementTransferRepository
-            .findBySettlementIdAndDeletedAtIsNullOrderByIdAsc(settlement.id)
-            .map(SettlementTransferResponse::from)
+        val transfers = readTransferResponses(settlement)
 
         return SettlementResponse.from(
             settlement = settlement,
@@ -199,11 +199,12 @@ class SettlementService(
         return calculation
     }
 
-    private fun saveConfirmedSettlement(
+    private fun saveConfirmedSettlementSnapshot(
         trip: Trip,
         user: User,
         calculation: SettlementCalculationResult,
         snapshotPayload: String,
+        participants: Map<Long, SettlementParticipantSnapshot>,
     ): Settlement {
         val settlement = Settlement(
             trip = trip,
@@ -218,9 +219,22 @@ class SettlementService(
             confirmedBy = user,
         )
 
-        return try {
-            settlementRepository.save(settlement)
+        try {
+            val savedSettlement = settlementRepository.saveAndFlush(settlement)
+            saveTransfers(
+                settlement = savedSettlement,
+                calculation = calculation,
+                participants = participants,
+            )
+            trip.markSettled(Instant.now(clock))
+            tripRepository.saveAndFlush(trip)
+
+            return savedSettlement
         } catch (_: DataIntegrityViolationException) {
+            throw BusinessException(SettlementErrorCode.SETTLEMENT_ALREADY_CONFIRMED)
+        } catch (_: ObjectOptimisticLockingFailureException) {
+            throw BusinessException(SettlementErrorCode.SETTLEMENT_ALREADY_CONFIRMED)
+        } catch (_: OptimisticLockException) {
             throw BusinessException(SettlementErrorCode.SETTLEMENT_ALREADY_CONFIRMED)
         }
     }
@@ -228,13 +242,11 @@ class SettlementService(
     private fun saveTransfers(
         settlement: Settlement,
         calculation: SettlementCalculationResult,
-        participants: Map<Long, TripParticipant>,
+        participants: Map<Long, SettlementParticipantSnapshot>,
     ): List<SettlementTransfer> {
         return calculation.transfers.map { plan ->
-            val sender = participants[plan.senderParticipantId]
-                ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
-            val receiver = participants[plan.receiverParticipantId]
-                ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
+            val sender = tripParticipantRepository.getReferenceById(plan.senderParticipantId)
+            val receiver = tripParticipantRepository.getReferenceById(plan.receiverParticipantId)
             val transfer = SettlementTransfer(
                 settlement = settlement,
                 sender = sender,
@@ -243,9 +255,31 @@ class SettlementService(
                 currency = calculation.baseCurrency,
                 status = SettlementTransferStatus.PENDING,
             )
+            val confirmedAt = Instant.now(clock)
+            val senderSnapshot = participants[plan.senderParticipantId]
+            val receiverSnapshot = participants[plan.receiverParticipantId]
+
+            if (senderSnapshot?.isWithdrawnUser == true) {
+                transfer.autoConfirmSender(
+                    reason = WITHDRAWN_USER_AUTO_CONFIRM_REASON,
+                    confirmedAt = confirmedAt,
+                )
+            }
+            if (receiverSnapshot?.isWithdrawnUser == true) {
+                transfer.autoConfirmReceiver(
+                    reason = WITHDRAWN_USER_AUTO_CONFIRM_REASON,
+                    confirmedAt = confirmedAt,
+                )
+            }
 
             settlementTransferRepository.save(transfer)
         }
+    }
+
+    private fun readTransferResponses(settlement: Settlement): List<SettlementTransferResponse> {
+        return settlementTransferRepository
+            .findTransferRowsBySettlementId(settlement.id)
+            .map(SettlementTransferResponse::from)
     }
 
     private fun readBalanceResponses(settlement: Settlement): List<SettlementParticipantBalanceResponse> {
@@ -300,5 +334,6 @@ class SettlementService(
 
     private companion object {
         private const val CALCULATION_VERSION = "settlement-v1"
+        private const val WITHDRAWN_USER_AUTO_CONFIRM_REASON = "WITHDRAWN_USER_AUTO_CONFIRMED"
     }
 }

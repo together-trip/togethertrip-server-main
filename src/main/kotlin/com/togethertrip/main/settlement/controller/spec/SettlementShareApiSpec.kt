@@ -1,7 +1,7 @@
 package com.togethertrip.main.settlement.controller.spec
 
 import com.togethertrip.main.global.response.ApiResponse
-import com.togethertrip.main.settlement.dto.response.SettlementResponse
+import com.togethertrip.main.settlement.dto.response.SettlementShareResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 
@@ -14,5 +14,5 @@ interface SettlementShareApiSpec {
     )
     fun getSettlementByShareToken(
         token: String,
-    ): ApiResponse<SettlementResponse>
+    ): ApiResponse<SettlementShareResponse>
 }

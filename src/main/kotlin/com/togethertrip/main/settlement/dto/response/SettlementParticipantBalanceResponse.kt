@@ -1,6 +1,7 @@
 package com.togethertrip.main.settlement.dto.response
 
 import com.togethertrip.main.settlement.domain.calculation.SettlementParticipantBalance
+import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantSnapshot
 import com.togethertrip.main.settlement.domain.snapshot.SettlementSnapshotBalance
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -43,6 +44,22 @@ data class SettlementParticipantBalanceResponse(
                 paidAmount = snapshot.paidAmount,
                 shareAmount = snapshot.shareAmount,
                 netAmount = snapshot.netAmount,
+            )
+        }
+
+        fun from(
+            balance: SettlementParticipantBalance,
+            participant: SettlementParticipantSnapshot,
+        ): SettlementParticipantBalanceResponse {
+            return SettlementParticipantBalanceResponse(
+                participantId = participant.participantId,
+                userId = participant.userId,
+                displayName = participant.displayName,
+                profileImageUrl = participant.profileImageUrl,
+                participantStatus = participant.participantStatus,
+                paidAmount = balance.paidAmount,
+                shareAmount = balance.shareAmount,
+                netAmount = balance.netAmount,
             )
         }
     }
