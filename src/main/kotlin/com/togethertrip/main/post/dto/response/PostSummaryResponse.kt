@@ -3,6 +3,7 @@ package com.togethertrip.main.post.dto.response
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostType
+import com.togethertrip.main.trip.dto.response.TripParticipantDisplay
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -37,7 +38,7 @@ data class PostSummaryResponse(
                 tripId = post.trip.id,
                 transactionId = post.transaction?.id,
                 authorParticipantId = post.author.id,
-                authorDisplayName = post.author.displayName,
+                authorDisplayName = TripParticipantDisplay.displayName(post.author),
                 postType = post.postType,
                 title = post.title,
                 category = post.category,

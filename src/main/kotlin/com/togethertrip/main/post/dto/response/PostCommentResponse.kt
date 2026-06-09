@@ -1,6 +1,7 @@
 package com.togethertrip.main.post.dto.response
 
 import com.togethertrip.main.post.domain.PostComment
+import com.togethertrip.main.trip.dto.response.TripParticipantDisplay
 import java.time.Instant
 
 data class PostCommentResponse(
@@ -19,7 +20,7 @@ data class PostCommentResponse(
                 id = comment.id,
                 postId = comment.post.id,
                 authorParticipantId = comment.author.id,
-                authorDisplayName = comment.author.displayName,
+                authorDisplayName = TripParticipantDisplay.displayName(comment.author),
                 content = comment.content,
                 commentDepth = comment.commentDepth,
                 createdAt = comment.createdAt,

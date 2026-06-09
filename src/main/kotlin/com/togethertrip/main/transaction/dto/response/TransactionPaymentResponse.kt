@@ -1,6 +1,7 @@
 package com.togethertrip.main.transaction.dto.response
 
 import com.togethertrip.main.transaction.domain.TransactionPayment
+import com.togethertrip.main.trip.dto.response.TripParticipantDisplay
 import java.math.BigDecimal
 
 data class TransactionPaymentResponse(
@@ -18,7 +19,7 @@ data class TransactionPaymentResponse(
             return TransactionPaymentResponse(
                 id = payment.id,
                 participantId = payment.tripParticipant.id,
-                participantDisplayName = payment.tripParticipant.displayName,
+                participantDisplayName = TripParticipantDisplay.displayName(payment.tripParticipant),
                 amount = payment.amount,
                 currency = payment.currency,
                 exchangeRate = payment.exchangeRate,

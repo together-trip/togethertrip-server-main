@@ -19,8 +19,8 @@ data class TripParticipantSummaryResponse(
             return TripParticipantSummaryResponse(
                 id = participant.id,
                 userId = participant.user?.id,
-                displayName = participant.displayName,
-                profileImageUrl = participant.profileImageUrl,
+                displayName = TripParticipantDisplay.displayName(participant),
+                profileImageUrl = TripParticipantDisplay.profileImageUrl(participant),
                 participantRole = participant.participantRole,
                 participantStatus = participant.participantStatus,
                 joinedAt = participant.joinedAt,
