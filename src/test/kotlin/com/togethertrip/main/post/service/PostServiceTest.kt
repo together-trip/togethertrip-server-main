@@ -7,7 +7,6 @@ import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostAttachmentType
 import com.togethertrip.main.post.domain.PostComment
 import com.togethertrip.main.post.domain.PostType
-import com.togethertrip.main.post.dto.request.PostAttachmentRequest
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
@@ -17,6 +16,8 @@ import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.service.storage.PostAttachmentStorage
+import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionStatus
 import com.togethertrip.main.transaction.domain.TransactionType
@@ -34,8 +35,14 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyList
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.never
 import org.mockito.Mockito.`when`
+import org.mockito.Mockito.verifyNoInteractions
 import org.springframework.data.domain.PageRequest
+import org.springframework.mock.web.MockMultipartFile
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.web.multipart.MultipartFile
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -48,6 +55,7 @@ class PostServiceTest {
     private lateinit var postCommentRepository: PostCommentRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var transactionRepository: TransactionRepository
+    private lateinit var postAttachmentStorage: PostAttachmentStorage
     private lateinit var postService: PostService
 
     @BeforeEach
@@ -57,12 +65,14 @@ class PostServiceTest {
         postCommentRepository = mock(PostCommentRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         transactionRepository = mock(TransactionRepository::class.java)
+        postAttachmentStorage = mock(PostAttachmentStorage::class.java)
         postService = PostService(
             postRepository = postRepository,
             postAttachmentRepository = postAttachmentRepository,
             postCommentRepository = postCommentRepository,
             tripParticipantRepository = tripParticipantRepository,
             transactionRepository = transactionRepository,
+            postAttachmentStorage = postAttachmentStorage,
         )
     }
 
@@ -119,6 +129,132 @@ class PostServiceTest {
 
         assertEquals(PostType.EXPENSE, response.postType)
         assertEquals(200L, response.transactionId)
+    }
+
+    @Test
+    fun `게시글 작성 시 multipart 파일을 저장하고 첨부 메타데이터를 응답한다`() {
+        val participant = createParticipant()
+        val file = createMultipartFile(
+            name = "files",
+            originalFilename = "receipt.jpg",
+            contentType = "image/jpeg",
+        )
+
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(postAttachmentStorage.store(file)).thenReturn(
+            StoredPostAttachment(
+                storageKey = "receipt-stored.jpg",
+                attachmentType = PostAttachmentType.IMAGE,
+                fileUrl = "/uploads/post-attachments/receipt-stored.jpg",
+                thumbnailUrl = null,
+                fileSize = file.size,
+                mimeType = file.contentType,
+            )
+        )
+        `when`(postAttachmentRepository.saveAll(anyList<PostAttachment>())).thenAnswer { invocation ->
+            invocation.getArgument<List<PostAttachment>>(0)
+        }
+
+        val response = postService.createPost(
+            userId = 1L,
+            tripId = 10L,
+            request = CreatePostRequest(
+                title = "영수증",
+                files = listOf(file),
+            ),
+        )
+
+        assertEquals(1, response.attachments.size)
+        assertEquals(PostAttachmentType.IMAGE, response.attachments.first().attachmentType)
+        assertEquals("/uploads/post-attachments/receipt-stored.jpg", response.attachments.first().fileUrl)
+        verify(postAttachmentStorage, never()).delete(
+            StoredPostAttachment(
+                storageKey = "receipt-stored.jpg",
+                attachmentType = PostAttachmentType.IMAGE,
+                fileUrl = "/uploads/post-attachments/receipt-stored.jpg",
+                thumbnailUrl = null,
+                fileSize = file.size,
+                mimeType = file.contentType,
+            )
+        )
+    }
+
+    @Test
+    fun `게시글 작성 트랜잭션이 롤백되면 저장된 첨부 파일을 삭제한다`() {
+        val participant = createParticipant()
+        val file = createMultipartFile()
+        val storedAttachment = StoredPostAttachment(
+            storageKey = "rollback.jpg",
+            attachmentType = PostAttachmentType.IMAGE,
+            fileUrl = "/uploads/post-attachments/rollback.jpg",
+            thumbnailUrl = null,
+            fileSize = file.size,
+            mimeType = file.contentType,
+        )
+
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(postAttachmentStorage.store(file)).thenReturn(storedAttachment)
+
+        TransactionSynchronizationManager.initSynchronization()
+        try {
+            postService.createPost(
+                userId = 1L,
+                tripId = 10L,
+                request = CreatePostRequest(
+                    title = "영수증",
+                    files = listOf(file),
+                ),
+            )
+
+            TransactionSynchronizationManager
+                .getSynchronizations()
+                .forEach { it.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK) }
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization()
+        }
+
+        verify(postAttachmentStorage).delete(storedAttachment)
+    }
+
+    @Test
+    fun `게시글 작성 시 첨부 파일이 10장을 초과하면 실패한다`() {
+        val participant = createParticipant()
+
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+
+        val exception = assertBusinessException {
+            postService.createPost(
+                userId = 1L,
+                tripId = 10L,
+                request = CreatePostRequest(
+                    title = "영수증",
+                    files = (1..11).map { index ->
+                        createMultipartFile(originalFilename = "image-$index.jpg")
+                    },
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(postAttachmentStorage)
     }
 
     @Test
@@ -375,7 +511,7 @@ class PostServiceTest {
     }
 
     @Test
-    fun `게시글 수정에서 attachments가 null이면 기존 첨부를 유지한다`() {
+    fun `게시글 수정에서 replaceAttachments가 false면 기존 첨부를 유지한다`() {
         val post = createPost()
         val attachment = createAttachment(post = post)
 
@@ -400,7 +536,7 @@ class PostServiceTest {
     }
 
     @Test
-    fun `게시글 수정에서 attachments가 빈 배열이면 기존 첨부를 제거한다`() {
+    fun `게시글 수정에서 replaceAttachments가 true이고 파일이 없으면 기존 첨부를 제거한다`() {
         val post = createPost()
         val attachment = createAttachment(post = post)
 
@@ -419,7 +555,7 @@ class PostServiceTest {
             postId = 300L,
             request = UpdatePostRequest(
                 title = "수정",
-                attachments = emptyList(),
+                replaceAttachments = true,
             ),
         )
 
@@ -428,9 +564,14 @@ class PostServiceTest {
     }
 
     @Test
-    fun `게시글 수정에서 attachments가 있으면 기존 첨부를 교체한다`() {
+    fun `게시글 수정에서 replaceAttachments가 true이고 파일이 있으면 기존 첨부를 업로드 결과로 교체한다`() {
         val post = createPost()
         val oldAttachment = createAttachment(post = post)
+        val file = createMultipartFile(
+            name = "files",
+            originalFilename = "new.jpg",
+            contentType = "image/jpeg",
+        )
 
         `when`(
             postRepository.findByIdAndTripIdAndDeletedAtIsNull(
@@ -440,6 +581,16 @@ class PostServiceTest {
         ).thenReturn(post)
         `when`(postAttachmentRepository.findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(300L))
             .thenReturn(listOf(oldAttachment))
+        `when`(postAttachmentStorage.store(file)).thenReturn(
+            StoredPostAttachment(
+                storageKey = "new-stored.jpg",
+                attachmentType = PostAttachmentType.IMAGE,
+                fileUrl = "/uploads/post-attachments/new-stored.jpg",
+                thumbnailUrl = null,
+                fileSize = file.size,
+                mimeType = file.contentType,
+            )
+        )
         `when`(postAttachmentRepository.saveAll(anyList<PostAttachment>())).thenAnswer { invocation ->
             invocation.getArgument<List<PostAttachment>>(0)
         }
@@ -450,18 +601,43 @@ class PostServiceTest {
             postId = 300L,
             request = UpdatePostRequest(
                 title = "수정",
-                attachments = listOf(
-                    PostAttachmentRequest(
-                        attachmentType = PostAttachmentType.IMAGE,
-                        fileUrl = "https://cdn.example.com/new.jpg",
-                        sortOrder = 1,
-                    )
-                ),
+                replaceAttachments = true,
+                files = listOf(file),
             ),
         )
 
         assertNotNull(oldAttachment.deletedAt)
-        assertEquals(listOf("https://cdn.example.com/new.jpg"), response.attachments.map { it.fileUrl })
+        assertEquals(listOf("/uploads/post-attachments/new-stored.jpg"), response.attachments.map { it.fileUrl })
+    }
+
+    @Test
+    fun `게시글 수정 시 교체 첨부 파일이 10장을 초과하면 실패한다`() {
+        val post = createPost()
+
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+
+        val exception = assertBusinessException {
+            postService.updatePost(
+                userId = 1L,
+                tripId = 10L,
+                postId = 300L,
+                request = UpdatePostRequest(
+                    title = "수정",
+                    replaceAttachments = true,
+                    files = (1..11).map { index ->
+                        createMultipartFile(originalFilename = "image-$index.jpg")
+                    },
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(postAttachmentStorage)
     }
 
     @Test
@@ -750,6 +926,19 @@ class PostServiceTest {
         ).apply {
             this.id = id
         }
+    }
+
+    private fun createMultipartFile(
+        name: String = "files",
+        originalFilename: String = "image.jpg",
+        contentType: String = "image/jpeg",
+    ): MultipartFile {
+        return MockMultipartFile(
+            name,
+            originalFilename,
+            contentType,
+            "image-content".toByteArray(),
+        )
     }
 
     private fun createComment(

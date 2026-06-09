@@ -9,7 +9,6 @@ import com.togethertrip.main.post.domain.PostComment
 import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
-import com.togethertrip.main.post.dto.request.PostAttachmentRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.dto.response.PostCommentResponse
 import com.togethertrip.main.post.dto.response.PostDetailResponse
@@ -20,6 +19,8 @@ import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.service.storage.PostAttachmentStorage
+import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -28,6 +29,9 @@ import com.togethertrip.main.trip.repository.TripParticipantRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.web.multipart.MultipartFile
 
 @Service
 class PostService(
@@ -36,6 +40,7 @@ class PostService(
     private val postCommentRepository: PostCommentRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionRepository: TransactionRepository,
+    private val postAttachmentStorage: PostAttachmentStorage,
 ) {
 
     @Transactional
@@ -75,7 +80,7 @@ class PostService(
 
         val attachments = saveAttachments(
             post = post,
-            attachments = request.attachments,
+            files = request.files,
         )
 
         return PostDetailResponse.from(
@@ -207,10 +212,10 @@ class PostService(
             longitude = request.longitude,
         )
 
-        val attachments = if (request.attachments != null) {
+        val attachments = if (request.replaceAttachments) {
             replaceAttachments(
                 post = post,
-                attachments = request.attachments,
+                files = request.files,
             )
         } else {
             postAttachmentRepository
@@ -364,7 +369,7 @@ class PostService(
 
     private fun replaceAttachments(
         post: Post,
-        attachments: List<PostAttachmentRequest>,
+        files: List<MultipartFile>,
     ): List<PostAttachment> {
         postAttachmentRepository
             .findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(post.id)
@@ -372,23 +377,30 @@ class PostService(
 
         return saveAttachments(
             post = post,
-            attachments = attachments,
+            files = files,
         )
     }
 
     private fun saveAttachments(
         post: Post,
-        attachments: List<PostAttachmentRequest>,
+        files: List<MultipartFile>,
     ): List<PostAttachment> {
-        val postAttachments = attachments.map { attachmentRequest ->
+        if (files.size > MAX_ATTACHMENT_COUNT) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+
+        val postAttachments = files.mapIndexed { index, file ->
+            val storedAttachment = postAttachmentStorage.store(file)
+            registerRollbackCleanup(storedAttachment)
+
             PostAttachment(
                 post = post,
-                attachmentType = attachmentRequest.attachmentType,
-                fileUrl = attachmentRequest.fileUrl,
-                thumbnailUrl = attachmentRequest.thumbnailUrl,
-                fileSize = attachmentRequest.fileSize,
-                mimeType = attachmentRequest.mimeType,
-                sortOrder = attachmentRequest.sortOrder,
+                attachmentType = storedAttachment.attachmentType,
+                fileUrl = storedAttachment.fileUrl,
+                thumbnailUrl = storedAttachment.thumbnailUrl,
+                fileSize = storedAttachment.fileSize,
+                mimeType = storedAttachment.mimeType,
+                sortOrder = index,
             )
         }
 
@@ -397,6 +409,22 @@ class PostService(
         }
 
         return postAttachments.sortedBy { it.sortOrder }
+    }
+
+    private fun registerRollbackCleanup(storedAttachment: StoredPostAttachment) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCompletion(status: Int) {
+                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                        postAttachmentStorage.delete(storedAttachment)
+                    }
+                }
+            }
+        )
     }
 
     private fun parsePostType(postType: String): PostType {
@@ -426,5 +454,6 @@ class PostService(
     private companion object {
         const val DEFAULT_PAGE_SIZE = 20
         const val MAX_PAGE_SIZE = 100
+        const val MAX_ATTACHMENT_COUNT = 10
     }
 }

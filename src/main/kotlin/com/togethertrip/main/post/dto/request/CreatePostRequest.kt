@@ -1,7 +1,7 @@
 package com.togethertrip.main.post.dto.request
 
-import com.togethertrip.main.post.domain.PostAttachmentType
 import com.togethertrip.main.post.domain.PostType
+import org.springframework.web.multipart.MultipartFile
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -19,14 +19,5 @@ data class CreatePostRequest(
     val placeName: String? = null,
     val latitude: BigDecimal? = null,
     val longitude: BigDecimal? = null,
-    val attachments: List<PostAttachmentRequest> = emptyList(),
-)
-
-data class PostAttachmentRequest(
-    val attachmentType: PostAttachmentType,
-    val fileUrl: String,
-    val thumbnailUrl: String? = null,
-    val fileSize: Long? = null,
-    val mimeType: String? = null,
-    val sortOrder: Int = 0,
+    val files: List<MultipartFile> = emptyList(),
 )

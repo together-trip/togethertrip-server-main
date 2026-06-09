@@ -14,7 +14,7 @@ Flutter 앱 Issue #10 `여행 상세 게시판 CRUD 및 소비 등록 화면 구
 
 현재 게시글 첨부 상태:
 
-- `CreatePostRequest.attachments`와 `PostAttachment` 저장은 있다.
+- `CreatePostRequest.attachments`와 `PostAttachment` 저장은 있었지만, 프론트가 `fileUrl`을 직접 전달하는 구조라 파일 업로드 책임이 프론트로 밀려 있다.
 - `PostDetailResponse.attachments`는 있다.
 - `PostSummaryResponse`에는 첨부가 없어 피드 카드에서 첨부를 표시하려면 게시글별 상세 조회가 필요하다.
 - `UpdatePostRequest`에는 `occurredAt`, `placeName`, `latitude`, `longitude`, 첨부 변경 필드가 없어 게시글 수정 시 날짜/위치/첨부를 수정할 수 없다.
@@ -26,6 +26,8 @@ Flutter 앱 Issue #10 `여행 상세 게시판 CRUD 및 소비 등록 화면 구
 - 일반 기록 게시글 삭제는 기존처럼 게시글 soft delete만 수행한다.
 - 게시글 목록 응답에서도 첨부 미리보기를 표시할 수 있게 첨부 응답을 포함한다.
 - 게시글 수정 시 날짜/위치와 첨부 목록을 수정할 수 있게 요청 DTO와 서비스 로직을 보강한다.
+- 게시글 작성/수정 첨부는 프론트가 `fileUrl`을 전달하지 않고 `multipart/form-data` 파일 자체를 전송한다.
+- 서버는 저장소 포트를 통해 파일을 저장하고, 로컬 환경은 로컬 디스크에 저장한다. 운영 환경의 S3 저장은 같은 포트 구현체 교체로 분리한다.
 - 거래 무효 처리 정책은 기존 거래 원장 규칙을 유지한다.
   - 물리 삭제하지 않는다.
   - `Transaction.status = VOIDED`로 변경한다.
@@ -43,23 +45,24 @@ Flutter 앱 Issue #10 `여행 상세 게시판 CRUD 및 소비 등록 화면 구
 
 ### 작성
 
-- 기존 `CreatePostRequest.attachments` 정책을 유지한다.
-- 프론트는 이미 확보한 `fileUrl` 기반 첨부 메타데이터를 전달한다.
-- 서버는 파일 업로드 자체가 아니라 메타데이터 저장만 담당한다.
+- `POST /api/trips/{tripId}/posts`는 `multipart/form-data`를 사용한다.
+- 프론트는 `files` 필드에 이미지/영상 파일 자체를 전달한다.
+- 서버는 파일을 저장소에 저장한 뒤 생성된 URL, MIME type, size, attachment type을 `PostAttachment`로 저장한다.
+- 로컬 환경은 `post.attachments.local-storage-path` 아래 파일을 저장하고 `post.attachments.public-url-prefix` 기반 URL을 반환한다.
+- 운영 환경 S3 저장은 `PostAttachmentStorage` 구현체 교체로 확장한다.
 
 ### 수정
 
 - `UpdatePostRequest`에 `occurredAt`, `placeName`, `latitude`, `longitude`를 추가한다.
-- `UpdatePostRequest`에 `attachments: List<PostAttachmentRequest>?`를 추가한다.
+- `UpdatePostRequest`에 `replaceAttachments: Boolean`과 `files: List<MultipartFile>`를 추가한다.
 - 날짜/위치 필드는 기존 작성 DTO와 같은 의미로 저장한다.
 - `latitude`, `longitude`는 둘 다 null이거나 둘 다 값이 있는 형태를 권장한다.
-- `attachments == null`이면 기존 첨부를 변경하지 않는다.
-- `attachments != null`이면 기존 첨부를 soft delete하고 요청 첨부 목록으로 교체한다.
-- 빈 배열은 첨부 전체 제거로 해석한다.
+- `replaceAttachments == false`이면 기존 첨부를 변경하지 않는다.
+- `replaceAttachments == true`이면 기존 첨부를 soft delete하고 `files` 업로드 결과로 교체한다.
+- `replaceAttachments == true`이고 `files`가 비어 있으면 첨부 전체 제거로 해석한다.
 
 ### 제외
 
-- 파일 저장소 업로드
 - 업로드 URL 발급
 - 이미지 리사이징
 - 파일 삭제 worker
@@ -113,10 +116,10 @@ Flutter 앱 Issue #10 `여행 상세 게시판 CRUD 및 소비 등록 화면 구
 
 1. `PostSummaryResponse`에 `attachments`를 추가한다.
 2. 목록 조회에서 post id 목록 기준 첨부를 조회하고 post별로 묶어 응답한다.
-3. `UpdatePostRequest`에 `occurredAt`, `placeName`, `latitude`, `longitude`를 추가한다.
-4. `UpdatePostRequest`에 nullable `attachments`를 추가한다.
+3. `CreatePostRequest`, `UpdatePostRequest`를 multipart 파일 입력 기준으로 변경한다.
+4. `UpdatePostRequest`에 `occurredAt`, `placeName`, `latitude`, `longitude`, `replaceAttachments`, `files`를 추가한다.
 5. 수정 요청의 날짜/위치 필드가 Post 엔티티에 반영되는지 구현한다.
-6. 수정 요청의 `attachments`가 null이면 첨부 유지, non-null이면 첨부 교체로 처리한다.
+6. 수정 요청의 `replaceAttachments`가 false이면 첨부 유지, true이면 파일 업로드 결과로 교체 처리한다.
 7. 기존 첨부 교체 시 기존 row는 soft delete하고 새 row를 저장한다.
 8. 목록/상세/작성/수정 응답의 첨부 정렬이 `sortOrder ASC`인지 검증한다.
 9. API 문서와 Swagger spec 설명을 갱신한다.
@@ -137,16 +140,17 @@ Flutter 앱 Issue #10 `여행 상세 게시판 CRUD 및 소비 등록 화면 구
 ### 게시글 첨부
 
 - 게시글 작성:
-  - 첨부 메타데이터가 저장된다.
+  - multipart 파일이 서버 저장소에 저장된다.
+  - 저장소가 반환한 첨부 메타데이터가 저장된다.
   - 상세 응답에 첨부가 `sortOrder ASC`로 포함된다.
 - 게시글 목록:
   - 목록 응답에 첨부가 포함된다.
   - 삭제된 첨부는 목록/상세 응답에 포함되지 않는다.
 - 게시글 수정:
   - 제목/카테고리/내용뿐 아니라 `occurredAt`, `placeName`, `latitude`, `longitude`가 수정된다.
-  - `attachments == null`이면 기존 첨부가 유지된다.
-  - `attachments == []`이면 기존 첨부가 제거된다.
-  - `attachments`에 새 목록이 있으면 기존 첨부가 교체된다.
+  - `replaceAttachments == false`이면 기존 첨부가 유지된다.
+  - `replaceAttachments == true`이고 `files`가 비어 있으면 기존 첨부가 제거된다.
+  - `replaceAttachments == true`이고 `files`가 있으면 기존 첨부가 업로드 결과로 교체된다.
 
 ### 소비 게시글 삭제
 
@@ -169,7 +173,9 @@ Flutter 앱 Issue #10 `여행 상세 게시판 CRUD 및 소비 등록 화면 구
 - 프론트는 피드 목록 응답의 `attachments`를 우선 사용한다.
 - 목록 응답에 첨부가 포함되면 게시글별 상세 보강 조회는 제거할 수 있다.
 - 게시글 수정에서 날짜/위치를 바꾸려면 `PATCH /posts/{postId}`에 `occurredAt`, `placeName`, `latitude`, `longitude`를 포함한다.
-- 게시글 수정에서 첨부를 바꾸려면 `PATCH /posts/{postId}`에 `attachments`를 포함한다.
+- 게시글 작성/수정 첨부는 `multipart/form-data`의 `files` 필드로 파일 자체를 전달한다.
+- 게시글 수정에서 첨부를 바꾸려면 `PATCH /posts/{postId}`에 `replaceAttachments=true`와 `files`를 포함한다.
+- 첨부를 모두 제거하려면 `replaceAttachments=true`만 보내고 `files`를 비운다.
 - 프론트는 소비 게시글 삭제 시에도 일반 게시글과 동일하게 `DELETE /api/trips/{tripId}/posts/{postId}`만 호출하는 것이 목표다.
 - 프론트에서 `DELETE /transactions/{transactionId}`를 별도로 순차 호출하지 않는다.
 - 백엔드 보강 전까지 소비 게시글 삭제 버튼 연결은 보류하거나 서버 정책 미정 TODO로 남긴다.
