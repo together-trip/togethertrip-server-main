@@ -15,10 +15,38 @@ interface PostRepository : JpaRepository<Post, Long> {
         FROM Post p
         WHERE p.trip.id = :tripId
           AND p.deletedAt IS NULL
-          AND (:postType IS NULL OR p.postType = :postType)
+        ORDER BY p.createdAt DESC, p.id DESC
+        """
+    )
+    fun findPosts(
+        tripId: Long,
+        pageable: Pageable,
+    ): List<Post>
+
+    @Query(
+        """
+        SELECT p
+        FROM Post p
+        WHERE p.trip.id = :tripId
+          AND p.deletedAt IS NULL
+          AND p.postType = :postType
+        ORDER BY p.createdAt DESC, p.id DESC
+        """
+    )
+    fun findPostsByType(
+        tripId: Long,
+        postType: PostType,
+        pageable: Pageable,
+    ): List<Post>
+
+    @Query(
+        """
+        SELECT p
+        FROM Post p
+        WHERE p.trip.id = :tripId
+          AND p.deletedAt IS NULL
           AND (
-            :cursorCreatedAt IS NULL
-            OR p.createdAt < :cursorCreatedAt
+            p.createdAt < :cursorCreatedAt
             OR (p.createdAt = :cursorCreatedAt AND p.id < :cursorId)
           )
         ORDER BY p.createdAt DESC, p.id DESC
@@ -26,9 +54,30 @@ interface PostRepository : JpaRepository<Post, Long> {
     )
     fun findPostsByCursor(
         tripId: Long,
-        postType: PostType?,
-        cursorCreatedAt: Instant?,
-        cursorId: Long?,
+        cursorCreatedAt: Instant,
+        cursorId: Long,
+        pageable: Pageable,
+    ): List<Post>
+
+    @Query(
+        """
+        SELECT p
+        FROM Post p
+        WHERE p.trip.id = :tripId
+          AND p.deletedAt IS NULL
+          AND p.postType = :postType
+          AND (
+            p.createdAt < :cursorCreatedAt
+            OR (p.createdAt = :cursorCreatedAt AND p.id < :cursorId)
+          )
+        ORDER BY p.createdAt DESC, p.id DESC
+        """
+    )
+    fun findPostsByTypeAndCursor(
+        tripId: Long,
+        postType: PostType,
+        cursorCreatedAt: Instant,
+        cursorId: Long,
         pageable: Pageable,
     ): List<Post>
 

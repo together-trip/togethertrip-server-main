@@ -10,6 +10,7 @@ import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.dto.response.PostCommentResponse
 import com.togethertrip.main.post.dto.response.PostDetailResponse
 import com.togethertrip.main.post.dto.response.PostSummaryResponse
+import com.togethertrip.main.post.service.PostDeleteService
 import com.togethertrip.main.post.service.PostService
 import com.togethertrip.main.trip.security.RequireActiveTripParticipant
 import jakarta.validation.Valid
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/trips/{tripId}/posts")
 class PostController(
     private val tripPostService: PostService,
+    private val postDeleteService: PostDeleteService,
 ) : PostApiSpec {
 
     @PostMapping
@@ -105,7 +107,7 @@ class PostController(
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
     ): ApiResponse<Unit> {
-        tripPostService.deletePost(
+        postDeleteService.deletePost(
             userId = authUser.userId,
             tripId = tripId,
             postId = postId,

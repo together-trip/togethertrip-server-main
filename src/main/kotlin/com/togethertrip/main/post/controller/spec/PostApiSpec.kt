@@ -24,7 +24,7 @@ interface PostApiSpec {
         request: CreatePostRequest,
     ): ApiResponse<PostDetailResponse>
 
-    @Operation(summary = "게시글 목록 조회", description = "여행방의 게시글 목록을 최신순으로 조회합니다. 게시글 유형으로 필터링할 수 있습니다.")
+    @Operation(summary = "게시글 목록 조회", description = "여행방의 게시글 목록을 최신순으로 조회합니다. 게시글 유형으로 필터링할 수 있으며 첨부 미리보기를 포함합니다.")
     fun getPosts(
         authUser: AuthUser,
         tripId: Long,
@@ -40,7 +40,7 @@ interface PostApiSpec {
         postId: Long,
     ): ApiResponse<PostDetailResponse>
 
-    @Operation(summary = "게시글 수정", description = "게시글 제목, 카테고리, 본문을 수정합니다.")
+    @Operation(summary = "게시글 수정", description = "게시글 제목, 카테고리, 본문, 날짜, 위치, 첨부 목록을 수정합니다. attachments가 null이면 기존 첨부를 유지하고, 빈 배열이면 전체 제거합니다.")
     fun updatePost(
         authUser: AuthUser,
         tripId: Long,
@@ -48,7 +48,7 @@ interface PostApiSpec {
         request: UpdatePostRequest,
     ): ApiResponse<PostDetailResponse>
 
-    @Operation(summary = "게시글 삭제", description = "게시글을 소프트 삭제합니다.")
+    @Operation(summary = "게시글 삭제", description = "게시글을 소프트 삭제합니다. 소비 게시글은 연결 거래를 같은 트랜잭션에서 무효 처리합니다.")
     fun deletePost(
         authUser: AuthUser,
         tripId: Long,
