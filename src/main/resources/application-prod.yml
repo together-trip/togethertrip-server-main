@@ -49,6 +49,30 @@ post:
     local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH:/var/togethertrip/uploads/post-attachments}
     public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX:/uploads/post-attachments}
 
+exchange-rate:
+  korea-exim:
+    base-url: ${KOREA_EXIM_EXCHANGE_RATE_BASE_URL:https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON}
+    auth-key: ${KOREA_EXIM_EXCHANGE_RATE_AUTH_KEY:}
+    data-code: ${KOREA_EXIM_EXCHANGE_RATE_DATA_CODE:AP01}
+    timeout: ${KOREA_EXIM_EXCHANGE_RATE_TIMEOUT:10s}
+  import-validation:
+    minimum-row-count: ${EXCHANGE_RATE_IMPORT_MINIMUM_ROW_COUNT:20}
+    required-currencies: ${EXCHANGE_RATE_IMPORT_REQUIRED_CURRENCIES:USD,JPY,EUR}
+  scheduler:
+    enabled: ${EXCHANGE_RATE_SCHEDULER_ENABLED:false}
+    cron: ${EXCHANGE_RATE_SCHEDULER_CRON:0 30 11 * * *}
+    catch-up-days: ${EXCHANGE_RATE_SCHEDULER_CATCH_UP_DAYS:7}
+  backfill:
+    enabled: ${EXCHANGE_RATE_BACKFILL_ENABLED:false}
+    from: ${EXCHANGE_RATE_BACKFILL_FROM:}
+    to: ${EXCHANGE_RATE_BACKFILL_TO:}
+    max-days-per-run: ${EXCHANGE_RATE_BACKFILL_MAX_DAYS_PER_RUN:31}
+    pause-between-requests: ${EXCHANGE_RATE_BACKFILL_PAUSE_BETWEEN_REQUESTS:300ms}
+  lock:
+    name: ${EXCHANGE_RATE_LOCK_NAME:exchange-rate:import:korea-exim}
+    wait-time: ${EXCHANGE_RATE_LOCK_WAIT_TIME:0s}
+    lease-time: ${EXCHANGE_RATE_LOCK_LEASE_TIME:10m}
+
 springdoc:
   swagger-ui:
     enabled: false

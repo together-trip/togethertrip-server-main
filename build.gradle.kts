@@ -29,6 +29,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework:spring-aop")
     implementation("org.aspectj:aspectjweaver:1.9.25.1")
+    implementation("org.redisson:redisson:3.40.2")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
