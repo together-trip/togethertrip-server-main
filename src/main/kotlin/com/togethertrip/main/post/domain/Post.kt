@@ -71,10 +71,18 @@ class Post(
         title: String?,
         category: String?,
         content: String?,
+        occurredAt: Instant?,
+        placeName: String?,
+        latitude: BigDecimal?,
+        longitude: BigDecimal?,
     ) {
         this.title = title
         this.category = category
         this.content = content
+        this.occurredAt = occurredAt
+        this.placeName = placeName
+        this.latitude = latitude
+        this.longitude = longitude
         updatedAt = Instant.now()
     }
 

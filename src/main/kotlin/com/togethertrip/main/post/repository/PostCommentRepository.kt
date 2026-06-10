@@ -15,9 +15,23 @@ interface PostCommentRepository : JpaRepository<PostComment, Long> {
         WHERE c.post.id = :postId
           AND c.parentComment IS NULL
           AND c.deletedAt IS NULL
+        ORDER BY c.createdAt ASC, c.id ASC
+        """
+    )
+    fun findRootComments(
+        postId: Long,
+        pageable: Pageable,
+    ): List<PostComment>
+
+    @Query(
+        """
+        SELECT c
+        FROM PostComment c
+        WHERE c.post.id = :postId
+          AND c.parentComment IS NULL
+          AND c.deletedAt IS NULL
           AND (
-            :cursorCreatedAt IS NULL
-            OR c.createdAt > :cursorCreatedAt
+            c.createdAt > :cursorCreatedAt
             OR (c.createdAt = :cursorCreatedAt AND c.id > :cursorId)
           )
         ORDER BY c.createdAt ASC, c.id ASC
@@ -25,8 +39,8 @@ interface PostCommentRepository : JpaRepository<PostComment, Long> {
     )
     fun findRootCommentsByCursor(
         postId: Long,
-        cursorCreatedAt: Instant?,
-        cursorId: Long?,
+        cursorCreatedAt: Instant,
+        cursorId: Long,
         pageable: Pageable,
     ): List<PostComment>
 

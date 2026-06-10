@@ -24,6 +24,11 @@ spring:
     init:
       mode: never
 
+  servlet:
+    multipart:
+      max-file-size: ${POST_ATTACHMENT_MAX_FILE_SIZE:10MB}
+      max-request-size: ${POST_ATTACHMENT_MAX_REQUEST_SIZE:50MB}
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -38,6 +43,11 @@ jwt:
 sms:
   solapi:
     base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
+
+post:
+  attachments:
+    local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH:/var/togethertrip/uploads/post-attachments}
+    public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX:/uploads/post-attachments}
 
 springdoc:
   swagger-ui:

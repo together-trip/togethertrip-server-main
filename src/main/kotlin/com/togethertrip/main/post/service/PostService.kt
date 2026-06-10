@@ -19,6 +19,8 @@ import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.service.storage.PostAttachmentStorage
+import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -27,6 +29,9 @@ import com.togethertrip.main.trip.repository.TripParticipantRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.web.multipart.MultipartFile
 
 @Service
 class PostService(
@@ -35,6 +40,7 @@ class PostService(
     private val postCommentRepository: PostCommentRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionRepository: TransactionRepository,
+    private val postAttachmentStorage: PostAttachmentStorage,
 ) {
 
     @Transactional
@@ -72,20 +78,10 @@ class PostService(
 
         postRepository.save(post)
 
-        val attachments = request.attachments.map { attachmentRequest ->
-            PostAttachment(
-                post = post,
-                attachmentType = attachmentRequest.attachmentType,
-                fileUrl = attachmentRequest.fileUrl,
-                thumbnailUrl = attachmentRequest.thumbnailUrl,
-                fileSize = attachmentRequest.fileSize,
-                mimeType = attachmentRequest.mimeType,
-                sortOrder = attachmentRequest.sortOrder,
-            )
-        }
-        if (attachments.isNotEmpty()) {
-            postAttachmentRepository.saveAll(attachments)
-        }
+        val attachments = saveAttachments(
+            post = post,
+            files = request.files,
+        )
 
         return PostDetailResponse.from(
             post = post,
@@ -104,11 +100,10 @@ class PostService(
         val pageable = PageRequest.of(0, requestedSize + 1)
         val parsedPostType = postType?.let(::parsePostType)
         val parsedCursor = cursor?.let(::parseCursor)
-        val posts = postRepository.findPostsByCursor(
+        val posts = findPosts(
             tripId = tripId,
             postType = parsedPostType,
-            cursorCreatedAt = parsedCursor?.createdAt,
-            cursorId = parsedCursor?.id,
+            cursor = parsedCursor,
             pageable = pageable,
         )
         val responseItems = posts.take(requestedSize)
@@ -123,12 +118,54 @@ class PostService(
             null
         }
 
+        val attachmentsByPostId = findAttachmentsByPostId(responseItems)
+
         return CursorResponse(
-            items = responseItems.map(PostSummaryResponse::from),
+            items = responseItems.map { post ->
+                PostSummaryResponse.from(
+                    post = post,
+                    attachments = attachmentsByPostId[post.id] ?: emptyList(),
+                )
+            },
             nextCursor = nextCursor,
             hasNext = hasNext,
             size = responseItems.size,
         )
+    }
+
+    private fun findPosts(
+        tripId: Long,
+        postType: PostType?,
+        cursor: PostCursor?,
+        pageable: PageRequest,
+    ): List<Post> {
+        return when {
+            postType != null && cursor != null -> postRepository.findPostsByTypeAndCursor(
+                tripId = tripId,
+                postType = postType,
+                cursorCreatedAt = cursor.createdAt,
+                cursorId = cursor.id,
+                pageable = pageable,
+            )
+
+            postType != null -> postRepository.findPostsByType(
+                tripId = tripId,
+                postType = postType,
+                pageable = pageable,
+            )
+
+            cursor != null -> postRepository.findPostsByCursor(
+                tripId = tripId,
+                cursorCreatedAt = cursor.createdAt,
+                cursorId = cursor.id,
+                pageable = pageable,
+            )
+
+            else -> postRepository.findPosts(
+                tripId = tripId,
+                pageable = pageable,
+            )
+        }
     }
 
     @Transactional(readOnly = true)
@@ -169,33 +206,26 @@ class PostService(
             title = request.title,
             category = request.category,
             content = request.content,
+            occurredAt = request.occurredAt,
+            placeName = request.placeName,
+            latitude = request.latitude,
+            longitude = request.longitude,
         )
 
-        val attachments = postAttachmentRepository
-            .findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(postId)
+        val attachments = if (request.replaceAttachments) {
+            replaceAttachments(
+                post = post,
+                files = request.files,
+            )
+        } else {
+            postAttachmentRepository
+                .findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(postId)
+        }
 
         return PostDetailResponse.from(
             post = post,
             attachments = attachments,
         )
-    }
-
-    @Transactional
-    fun deletePost(
-        userId: Long,
-        tripId: Long,
-        postId: Long,
-    ) {
-        val post = getPostOrThrow(
-            tripId = tripId,
-            postId = postId,
-        )
-        validateAuthor(
-            author = post.author,
-            userId = userId,
-        )
-
-        post.markDeleted()
     }
 
     @Transactional
@@ -239,12 +269,19 @@ class PostService(
         val requestedSize = size?.coerceIn(1, MAX_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
         val pageable = PageRequest.of(0, requestedSize + 1)
         val parsedCursor = cursor?.let(::parseCommentCursor)
-        val comments = postCommentRepository.findRootCommentsByCursor(
-            postId = postId,
-            cursorCreatedAt = parsedCursor?.createdAt,
-            cursorId = parsedCursor?.id,
-            pageable = pageable,
-        )
+        val comments = if (parsedCursor == null) {
+            postCommentRepository.findRootComments(
+                postId = postId,
+                pageable = pageable,
+            )
+        } else {
+            postCommentRepository.findRootCommentsByCursor(
+                postId = postId,
+                cursorCreatedAt = parsedCursor.createdAt,
+                cursorId = parsedCursor.id,
+                pageable = pageable,
+            )
+        }
         val responseItems = comments.take(requestedSize)
         val hasNext = comments.size > requestedSize
         val nextCursor = if (hasNext && responseItems.isNotEmpty()) {
@@ -320,6 +357,76 @@ class PostService(
         }
     }
 
+    private fun findAttachmentsByPostId(posts: List<Post>): Map<Long, List<PostAttachment>> {
+        if (posts.isEmpty()) {
+            return emptyMap()
+        }
+
+        return postAttachmentRepository
+            .findByPostIdInAndDeletedAtIsNullOrderByPostIdAscSortOrderAsc(posts.map { it.id })
+            .groupBy { it.post.id }
+    }
+
+    private fun replaceAttachments(
+        post: Post,
+        files: List<MultipartFile>,
+    ): List<PostAttachment> {
+        postAttachmentRepository
+            .findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(post.id)
+            .forEach { it.markDeleted() }
+
+        return saveAttachments(
+            post = post,
+            files = files,
+        )
+    }
+
+    private fun saveAttachments(
+        post: Post,
+        files: List<MultipartFile>,
+    ): List<PostAttachment> {
+        if (files.size > MAX_ATTACHMENT_COUNT) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+
+        val postAttachments = files.mapIndexed { index, file ->
+            val storedAttachment = postAttachmentStorage.store(file)
+            registerRollbackCleanup(storedAttachment)
+
+            PostAttachment(
+                post = post,
+                attachmentType = storedAttachment.attachmentType,
+                fileUrl = storedAttachment.fileUrl,
+                thumbnailUrl = storedAttachment.thumbnailUrl,
+                fileSize = storedAttachment.fileSize,
+                mimeType = storedAttachment.mimeType,
+                sortOrder = index,
+            )
+        }
+
+        if (postAttachments.isNotEmpty()) {
+            postAttachmentRepository.saveAll(postAttachments)
+        }
+
+        return postAttachments.sortedBy { it.sortOrder }
+    }
+
+    private fun registerRollbackCleanup(storedAttachment: StoredPostAttachment) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCompletion(status: Int) {
+                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                        postAttachmentStorage.delete(storedAttachment)
+                    }
+                }
+            }
+        )
+    }
+
     private fun parsePostType(postType: String): PostType {
         return try {
             PostType.valueOf(postType.uppercase())
@@ -347,5 +454,6 @@ class PostService(
     private companion object {
         const val DEFAULT_PAGE_SIZE = 20
         const val MAX_PAGE_SIZE = 100
+        const val MAX_ATTACHMENT_COUNT = 10
     }
 }

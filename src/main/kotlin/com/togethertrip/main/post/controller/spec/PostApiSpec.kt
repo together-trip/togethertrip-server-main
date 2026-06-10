@@ -17,14 +17,20 @@ import io.swagger.v3.oas.annotations.tags.Tag
 @SecurityRequirement(name = "bearerAuth")
 interface PostApiSpec {
 
-    @Operation(summary = "게시글 작성", description = "거래 기반 기록 또는 일반 여행 기록을 작성합니다. 첨부 파일을 함께 등록할 수 있습니다.")
+    @Operation(
+        summary = "게시글 작성",
+        description = "multipart/form-data로 거래 기반 기록 또는 일반 여행 기록을 작성합니다. files 필드로 첨부 파일을 함께 업로드합니다.",
+    )
     fun createPost(
         authUser: AuthUser,
         tripId: Long,
         request: CreatePostRequest,
     ): ApiResponse<PostDetailResponse>
 
-    @Operation(summary = "게시글 목록 조회", description = "여행방의 게시글 목록을 최신순으로 조회합니다. 게시글 유형으로 필터링할 수 있습니다.")
+    @Operation(
+        summary = "게시글 목록 조회",
+        description = "여행방의 게시글 목록을 최신순으로 조회합니다. 게시글 유형으로 필터링할 수 있으며 첨부 미리보기를 포함합니다."
+    )
     fun getPosts(
         authUser: AuthUser,
         tripId: Long,
@@ -40,7 +46,10 @@ interface PostApiSpec {
         postId: Long,
     ): ApiResponse<PostDetailResponse>
 
-    @Operation(summary = "게시글 수정", description = "게시글 제목, 카테고리, 본문을 수정합니다.")
+    @Operation(
+        summary = "게시글 수정",
+        description = "multipart/form-data로 게시글 제목, 카테고리, 본문, 날짜, 위치를 수정합니다. replaceAttachments=false면 기존 첨부를 유지하고, true면 files 목록으로 교체하며 files가 비어 있으면 전체 제거합니다."
+    )
     fun updatePost(
         authUser: AuthUser,
         tripId: Long,
@@ -48,7 +57,7 @@ interface PostApiSpec {
         request: UpdatePostRequest,
     ): ApiResponse<PostDetailResponse>
 
-    @Operation(summary = "게시글 삭제", description = "게시글을 소프트 삭제합니다.")
+    @Operation(summary = "게시글 삭제", description = "게시글을 소프트 삭제합니다. 소비 게시글은 연결 거래를 같은 트랜잭션에서 무효 처리합니다.")
     fun deletePost(
         authUser: AuthUser,
         tripId: Long,

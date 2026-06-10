@@ -1,7 +1,9 @@
 package com.togethertrip.main.post.dto.response
 
 import com.togethertrip.main.post.domain.Post
+import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostType
+import com.togethertrip.main.trip.dto.response.TripParticipantDisplay
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -20,19 +22,23 @@ data class PostSummaryResponse(
     val latitude: BigDecimal?,
     val longitude: BigDecimal?,
     val commentCount: Int,
+    val attachments: List<PostAttachmentResponse>,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
     companion object {
         private const val PREVIEW_LENGTH = 120
 
-        fun from(post: Post): PostSummaryResponse {
+        fun from(
+            post: Post,
+            attachments: List<PostAttachment> = emptyList(),
+        ): PostSummaryResponse {
             return PostSummaryResponse(
                 id = post.id,
                 tripId = post.trip.id,
                 transactionId = post.transaction?.id,
                 authorParticipantId = post.author.id,
-                authorDisplayName = post.author.displayName,
+                authorDisplayName = TripParticipantDisplay.displayName(post.author),
                 postType = post.postType,
                 title = post.title,
                 category = post.category,
@@ -42,6 +48,7 @@ data class PostSummaryResponse(
                 latitude = post.latitude,
                 longitude = post.longitude,
                 commentCount = post.commentCount,
+                attachments = attachments.map(PostAttachmentResponse::from),
                 createdAt = post.createdAt,
                 updatedAt = post.updatedAt,
             )

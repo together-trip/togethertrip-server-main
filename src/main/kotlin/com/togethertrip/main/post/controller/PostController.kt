@@ -10,12 +10,15 @@ import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.dto.response.PostCommentResponse
 import com.togethertrip.main.post.dto.response.PostDetailResponse
 import com.togethertrip.main.post.dto.response.PostSummaryResponse
+import com.togethertrip.main.post.service.PostDeleteService
 import com.togethertrip.main.post.service.PostService
 import com.togethertrip.main.trip.security.RequireActiveTripParticipant
 import jakarta.validation.Valid
+import org.springframework.http.MediaType
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -28,14 +31,15 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/trips/{tripId}/posts")
 class PostController(
     private val tripPostService: PostService,
+    private val postDeleteService: PostDeleteService,
 ) : PostApiSpec {
 
-    @PostMapping
+    @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     @RequireActiveTripParticipant
     override fun createPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-        @Valid @RequestBody request: CreatePostRequest,
+        @Valid @ModelAttribute request: CreatePostRequest,
     ): ApiResponse<PostDetailResponse> {
         return ApiResponse.success(
             tripPostService.createPost(
@@ -80,13 +84,13 @@ class PostController(
         )
     }
 
-    @PatchMapping("/{postId}")
+    @PatchMapping("/{postId}", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     @RequireActiveTripParticipant
     override fun updatePost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-        @Valid @RequestBody request: UpdatePostRequest,
+        @Valid @ModelAttribute request: UpdatePostRequest,
     ): ApiResponse<PostDetailResponse> {
         return ApiResponse.success(
             tripPostService.updatePost(
@@ -105,7 +109,7 @@ class PostController(
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
     ): ApiResponse<Unit> {
-        tripPostService.deletePost(
+        postDeleteService.deletePost(
             userId = authUser.userId,
             tripId = tripId,
             postId = postId,
