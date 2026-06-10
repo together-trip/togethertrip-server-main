@@ -79,4 +79,10 @@ class Trip(
         this.endDate = endDate
         this.updatedAt = updatedAt
     }
+
+    fun markSettled(settledAt: Instant = Instant.now()) {
+        settlementStatus = TripSettlementStatus.SETTLED
+        this.settledAt = settledAt
+        updatedAt = settledAt
+    }
 }

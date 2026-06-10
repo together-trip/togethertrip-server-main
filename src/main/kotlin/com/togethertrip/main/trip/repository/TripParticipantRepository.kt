@@ -1,8 +1,11 @@
 package com.togethertrip.main.trip.repository
 
+import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantRow
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 
 interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
     fun findByTripIdAndUserIdAndDeletedAtIsNull(
@@ -23,4 +26,25 @@ interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
         tripId: Long,
         participantStatus: TripParticipantStatus,
     ): TripParticipant?
+
+    @Query(
+        value = """
+        select participant.id as "participantId",
+               participant.user_id as "userId",
+               participant.display_name as "displayName",
+               participant.profile_image_url as "profileImageUrl",
+               participant.participant_status as "participantStatus",
+               user_account.status as "userStatus"
+        from trip_participants participant
+        left join users user_account on user_account.id = participant.user_id
+        where participant.trip_id = :tripId
+          and participant.id in (:participantIds)
+        order by participant.created_at asc, participant.id asc
+        """,
+        nativeQuery = true
+    )
+    fun findSettlementParticipantRows(
+        @Param("tripId") tripId: Long,
+        @Param("participantIds") participantIds: Collection<Long>,
+    ): List<SettlementParticipantRow>
 }

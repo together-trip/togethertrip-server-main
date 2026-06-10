@@ -57,4 +57,63 @@ class SettlementTransfer(
     @Column(name = "completed_at")
     var completedAt: Instant? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun confirmAsSender(confirmedAt: Instant = Instant.now()) {
+        if (senderConfirmedAt != null) {
+            return
+        }
+
+        senderConfirmedAt = confirmedAt
+        status = when (status) {
+            SettlementTransferStatus.PENDING -> SettlementTransferStatus.SENDER_CONFIRMED
+            SettlementTransferStatus.RECEIVER_CONFIRMED -> SettlementTransferStatus.COMPLETED
+            else -> status
+        }
+        if (status == SettlementTransferStatus.COMPLETED && completedAt == null) {
+            completedAt = confirmedAt
+        }
+        updatedAt = confirmedAt
+    }
+
+    fun confirmAsReceiver(confirmedAt: Instant = Instant.now()) {
+        if (receiverConfirmedAt != null) {
+            return
+        }
+
+        receiverConfirmedAt = confirmedAt
+        status = when (status) {
+            SettlementTransferStatus.PENDING -> SettlementTransferStatus.RECEIVER_CONFIRMED
+            SettlementTransferStatus.SENDER_CONFIRMED -> SettlementTransferStatus.COMPLETED
+            else -> status
+        }
+        if (status == SettlementTransferStatus.COMPLETED && completedAt == null) {
+            completedAt = confirmedAt
+        }
+        updatedAt = confirmedAt
+    }
+
+    fun autoConfirmSender(
+        reason: String,
+        confirmedAt: Instant = Instant.now(),
+    ) {
+        val wasConfirmed = senderConfirmedAt != null
+        confirmAsSender(confirmedAt)
+        if (!wasConfirmed) {
+            autoConfirmed = true
+            autoConfirmReason = reason
+        }
+    }
+
+    fun autoConfirmReceiver(
+        reason: String,
+        confirmedAt: Instant = Instant.now(),
+    ) {
+        val wasConfirmed = receiverConfirmedAt != null
+        confirmAsReceiver(confirmedAt)
+        if (!wasConfirmed) {
+            autoConfirmed = true
+            autoConfirmReason = reason
+        }
+    }
+}
