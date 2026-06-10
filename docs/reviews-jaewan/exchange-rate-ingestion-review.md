@@ -24,7 +24,8 @@
 - lock이 만료되거나 Redis 장애로 중복 실행이 발생해도 `exchange_rates` native upsert가 최종 중복 방어선으로 동작한다.
 - upsert는 row별 query가 아니라 날짜별 통화 목록을 bulk `VALUES` query 1회로 저장해 백필 시 DB round-trip을 줄인다.
 - Redisson client는 기존 Redis host/port를 사용하고, 운영 Redis password가 있는 경우도 반영한다.
-- scheduler는 기본 `catch-up-days = 7`로 오늘 포함 최대 8일 범위의 `exchange_rate_import_runs.SUCCESS`가 아닌 날짜를 재확인하므로, 11시 30분 정시 수집 실패분도 다음 스케줄에서 자동 보정된다.
+- scheduler는 기본 `catch-up-days = 7`로 오늘 포함 최대 8일 범위의 미완료 날짜를 재확인하므로, 11시 30분 정시 수집 실패분도 다음 스케줄에서 자동 보정된다.
+- 토요일/일요일은 기본 `skip-weekends = true` 정책으로 API 호출 없이 `NON_BUSINESS_DAY`로 기록해 반복 호출을 피한다.
 - run 상태 전이는 별도 service의 `REQUIRES_NEW` 트랜잭션으로 처리해 self-invocation으로 트랜잭션이 빠지는 위험을 피했다.
 
 남은 위험:
@@ -41,6 +42,7 @@
 - 저장 row는 `baseCurrency = KRW`, `targetCurrency = 정규화 통화`, `source = KOREA_EXIM`으로 통일했다.
 - `rate <= 0`, 숫자 파싱 실패, 비어 있는 통화/환율은 저장하지 않고 실패한다.
 - provider 성공 응답이어도 정규화 row 수가 기본 20개 미만이거나 `USD`, `JPY`, `EUR` 필수 통화가 빠지면 저장하지 않고 실패한다.
+- 주말은 고시 데이터가 없는 정상 케이스로 보고 원천 환율 row를 만들지 않으며, 거래 조회는 직전 고시 환율 fallback 정책을 사용한다.
 
 판단: 적합.
 
@@ -59,9 +61,10 @@
 - 정규화 테스트로 comma 파싱, 100단위 통화 변환, 0 이하/비숫자 실패를 검증했다.
 - import service 테스트로 정상 저장, 데이터 없음, 실패 result code를 검증했다.
 - scheduler/backfill 테스트로 enabled 조건과 날짜 범위 호출을 검증했다.
-- backfill 테스트로 긴 범위를 그대로 받되 `SUCCESS`가 아닌 날짜 중 `max-days-per-run`개만 처리하도록 수집 service에 위임하는지 검증했다.
-- scheduler catch-up 테스트로 최근 기간 중 `SUCCESS`가 아닌 날짜만 자동 수집하는 경로를 검증했다.
+- backfill 테스트로 긴 범위를 그대로 받되 완료되지 않은 날짜 중 `max-days-per-run`개만 처리하도록 수집 service에 위임하는지 검증했다.
+- scheduler catch-up 테스트로 최근 기간 중 완료되지 않은 날짜만 자동 수집하는 경로를 검증했다.
 - import run 테스트로 `RUNNING`, `SUCCESS`, `FAILED` 상태 기록과 attempt count 증가를 검증했다.
+- 비영업일 테스트로 주말에는 API/client/upsert 호출 없이 `NON_BUSINESS_DAY`로 기록되는지 검증했다.
 - bulk upsert repository 테스트로 빈 row는 DB를 호출하지 않고, 다중 row는 한 번의 `INSERT ... VALUES ... ON CONFLICT` query로 전달되는지 검증했다.
 - 예외 격리 테스트로 한 날짜 수집 실패 후 다음 날짜 수집이 계속되는지 검증했다.
 - Redisson lock 테스트로 lock 획득 성공/실패와 unlock 동작을 검증했다.

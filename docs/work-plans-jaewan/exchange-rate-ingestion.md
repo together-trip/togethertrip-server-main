@@ -22,8 +22,8 @@
 ## 추천 구현 조합
 
 - 수집 실행: Spring `@Scheduled`
-- 실패 보정: scheduler 실행 시 최근 `exchange-rate.scheduler.catch-up-days`일과 오늘을 포함한 기간에서 `exchange_rate_import_runs`가 `SUCCESS`가 아닌 날짜를 자동 수집
-- 수집 정합성 원장: `exchange_rate_import_runs`에 provider/date별 `PENDING`, `RUNNING`, `SUCCESS`, `NO_DATA`, `FAILED`와 시도 횟수, row 수, upsert 수, 마지막 오류를 기록
+- 실패 보정: scheduler 실행 시 최근 `exchange-rate.scheduler.catch-up-days`일과 오늘을 포함한 기간에서 아직 완료되지 않은 날짜를 자동 수집
+- 수집 정합성 원장: `exchange_rate_import_runs`에 provider/date별 `PENDING`, `RUNNING`, `SUCCESS`, `NO_DATA`, `FAILED`, `NON_BUSINESS_DAY`와 시도 횟수, row 수, upsert 수, 마지막 오류를 기록
 - 서버 이중화 중복 실행 방지: Redisson `RLock` 기반 Redis 분산락
 - 저장 idempotency: PostgreSQL native `INSERT ... ON CONFLICT ... DO UPDATE`
 - 초기 데이터 확보: property-gated `CommandLineRunner` one-shot 백필
@@ -36,8 +36,9 @@
 - Redisson은 Redis 분산락에 특화된 `RLock`, lease time, watchdog, 안전한 unlock API를 제공하므로 Jedis로 직접 `SET NX PX`/Lua unlock을 구현하는 것보다 구현 위험이 낮다.
 - 락이 만료되거나 수동 백필이 겹쳐도 DB upsert가 최종 중복 방어선이 된다.
 - 한 날짜의 여러 통화 row는 bulk `VALUES` upsert 1회로 저장해 DB round-trip을 줄인다.
-- 기본 `catch-up-days = 7`이므로 매일 실행 시 오늘 포함 최대 8일 범위를 확인하고, `SUCCESS`가 아닌 날짜를 자동으로 다시 호출한다.
+- 기본 `catch-up-days = 7`이므로 매일 실행 시 오늘 포함 최대 8일 범위를 확인하고, 완료되지 않은 날짜를 자동으로 다시 호출한다.
 - 기본 검증 기준은 `minimum-row-count = 20`, `required-currencies = USD,JPY,EUR`이다. 기준 미달이면 저장하지 않고 `FAILED`로 남긴다.
+- 기본 `skip-weekends = true`로 토요일/일요일은 API 호출 없이 `NON_BUSINESS_DAY`로 기록한다.
 - 추후 Lambda나 별도 worker로 이관하더라도 API client, normalizer, import service 정책을 재사용하기 쉽다.
 
 ## 제외 범위
@@ -161,6 +162,11 @@ TDD Guide, Security Reviewer, Verify Agent.
    - `source = KOREA_EXIM`으로 저장한다.
    - 정규화 구현은 provider별 변환 책임으로 보고 `exchange.service.normalizer`에 둔다.
 
+4-1. 비영업일 skip 정책 구현
+   - `skip-weekends = true`일 때 토요일/일요일은 한국수출입은행 API를 호출하지 않는다.
+   - 해당 날짜는 `exchange_rate_import_runs.NON_BUSINESS_DAY`로 기록해 이후 catch-up/backfill에서 반복 호출하지 않는다.
+   - 국내 공휴일은 매년 변동되므로 별도 영업일 캘린더가 없는 현재 범위에서는 API 응답 `NO_DATA`로 기록하고, 이후 정책 확장 대상으로 둔다.
+
 5. upsert repository 구현
    - native query로 `exchange_rates`에 idempotent bulk upsert를 수행한다.
    - 한 날짜의 통화 row 목록은 `NamedParameterJdbcTemplate`과 다중 `VALUES` 구문으로 한 번에 저장한다.
@@ -187,14 +193,14 @@ TDD Guide, Security Reviewer, Verify Agent.
    - `from`, `to`가 없으면 실행하지 않고 명확한 설정 오류로 실패한다.
    - 같은 날짜 범위를 재실행해도 upsert로 idempotent하게 동작한다.
    - `exchange_rate_import_runs.SUCCESS`인 날짜는 API 호출 없이 건너뛴다.
-   - 기본 `max-days-per-run = 31`로 긴 백필 범위 중 `SUCCESS`가 아닌 날짜를 앞에서부터 최대 31일만 처리한다.
+   - 기본 `max-days-per-run = 31`로 긴 백필 범위 중 완료되지 않은 날짜를 앞에서부터 최대 31일만 처리한다.
    - 기본 `pause-between-requests = 300ms`로 provider/API/DB에 가는 연속 부하를 낮춘다.
    - 운영 기동마다 반복되는 사고를 막기 위해 기본값은 항상 disabled로 둔다.
 
 9. 운영 scheduler 구현
    - `exchange-rate.scheduler.enabled=true`일 때만 실행한다.
    - `Asia/Seoul` 기준 현재 날짜를 기준으로 최근 `catch-up-days`일과 오늘을 확인한다.
-   - 기본값은 `catch-up-days = 7`이며, 오늘 포함 최대 8일 범위에서 `exchange_rate_import_runs`가 `SUCCESS`가 아닌 날짜만 수집한다.
+   - 기본값은 `catch-up-days = 7`이며, 오늘 포함 최대 8일 범위에서 완료되지 않은 날짜만 수집한다.
    - 한국수출입은행 데이터 공개 지연을 고려해 운영 실행 시각은 오전 늦은 시간 또는 오후로 둔다.
    - Redisson `RLock`으로 이중화 서버 중 하나만 실행하게 한다.
 
@@ -222,6 +228,12 @@ TDD Guide, Security Reviewer, Verify Agent.
   - scheduler 로그에 provider/date/result를 남긴다.
   - `exchange_rate_import_runs`에는 `NO_DATA`로 기록한다.
   - 다음 scheduler 실행에서도 `catch-up-days` 범위 안에 있고 `SUCCESS`가 아니므로 다시 자동 수집 대상이 된다.
+  - 거래 조회는 기존 정책대로 이전 날짜 최신 환율을 사용한다.
+
+- 주말:
+  - API를 호출하지 않는다.
+  - `exchange_rate_import_runs`에는 `NON_BUSINESS_DAY`로 기록한다.
+  - 이후 scheduler/backfill에서 완료된 날짜로 보고 다시 호출하지 않는다.
   - 거래 조회는 기존 정책대로 이전 날짜 최신 환율을 사용한다.
 
 - 인증 오류:
@@ -259,9 +271,9 @@ EXCHANGE_RATE_BACKFILL_TO=2026-06-10 \
 실행 숫자 기준:
 
 - `from=2026-06-03`, `to=2026-06-10`이면 총 8일을 순서대로 수집한다.
-- 기본 `max-days-per-run = 31`이므로 전체 범위가 길어도 `SUCCESS`가 아닌 날짜 중 앞에서부터 최대 31일만 처리한다.
+- 기본 `max-days-per-run = 31`이므로 전체 범위가 길어도 완료되지 않은 날짜 중 앞에서부터 최대 31일만 처리한다.
 - 이미 `exchange_rate_import_runs.SUCCESS`인 날짜는 처리 개수에 포함하지 않고 API 호출 없이 건너뛴다.
-- 예를 들어 `from=2015-01-01`, `to=2026-06-11`, `max-days-per-run=1000`이고 2019년 12월 31일까지 `SUCCESS`라면 2020년 1월 1일부터 `SUCCESS`가 아닌 날짜 최대 1000개를 처리한다.
+- 예를 들어 `from=2015-01-01`, `to=2026-06-11`, `max-days-per-run=1000`이고 2019년 12월 31일까지 완료 상태라면 2020년 1월 1일부터 완료되지 않은 날짜 최대 1000개를 처리한다.
 - 날짜별 수집 사이에는 기본 300ms pause를 둔다.
 - 날짜별 API timeout 기본값은 10초다.
 - Redisson lock name은 `exchange-rate:import:korea-exim`이다.

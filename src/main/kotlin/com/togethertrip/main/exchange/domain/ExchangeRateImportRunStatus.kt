@@ -6,4 +6,5 @@ enum class ExchangeRateImportRunStatus {
     SUCCESS,
     NO_DATA,
     FAILED,
+    NON_BUSINESS_DAY,
 }

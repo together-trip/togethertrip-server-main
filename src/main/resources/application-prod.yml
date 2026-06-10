@@ -58,6 +58,7 @@ exchange-rate:
   import-validation:
     minimum-row-count: ${EXCHANGE_RATE_IMPORT_MINIMUM_ROW_COUNT:20}
     required-currencies: ${EXCHANGE_RATE_IMPORT_REQUIRED_CURRENCIES:USD,JPY,EUR}
+    skip-weekends: ${EXCHANGE_RATE_IMPORT_SKIP_WEEKENDS:true}
   scheduler:
     enabled: ${EXCHANGE_RATE_SCHEDULER_ENABLED:false}
     cron: ${EXCHANGE_RATE_SCHEDULER_CRON:0 30 11 * * *}

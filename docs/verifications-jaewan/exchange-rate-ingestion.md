@@ -15,6 +15,7 @@
   - `exchange_rate_import_runs` 상태 원장
   - row 수/필수 통화 검증
   - 날짜별 bulk upsert
+  - 주말 API 호출 skip
   - top-level `exchange` feature의 엄격 패키지 분리
   - 관련 단위 테스트
 
@@ -39,10 +40,11 @@
 - 한 날짜의 여러 통화 row는 bulk upsert query 1회로 저장된다.
 - 거래 등록/수정 플로우는 외부 API client에 의존하지 않는다.
 - 환율 수집 코드는 `exchange/client`, `exchange/config`, `exchange/domain`, `exchange/repository`, `exchange/service`, `exchange/service/normalizer`, `exchange/scheduler`, `exchange/support`로 분리되어 있다.
-- scheduler 기본 `catch-up-days = 7` 기준으로 오늘 포함 최대 8일 범위에서 `exchange_rate_import_runs.SUCCESS`가 아닌 날짜만 자동 수집한다.
-- 수집 run은 `PENDING`, `RUNNING`, `SUCCESS`, `NO_DATA`, `FAILED` 상태와 시도 횟수, 저장 row 수, 마지막 오류를 기록한다.
+- scheduler 기본 `catch-up-days = 7` 기준으로 오늘 포함 최대 8일 범위에서 완료되지 않은 날짜만 자동 수집한다.
+- 수집 run은 `PENDING`, `RUNNING`, `SUCCESS`, `NO_DATA`, `FAILED`, `NON_BUSINESS_DAY` 상태와 시도 횟수, 저장 row 수, 마지막 오류를 기록한다.
 - 기본 검증 기준은 `minimum-row-count = 20`, `required-currencies = USD,JPY,EUR`이다.
-- backfill은 기본 `max-days-per-run = 31`, `pause-between-requests = 300ms`를 사용하며, 긴 범위 중 `SUCCESS`가 아닌 날짜만 앞에서부터 최대 31일 처리한다.
+- 기본 `skip-weekends = true` 기준으로 토요일/일요일은 API 호출 없이 `NON_BUSINESS_DAY`로 기록한다.
+- backfill은 기본 `max-days-per-run = 31`, `pause-between-requests = 300ms`를 사용하며, 긴 범위 중 완료되지 않은 날짜만 앞에서부터 최대 31일 처리한다.
 
 ## 미실행 검증
 

@@ -22,6 +22,14 @@ class ExchangeRateImportRunService(
         )
     }
 
+    fun hasCompleted(rateDate: LocalDate): Boolean {
+        return importRunRepository.existsByProviderAndRateDateAndStatusInAndDeletedAtIsNull(
+            provider = PROVIDER,
+            rateDate = rateDate,
+            statuses = COMPLETED_STATUSES,
+        )
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     fun start(rateDate: LocalDate) {
         val now = Instant.now()
@@ -66,6 +74,13 @@ class ExchangeRateImportRunService(
                 run.lastResultCode = "NO_DATA"
                 run.lastErrorMessage = null
             }
+            is ExchangeRateImportResult.NonBusinessDay -> {
+                run.status = ExchangeRateImportRunStatus.NON_BUSINESS_DAY
+                run.rowCount = 0
+                run.upsertCount = 0
+                run.lastResultCode = "NON_BUSINESS_DAY"
+                run.lastErrorMessage = null
+            }
             is ExchangeRateImportResult.Failed -> {
                 run.status = ExchangeRateImportRunStatus.FAILED
                 run.rowCount = 0
@@ -90,5 +105,9 @@ class ExchangeRateImportRunService(
     companion object {
         private const val PROVIDER = "KOREA_EXIM"
         private const val MAX_ERROR_MESSAGE_LENGTH = 500
+        private val COMPLETED_STATUSES = listOf(
+            ExchangeRateImportRunStatus.SUCCESS,
+            ExchangeRateImportRunStatus.NON_BUSINESS_DAY,
+        )
     }
 }

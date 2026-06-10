@@ -24,6 +24,7 @@ class ExchangeRateProperties {
     class ImportValidation {
         var minimumRowCount: Int = 20
         var requiredCurrencies: List<String> = listOf("USD", "JPY", "EUR")
+        var skipWeekends: Boolean = true
     }
 
     class Scheduler {

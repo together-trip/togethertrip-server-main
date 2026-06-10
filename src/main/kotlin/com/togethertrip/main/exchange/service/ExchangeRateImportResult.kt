@@ -16,6 +16,10 @@ sealed interface ExchangeRateImportResult {
         override val rateDate: LocalDate,
     ) : ExchangeRateImportResult
 
+    data class NonBusinessDay(
+        override val rateDate: LocalDate,
+    ) : ExchangeRateImportResult
+
     data class Failed(
         override val rateDate: LocalDate,
         val resultCode: KoreaEximExchangeRateResultCode,

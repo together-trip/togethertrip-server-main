@@ -89,4 +89,22 @@ class ExchangeRateImportRunServiceTest {
         assertNotNull(run.finishedAt)
         verify(repository).save(run)
     }
+
+    @Test
+    fun `finish는 비영업일 결과를 NON_BUSINESS_DAY로 기록한다`() {
+        val rateDate = LocalDate.parse("2026-06-13")
+        val run = ExchangeRateImportRun(provider = "KOREA_EXIM", rateDate = rateDate)
+
+        `when`(repository.findActiveForUpdate("KOREA_EXIM", rateDate)).thenReturn(run)
+
+        service.finish(ExchangeRateImportResult.NonBusinessDay(rateDate))
+
+        assertEquals(ExchangeRateImportRunStatus.NON_BUSINESS_DAY, run.status)
+        assertEquals(0, run.rowCount)
+        assertEquals(0, run.upsertCount)
+        assertEquals("NON_BUSINESS_DAY", run.lastResultCode)
+        assertEquals(null, run.lastErrorMessage)
+        assertNotNull(run.finishedAt)
+        verify(repository).save(run)
+    }
 }

@@ -166,9 +166,9 @@ class ExchangeRateImportServiceTest {
         val today = LocalDate.parse("2026-06-10")
         val missingDate = LocalDate.parse("2026-06-09")
 
-        `when`(importRunService.hasSucceeded(LocalDate.parse("2026-06-08"))).thenReturn(true)
-        `when`(importRunService.hasSucceeded(missingDate)).thenReturn(false)
-        `when`(importRunService.hasSucceeded(today)).thenReturn(true)
+        `when`(importRunService.hasCompleted(LocalDate.parse("2026-06-08"))).thenReturn(true)
+        `when`(importRunService.hasCompleted(missingDate)).thenReturn(false)
+        `when`(importRunService.hasCompleted(today)).thenReturn(true)
         `when`(client.fetchRates(missingDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
 
         val results = service.importMissingRecentRates(today = today, catchUpDays = 2)
@@ -182,8 +182,8 @@ class ExchangeRateImportServiceTest {
         val successDate = LocalDate.parse("2026-06-09")
         val missingDate = LocalDate.parse("2026-06-10")
 
-        `when`(importRunService.hasSucceeded(successDate)).thenReturn(true)
-        `when`(importRunService.hasSucceeded(missingDate)).thenReturn(false)
+        `when`(importRunService.hasCompleted(successDate)).thenReturn(true)
+        `when`(importRunService.hasCompleted(missingDate)).thenReturn(false)
         `when`(client.fetchRates(missingDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
 
         val results = service.importMissingRates(
@@ -204,9 +204,9 @@ class ExchangeRateImportServiceTest {
         val secondDate = LocalDate.parse("2026-06-02")
         val thirdDate = LocalDate.parse("2026-06-03")
 
-        `when`(importRunService.hasSucceeded(firstDate)).thenReturn(false)
-        `when`(importRunService.hasSucceeded(secondDate)).thenReturn(false)
-        `when`(importRunService.hasSucceeded(thirdDate)).thenReturn(false)
+        `when`(importRunService.hasCompleted(firstDate)).thenReturn(false)
+        `when`(importRunService.hasCompleted(secondDate)).thenReturn(false)
+        `when`(importRunService.hasCompleted(thirdDate)).thenReturn(false)
         `when`(client.fetchRates(firstDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
         `when`(client.fetchRates(secondDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
 
@@ -234,8 +234,8 @@ class ExchangeRateImportServiceTest {
         val firstDate = LocalDate.parse("2026-06-09")
         val secondDate = LocalDate.parse("2026-06-10")
 
-        `when`(importRunService.hasSucceeded(firstDate)).thenReturn(false)
-        `when`(importRunService.hasSucceeded(secondDate)).thenReturn(false)
+        `when`(importRunService.hasCompleted(firstDate)).thenReturn(false)
+        `when`(importRunService.hasCompleted(secondDate)).thenReturn(false)
         `when`(client.fetchRates(firstDate)).thenThrow(RuntimeException("timeout"))
         `when`(client.fetchRates(secondDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
 
@@ -251,5 +251,16 @@ class ExchangeRateImportServiceTest {
         verify(client).fetchRates(firstDate)
         verify(client).fetchRates(secondDate)
         verifyNoMoreInteractions(client)
+    }
+
+    @Test
+    fun `주말은 API를 호출하지 않고 비영업일로 기록한다`() {
+        val saturday = LocalDate.parse("2026-06-13")
+
+        val result = service.importByDate(saturday)
+
+        assertEquals(ExchangeRateImportResult.NonBusinessDay(saturday), result)
+        verifyNoInteractions(client, normalizer, upsertRepository)
+        verify(importRunService).finish(result)
     }
 }

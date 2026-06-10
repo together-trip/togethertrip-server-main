@@ -17,6 +17,12 @@ interface ExchangeRateImportRunRepository : JpaRepository<ExchangeRateImportRun,
         status: ExchangeRateImportRunStatus,
     ): Boolean
 
+    fun existsByProviderAndRateDateAndStatusInAndDeletedAtIsNull(
+        provider: String,
+        rateDate: LocalDate,
+        statuses: Collection<ExchangeRateImportRunStatus>,
+    ): Boolean
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
         """

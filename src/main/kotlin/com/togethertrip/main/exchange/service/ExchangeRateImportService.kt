@@ -8,6 +8,7 @@ import com.togethertrip.main.exchange.repository.ExchangeRateUpsertRepository
 import com.togethertrip.main.exchange.service.normalizer.KoreaEximExchangeRateNormalizer
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.LocalDate
 
@@ -47,7 +48,7 @@ class ExchangeRateImportService(
 
         val targetDates = generateSequence(from) { date -> date.plusDays(1) }
             .takeWhile { date -> !date.isAfter(to) }
-            .filter { rateDate -> !importRunService.hasSucceeded(rateDate) }
+            .filter { rateDate -> !importRunService.hasCompleted(rateDate) }
             .take(limit)
             .toList()
 
@@ -62,6 +63,13 @@ class ExchangeRateImportService(
     }
 
     fun importByDate(rateDate: LocalDate): ExchangeRateImportResult {
+        if (isSkippedNonBusinessDay(rateDate)) {
+            val result = ExchangeRateImportResult.NonBusinessDay(rateDate)
+            logger.info("환율 수집 대상 영업일이 아니어서 API 호출을 건너뜁니다. rateDate={}", rateDate)
+            importRunService.finish(result)
+            return result
+        }
+
         importRunService.start(rateDate)
 
         val result = try {
@@ -96,6 +104,15 @@ class ExchangeRateImportService(
 
         importRunService.finish(result)
         return result
+    }
+
+    private fun isSkippedNonBusinessDay(rateDate: LocalDate): Boolean {
+        if (!properties.importValidation.skipWeekends) {
+            return false
+        }
+
+        return rateDate.dayOfWeek == DayOfWeek.SATURDAY ||
+            rateDate.dayOfWeek == DayOfWeek.SUNDAY
     }
 
     private fun importSuccess(
