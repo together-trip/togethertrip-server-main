@@ -16,8 +16,6 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.core.task.TaskExecutor
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
 import org.springframework.transaction.PlatformTransactionManager
-import org.springframework.transaction.TransactionDefinition
-import org.springframework.transaction.interceptor.DefaultTransactionAttribute
 import java.time.LocalDate
 import java.util.concurrent.ThreadPoolExecutor
 
@@ -82,7 +80,6 @@ class ExchangeRateBatchConfig {
             .reader(reader)
             .processor(processor)
             .writer(writer)
-            .transactionAttribute(DefaultTransactionAttribute(TransactionDefinition.PROPAGATION_NOT_SUPPORTED))
             .listener(reader)
             .listener(processor)
             .listener(writer)
