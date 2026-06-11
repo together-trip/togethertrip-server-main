@@ -19,6 +19,12 @@ interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
         participantStatus: TripParticipantStatus,
     ): TripParticipant?
 
+    fun existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+        tripId: Long,
+        userId: Long,
+        participantStatus: TripParticipantStatus,
+    ): Boolean
+
     fun findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(tripId: Long): List<TripParticipant>
 
     fun findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(

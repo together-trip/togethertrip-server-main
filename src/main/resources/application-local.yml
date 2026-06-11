@@ -62,6 +62,10 @@ post:
     local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH:./uploads/post-attachments}
     public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX:/uploads/post-attachments}
 
+trip:
+  invite:
+    base-url: ${TRIP_INVITE_BASE_URL:https://togethertrip.local/invites}
+
 exchange-rate:
   korea-exim:
     base-url: ${KOREA_EXIM_EXCHANGE_RATE_BASE_URL:https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON}
