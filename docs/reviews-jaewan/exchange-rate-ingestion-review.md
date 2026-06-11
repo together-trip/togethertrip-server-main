@@ -15,7 +15,7 @@
 - Admin API는 기존 수집 service와 run 원장을 재사용해 상태 조회와 Spring Batch 기반 비동기 백필 실행을 제공한다.
 - `exchange_rate_backfill_jobs`는 운영자가 요청한 실행 단위와 진행률을 기록하고, 날짜별 상세 결과는 `exchange_rate_import_runs`가 계속 담당한다.
 - Spring Batch Job/Step/Tasklet/Listener 설정은 `exchange.batch` 패키지에 모아 일반 설정 properties와 분리했다.
-- Batch metadata는 별도 schema 없이 기본 schema의 `BATCH_*` 테이블로 둔다. 현재 프로젝트의 Flyway/JPA 기본 schema 운영 방식과 맞고, 별도 schema 설정 부담을 만들지 않는다.
+- Batch metadata는 별도 schema 없이 기본 schema의 `BATCH_*` 테이블로 둔다. 현재 프로젝트의 JPA 기본 schema 운영 방식과 맞고, 별도 schema 설정 부담을 만들지 않는다.
 - 환율 백필 원장과 Spring Batch metadata는 `V7__add_exchange_rate_backfill_jobs.sql`에 함께 두었다. 사용자 요청대로 DB를 비울 수 있는 상황이므로 별도 V8을 만들지 않아 migration 흐름을 단순하게 유지했다.
 - 로컬 sample data는 `V9001__...` versioned migration에서 `R__local_sample_data.sql` repeatable migration으로 전환했다. 로컬 seed는 자주 바뀌기 쉬워 versioned checksum 충돌보다 repeatable 재적용 모델이 맞다.
 - 외부 API 호출 후 DB 저장만 repository transaction으로 수행하도록 보완했다. 외부 네트워크 호출이 불필요하게 DB transaction 안에 머물지 않는다.

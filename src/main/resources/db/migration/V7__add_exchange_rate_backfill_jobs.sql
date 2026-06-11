@@ -25,6 +25,11 @@ CREATE INDEX IF NOT EXISTS idx_exchange_rate_backfill_jobs_status_created
     ON exchange_rate_backfill_jobs (status, created_at DESC)
     WHERE deleted_at IS NULL;
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_exchange_rate_backfill_jobs_active
+    ON exchange_rate_backfill_jobs ((1))
+    WHERE deleted_at IS NULL
+      AND status IN ('REQUESTED', 'RUNNING');
+
 CREATE INDEX IF NOT EXISTS idx_exchange_rate_backfill_jobs_requested_by_created
     ON exchange_rate_backfill_jobs (requested_by, created_at DESC)
     WHERE deleted_at IS NULL;

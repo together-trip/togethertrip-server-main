@@ -42,7 +42,7 @@
 - 기본 검증 기준은 `minimum-row-count = 20`, `required-currencies = USD,JPY,EUR`이다. 기준 미달이면 저장하지 않고 `FAILED`로 남긴다.
 - 기본 `skip-weekends = true`로 토요일/일요일은 API 호출 없이 `NON_BUSINESS_DAY`로 기록한다.
 - 운영자는 코드나 서버 접속 없이 Admin API로 날짜별 수집 상태와 백필 실행 이력을 확인하고, 대량 백필을 비동기로 요청할 수 있다.
-- Spring Batch metadata는 현재 프로젝트의 기본 schema에 둔다. 별도 schema는 Flyway/JPA/search path 운영 부담이 늘어 현재 범위에서는 사용하지 않는다.
+- Spring Batch metadata는 현재 프로젝트의 기본 schema에 둔다. 별도 schema는 DB 권한, JPA search path, 운영 설정 부담이 늘어 현재 범위에서는 사용하지 않는다.
 - 추후 Lambda나 별도 worker로 이관하더라도 API client, normalizer, import service 정책을 재사용하기 쉽다.
 
 ## 제외 범위
@@ -51,7 +51,7 @@
 - 별도 환율 수집 서버
 - Quartz clustered scheduler 도입
 - 거래 등록/수정 요청 중 외부 환율 API 직접 호출
-- Flyway migration을 통한 대량 환율 seed 데이터 삽입
+- 대량 환율 seed 데이터 삽입
 - 관리자용 UI 화면
 
 ## 브랜치 및 미병합 작업 충돌 판단
@@ -87,7 +87,7 @@ Spring Batch 관련 Job/Step/Tasklet/Listener 설정은 일반 properties 설정
 거래/정산용 공개 Controller는 추가하지 않는다. 운영자용 Controller는 `exchange.controller`에 두고 `/api/admin/**` 경로에서 `ROLE_ADMIN`만 접근하게 한다. 외부 API 호출은 `client`, 설정은 `config`, 저장 모델은 `domain`, DB 접근은 `repository`, 수집 orchestration은 `service`, provider 응답 정규화는 `service.normalizer`, 자동 실행은 `scheduler`, Redisson 분산락 adapter는 `support`에 둔다. 거래 서비스는 계속 `ExchangeRateRepository` 조회만 사용한다.
 
 절충점:
-Redisson 의존성이 추가되지만 별도 스케줄러 인프라보다 작고, 이중화 스케줄러 문제를 현재 요구에 맞게 해결한다. Jedis로 직접 분산락을 구현할 수도 있으나 lock token, TTL, 안전한 unlock, 재시도 정책을 직접 유지해야 하므로 #54 범위에서는 Redisson이 더 타당하다. native upsert는 DB 종속성이 있지만 이미 PostgreSQL/Flyway 기반 운영과 잘 맞고 idempotency를 명확히 보장한다.
+Redisson 의존성이 추가되지만 별도 스케줄러 인프라보다 작고, 이중화 스케줄러 문제를 현재 요구에 맞게 해결한다. Jedis로 직접 분산락을 구현할 수도 있으나 lock token, TTL, 안전한 unlock, 재시도 정책을 직접 유지해야 하므로 #54 범위에서는 Redisson이 더 타당하다. native upsert는 DB 종속성이 있지만 현재 PostgreSQL 기반 운영과 잘 맞고 idempotency를 명확히 보장한다.
 
 필요한 테스트:
 API result code 처리, `deal_bas_r` 파싱, 100단위 통화 정규화, upsert 재실행, 백필 범위 반복, 스케줄러가 import service를 호출하는지 검증한다.

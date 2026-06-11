@@ -15,8 +15,10 @@ import org.springframework.batch.core.job.Job
 import org.springframework.batch.core.job.parameters.JobParametersBuilder
 import org.springframework.batch.core.launch.JobOperator
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -77,31 +79,69 @@ class ExchangeRateAdminService(
         }
 
         val pauseMillis = properties.backfill.pauseBetweenRequests.toMillis()
-
         val now = Instant.now()
-        val job = backfillJobRepository.save(
-            ExchangeRateBackfillJob(
-                requestedBy = requestedBy,
-                fromDate = request.from,
-                toDate = request.to,
-                pauseBetweenRequestsMillis = pauseMillis,
-                totalRequestedDays = ChronoUnit.DAYS.between(request.from, request.to) + 1,
-                status = ExchangeRateBackfillJobStatus.REQUESTED,
-            ).also {
-                it.createdAt = now
-                it.updatedAt = now
+        var lastSaveFailure: DataIntegrityViolationException? = null
+
+        repeat(ACTIVE_SAVE_RETRY_COUNT) {
+            findReusableActiveBackfillJob(now)?.let { activeJob ->
+                return ExchangeRateBackfillJobResponse.from(activeJob)
             }
-        )
+
+            val job = createBackfillJob(
+                requestedBy = requestedBy,
+                request = request,
+                pauseMillis = pauseMillis,
+                now = now,
+            )
+
+            try {
+                return launchBackfillJob(
+                    job = backfillJobRepository.saveAndFlush(job),
+                    requestedAt = now,
+                )
+            } catch (exception: DataIntegrityViolationException) {
+                lastSaveFailure = exception
+            }
+        }
+
+        findReusableActiveBackfillJob(Instant.now())?.let { activeJob ->
+            return ExchangeRateBackfillJobResponse.from(activeJob)
+        }
+        throw lastSaveFailure ?: IllegalStateException("백필 작업 생성에 실패했습니다.")
+    }
+
+    private fun createBackfillJob(
+        requestedBy: Long,
+        request: ExchangeRateBackfillRequest,
+        pauseMillis: Long,
+        now: Instant,
+    ): ExchangeRateBackfillJob {
+        return ExchangeRateBackfillJob(
+            requestedBy = requestedBy,
+            fromDate = request.from,
+            toDate = request.to,
+            pauseBetweenRequestsMillis = pauseMillis,
+            totalRequestedDays = ChronoUnit.DAYS.between(request.from, request.to) + 1,
+            status = ExchangeRateBackfillJobStatus.REQUESTED,
+        ).also {
+            it.createdAt = now
+            it.updatedAt = now
+        }
+    }
+
+    private fun launchBackfillJob(
+        job: ExchangeRateBackfillJob,
+        requestedAt: Instant,
+    ): ExchangeRateBackfillJobResponse {
+        val parameters = JobParametersBuilder()
+            .addLong(ExchangeRateBackfillBatchConstants.PARAM_BACKFILL_JOB_ID, job.id)
+            .addString(ExchangeRateBackfillBatchConstants.PARAM_FROM, job.fromDate.toString())
+            .addString(ExchangeRateBackfillBatchConstants.PARAM_TO, job.toDate.toString())
+            .addLong(ExchangeRateBackfillBatchConstants.PARAM_PAUSE_MILLIS, job.pauseBetweenRequestsMillis)
+            .addLong(ExchangeRateBackfillBatchConstants.PARAM_REQUESTED_AT, requestedAt.toEpochMilli())
+            .toJobParameters()
 
         try {
-            val parameters = JobParametersBuilder()
-                .addLong(ExchangeRateBackfillBatchConstants.PARAM_BACKFILL_JOB_ID, job.id)
-                .addString(ExchangeRateBackfillBatchConstants.PARAM_FROM, job.fromDate.toString())
-                .addString(ExchangeRateBackfillBatchConstants.PARAM_TO, job.toDate.toString())
-                .addLong(ExchangeRateBackfillBatchConstants.PARAM_PAUSE_MILLIS, job.pauseBetweenRequestsMillis)
-                .addLong(ExchangeRateBackfillBatchConstants.PARAM_REQUESTED_AT, now.toEpochMilli())
-                .toJobParameters()
-
             val execution = jobOperator.start(exchangeRateBackfillJob, parameters)
             backfillBatchService.markBatchExecution(
                 backfillJobId = job.id,
@@ -110,15 +150,44 @@ class ExchangeRateAdminService(
             )
         } catch (exception: Exception) {
             backfillBatchService.markLaunchFailed(job.id, exception)
-            return ExchangeRateBackfillJobResponse.from(job)
+            val failedJob = backfillJobRepository.findByIdAndDeletedAtIsNull(job.id) ?: job
+            return ExchangeRateBackfillJobResponse.from(failedJob)
         }
 
         val launchedJob = backfillJobRepository.findByIdAndDeletedAtIsNull(job.id) ?: job
         return ExchangeRateBackfillJobResponse.from(launchedJob)
     }
 
+    private fun findReusableActiveBackfillJob(now: Instant): ExchangeRateBackfillJob? {
+        val activeJob = backfillJobRepository.findFirstByStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(
+            ACTIVE_BACKFILL_STATUSES
+        ) ?: return null
+
+        if (activeJob.isStaleUnlaunchedRequest(now)) {
+            backfillBatchService.markLaunchFailed(
+                backfillJobId = activeJob.id,
+                exception = IllegalStateException("Batch 실행 전 REQUESTED 상태로 오래 남은 백필 작업입니다."),
+            )
+            return null
+        }
+
+        return activeJob
+    }
+
+    private fun ExchangeRateBackfillJob.isStaleUnlaunchedRequest(now: Instant): Boolean {
+        return status == ExchangeRateBackfillJobStatus.REQUESTED &&
+            batchJobExecutionId == null &&
+            createdAt.isBefore(now.minus(STALE_REQUESTED_TIMEOUT))
+    }
+
     companion object {
         private const val PROVIDER = "KOREA_EXIM"
         private const val MAX_JOB_LIST_LIMIT = 100
+        private const val ACTIVE_SAVE_RETRY_COUNT = 2
+        private val STALE_REQUESTED_TIMEOUT = Duration.ofMinutes(1)
+        private val ACTIVE_BACKFILL_STATUSES = listOf(
+            ExchangeRateBackfillJobStatus.REQUESTED,
+            ExchangeRateBackfillJobStatus.RUNNING,
+        )
     }
 }

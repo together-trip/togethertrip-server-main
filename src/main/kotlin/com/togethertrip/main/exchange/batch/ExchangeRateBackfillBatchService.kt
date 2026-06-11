@@ -1,6 +1,5 @@
 package com.togethertrip.main.exchange.batch
 
-import com.togethertrip.main.exchange.domain.ExchangeRateBackfillJob
 import com.togethertrip.main.exchange.domain.ExchangeRateBackfillJobStatus
 import com.togethertrip.main.exchange.repository.ExchangeRateBackfillJobRepository
 import com.togethertrip.main.exchange.service.ExchangeRateImportResult
@@ -25,10 +24,11 @@ class ExchangeRateBackfillBatchService(
         pauseBetweenRequests: Duration,
     ) {
         val executed = distributedLock.runIfAcquired {
-            val job = findJob(backfillJobId)
-            markRunning(job)
-
             val targetDates = importService.findMissingRateDates(from, to)
+            markRunning(
+                backfillJobId = backfillJobId,
+                totalRequestedDays = targetDates.size.toLong(),
+            )
             targetDates.forEachIndexed { index, rateDate ->
                 if (index > 0 && !pauseBetweenRequests.isZero && !pauseBetweenRequests.isNegative) {
                     Thread.sleep(pauseBetweenRequests.toMillis())
@@ -50,19 +50,22 @@ class ExchangeRateBackfillBatchService(
         backfillJobId: Long,
         batchJobExecutionId: Long,
     ) {
-        val job = findJob(backfillJobId)
-        job.batchJobExecutionId = batchJobExecutionId
-        job.updatedAt = Instant.now()
-        backfillJobRepository.save(job)
+        requireUpdated(
+            updatedRows = backfillJobRepository.updateBatchJobExecutionId(
+                id = backfillJobId,
+                batchJobExecutionId = batchJobExecutionId,
+                updatedAt = Instant.now(),
+            ),
+            backfillJobId = backfillJobId,
+        )
     }
 
     fun markLaunchFailed(
         backfillJobId: Long,
         exception: Exception,
     ) {
-        val job = findJob(backfillJobId)
         markFailed(
-            job = job,
+            backfillJobId = backfillJobId,
             message = exception.message ?: exception::class.simpleName.orEmpty(),
         )
     }
@@ -71,84 +74,153 @@ class ExchangeRateBackfillBatchService(
         backfillJobId: Long,
         message: String?,
     ) {
-        val job = findJob(backfillJobId)
-        if (job.status == ExchangeRateBackfillJobStatus.COMPLETED ||
-            job.status == ExchangeRateBackfillJobStatus.SKIPPED_LOCKED
-        ) {
+        val now = Instant.now()
+        val updatedRows = backfillJobRepository.markFailedIfNotTerminal(
+            id = backfillJobId,
+            status = ExchangeRateBackfillJobStatus.FAILED,
+            lastErrorMessage = (message ?: "Spring Batch 백필 작업이 실패했습니다.").take(MAX_ERROR_MESSAGE_LENGTH),
+            finishedAt = now,
+            updatedAt = now,
+            terminalStatuses = TERMINAL_STATUSES,
+        )
+
+        if (updatedRows > 0) {
             return
         }
 
-        markFailed(
-            job = job,
-            message = message ?: "Spring Batch 백필 작업이 실패했습니다.",
-        )
+        val job = backfillJobRepository.findByIdAndDeletedAtIsNull(backfillJobId)
+            ?: throw IllegalArgumentException("백필 작업을 찾을 수 없습니다. id=$backfillJobId")
+        if (job.status !in TERMINAL_STATUSES) {
+            throw IllegalStateException("백필 실패 상태를 기록하지 못했습니다. id=$backfillJobId status=${job.status}")
+        }
     }
 
-    private fun markRunning(job: ExchangeRateBackfillJob) {
+    private fun markRunning(
+        backfillJobId: Long,
+        totalRequestedDays: Long,
+    ) {
         val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.RUNNING
-        job.startedAt = now
-        job.finishedAt = null
-        job.lastErrorMessage = null
-        job.updatedAt = now
-        backfillJobRepository.save(job)
+        requireUpdated(
+            updatedRows = backfillJobRepository.markRunning(
+                id = backfillJobId,
+                status = ExchangeRateBackfillJobStatus.RUNNING,
+                totalRequestedDays = totalRequestedDays,
+                startedAt = now,
+                updatedAt = now,
+            ),
+            backfillJobId = backfillJobId,
+        )
     }
 
     private fun recordResult(
         backfillJobId: Long,
         result: ExchangeRateImportResult,
     ) {
-        val job = findJob(backfillJobId)
-        job.processedDays += 1
+        val successIncrement: Int
+        val failedIncrement: Int
+        val noDataIncrement: Int
+        val nonBusinessDayIncrement: Int
+
         when (result) {
-            is ExchangeRateImportResult.Imported -> job.successCount += 1
-            is ExchangeRateImportResult.NoData -> job.noDataCount += 1
-            is ExchangeRateImportResult.NonBusinessDay -> job.nonBusinessDayCount += 1
+            is ExchangeRateImportResult.Imported -> {
+                successIncrement = 1
+                failedIncrement = 0
+                noDataIncrement = 0
+                nonBusinessDayIncrement = 0
+            }
+            is ExchangeRateImportResult.NoData -> {
+                successIncrement = 0
+                failedIncrement = 0
+                noDataIncrement = 1
+                nonBusinessDayIncrement = 0
+            }
+            is ExchangeRateImportResult.NonBusinessDay -> {
+                successIncrement = 0
+                failedIncrement = 0
+                noDataIncrement = 0
+                nonBusinessDayIncrement = 1
+            }
             is ExchangeRateImportResult.Failed,
             is ExchangeRateImportResult.Error,
-            -> job.failedCount += 1
+            -> {
+                successIncrement = 0
+                failedIncrement = 1
+                noDataIncrement = 0
+                nonBusinessDayIncrement = 0
+            }
         }
-        job.updatedAt = Instant.now()
-        backfillJobRepository.save(job)
+
+        requireUpdated(
+            updatedRows = backfillJobRepository.incrementProgress(
+                id = backfillJobId,
+                successIncrement = successIncrement,
+                failedIncrement = failedIncrement,
+                noDataIncrement = noDataIncrement,
+                nonBusinessDayIncrement = nonBusinessDayIncrement,
+                updatedAt = Instant.now(),
+            ),
+            backfillJobId = backfillJobId,
+        )
     }
 
     private fun markCompleted(backfillJobId: Long) {
-        val job = findJob(backfillJobId)
         val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.COMPLETED
-        job.finishedAt = now
-        job.updatedAt = now
-        backfillJobRepository.save(job)
+        requireUpdated(
+            updatedRows = backfillJobRepository.markFinished(
+                id = backfillJobId,
+                status = ExchangeRateBackfillJobStatus.COMPLETED,
+                finishedAt = now,
+                updatedAt = now,
+            ),
+            backfillJobId = backfillJobId,
+        )
     }
 
     private fun markSkippedLocked(backfillJobId: Long) {
-        val job = findJob(backfillJobId)
         val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.SKIPPED_LOCKED
-        job.lastErrorMessage = "환율 수집 lock을 획득하지 못했습니다."
-        job.finishedAt = now
-        job.updatedAt = now
-        backfillJobRepository.save(job)
+        requireUpdated(
+            updatedRows = backfillJobRepository.markFailed(
+                id = backfillJobId,
+                status = ExchangeRateBackfillJobStatus.SKIPPED_LOCKED,
+                lastErrorMessage = "환율 수집 lock을 획득하지 못했습니다.",
+                finishedAt = now,
+                updatedAt = now,
+            ),
+            backfillJobId = backfillJobId,
+        )
     }
 
     private fun markFailed(
-        job: ExchangeRateBackfillJob,
+        backfillJobId: Long,
         message: String,
     ) {
         val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.FAILED
-        job.lastErrorMessage = message.take(MAX_ERROR_MESSAGE_LENGTH)
-        job.finishedAt = now
-        job.updatedAt = now
-        backfillJobRepository.save(job)
+        requireUpdated(
+            updatedRows = backfillJobRepository.markFailed(
+                id = backfillJobId,
+                status = ExchangeRateBackfillJobStatus.FAILED,
+                lastErrorMessage = message.take(MAX_ERROR_MESSAGE_LENGTH),
+                finishedAt = now,
+                updatedAt = now,
+            ),
+            backfillJobId = backfillJobId,
+        )
     }
 
-    private fun findJob(backfillJobId: Long): ExchangeRateBackfillJob {
-        return backfillJobRepository.findById(backfillJobId)
-            .orElseThrow { IllegalArgumentException("백필 작업을 찾을 수 없습니다. id=$backfillJobId") }
+    private fun requireUpdated(
+        updatedRows: Int,
+        backfillJobId: Long,
+    ) {
+        require(updatedRows > 0) {
+            "백필 작업을 찾을 수 없습니다. id=$backfillJobId"
+        }
     }
 
     companion object {
         private const val MAX_ERROR_MESSAGE_LENGTH = 500
+        private val TERMINAL_STATUSES = listOf(
+            ExchangeRateBackfillJobStatus.COMPLETED,
+            ExchangeRateBackfillJobStatus.SKIPPED_LOCKED,
+        )
     }
 }
