@@ -1,4 +1,4 @@
-package com.togethertrip.main.trip.domain
+package com.togethertrip.main.exchange.domain
 
 import com.togethertrip.main.global.domain.BaseEntity
 import jakarta.persistence.Column

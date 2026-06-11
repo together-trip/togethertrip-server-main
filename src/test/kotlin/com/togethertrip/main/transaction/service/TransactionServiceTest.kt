@@ -17,13 +17,13 @@ import com.togethertrip.main.transaction.repository.TransactionEventRepository
 import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
-import com.togethertrip.main.trip.domain.ExchangeRate
+import com.togethertrip.main.exchange.domain.ExchangeRate
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
-import com.togethertrip.main.trip.repository.ExchangeRateRepository
+import com.togethertrip.main.exchange.repository.ExchangeRateRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.user.domain.User

@@ -107,8 +107,8 @@
 - 만료 상태 전환을 롤백과 분리하기 위해 `TripInvitationExpirationService`를 추가했다.
 - `TripParticipantRepository`에 active 참여자 존재 여부 조회를 추가했다.
 - `TripErrorCode`에 초대 전용 에러 코드를 추가했다.
-- `V6__add_trip_invitation_code_and_constraints.sql`로 컬럼과 index를 추가했다.
-- `V7__add_trip_invitation_type_code_check.sql`로 타입-code 정합성 check constraint를 추가했다.
+- `V8__add_trip_invitation_code_and_constraints.sql`로 컬럼과 index를 추가했다.
+- `V9__add_trip_invitation_type_code_check.sql`로 타입-code 정합성 check constraint를 추가했다.
 - `application-local.yml`, `application-prod.yml`에 `trip.invite.base-url` 설정을 추가했다.
 - `TripInviteServiceTest`를 추가해 성공/실패 흐름을 검증했다.
 
@@ -126,8 +126,8 @@
 - `src/main/kotlin/com/togethertrip/main/trip/repository/TripInvitationRepository.kt`
 - `src/main/kotlin/com/togethertrip/main/trip/repository/TripParticipantRepository.kt`
 - `src/main/kotlin/com/togethertrip/main/trip/service/TripInviteService.kt`
-- `src/main/resources/db/migration/V6__add_trip_invitation_code_and_constraints.sql`
-- `src/main/resources/db/migration/V7__add_trip_invitation_type_code_check.sql`
+- `src/main/resources/db/migration/V8__add_trip_invitation_code_and_constraints.sql`
+- `src/main/resources/db/migration/V9__add_trip_invitation_type_code_check.sql`
 - `src/main/resources/application-local.yml`
 - `src/main/resources/application-prod.yml`
 - `src/test/kotlin/com/togethertrip/main/trip/service/TripInviteServiceTest.kt`

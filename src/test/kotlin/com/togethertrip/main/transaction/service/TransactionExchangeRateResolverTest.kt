@@ -2,8 +2,8 @@ package com.togethertrip.main.transaction.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.transaction.exception.TransactionErrorCode
-import com.togethertrip.main.trip.domain.ExchangeRate
-import com.togethertrip.main.trip.repository.ExchangeRateRepository
+import com.togethertrip.main.exchange.domain.ExchangeRate
+import com.togethertrip.main.exchange.repository.ExchangeRateRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
