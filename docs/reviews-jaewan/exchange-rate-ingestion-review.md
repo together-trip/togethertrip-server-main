@@ -10,10 +10,14 @@
 
 - Controller를 추가하지 않고 scheduler/backfill 중심으로 구현해 거래 쓰기 API와 외부 API 호출을 분리했다.
 - 환율 수집 책임은 top-level `exchange` feature로 분리했다. `exchange_rates`는 여행별 데이터가 아니라 거래 플로우가 공통으로 조회하는 전역 환율 원천 데이터이므로 `trip` 하위에 두지 않는 편이 장기 이관과 provider 확장에 적합하다.
-- feature 내부도 `client/config/domain/repository/service/service.normalizer/scheduler/support`로 엄격히 나눴다. provider 통신, 설정, 저장 모델, DB 접근, orchestration, 응답 정규화, 자동 실행, 분산락 adapter가 한 패키지에 섞이지 않는다.
+- feature 내부도 `batch/client/config/controller/domain/dto/repository/service/service.normalizer/scheduler/support`로 엄격히 나눴다. Batch 실행, provider 통신, 설정, 운영자 API, 저장 모델, DTO, DB 접근, orchestration, 응답 정규화, 자동 실행, 분산락 adapter가 한 패키지에 섞이지 않는다.
 - `ExchangeRateImportService`를 중심으로 scheduler와 backfill이 같은 수집 정책을 공유한다.
-- Admin API는 기존 수집 service와 run 원장을 재사용해 상태 조회와 제한된 백필 실행을 제공한다.
-- `exchange_rate_backfill_jobs`는 운영자가 요청한 실행 단위를 기록하고, 날짜별 상세 결과는 `exchange_rate_import_runs`가 계속 담당한다.
+- Admin API는 기존 수집 service와 run 원장을 재사용해 상태 조회와 Spring Batch 기반 비동기 백필 실행을 제공한다.
+- `exchange_rate_backfill_jobs`는 운영자가 요청한 실행 단위와 진행률을 기록하고, 날짜별 상세 결과는 `exchange_rate_import_runs`가 계속 담당한다.
+- Spring Batch Job/Step/Tasklet/Listener 설정은 `exchange.batch` 패키지에 모아 일반 설정 properties와 분리했다.
+- Batch metadata는 별도 schema 없이 기본 schema의 `BATCH_*` 테이블로 둔다. 현재 프로젝트의 Flyway/JPA 기본 schema 운영 방식과 맞고, 별도 schema 설정 부담을 만들지 않는다.
+- 환율 백필 원장과 Spring Batch metadata는 `V7__add_exchange_rate_backfill_jobs.sql`에 함께 두었다. 사용자 요청대로 DB를 비울 수 있는 상황이므로 별도 V8을 만들지 않아 migration 흐름을 단순하게 유지했다.
+- 로컬 sample data는 `V9001__...` versioned migration에서 `R__local_sample_data.sql` repeatable migration으로 전환했다. 로컬 seed는 자주 바뀌기 쉬워 versioned checksum 충돌보다 repeatable 재적용 모델이 맞다.
 - 외부 API 호출 후 DB 저장만 repository transaction으로 수행하도록 보완했다. 외부 네트워크 호출이 불필요하게 DB transaction 안에 머물지 않는다.
 
 판단: 적합.
@@ -23,7 +27,7 @@
 - 서버 이중화 중복 실행 방지는 Redisson `RLock.tryLock(waitTime, leaseTime)`으로 구현했다.
 - lock name은 `exchange-rate:import:korea-exim`을 기본값으로 두고 환경변수로 교체 가능하게 했다.
 - scheduler와 backfill이 같은 lock을 사용하므로 운영 수집과 수동 백필이 동시에 같은 provider 데이터를 적재하는 상황을 피한다.
-- Admin 백필 실행 API도 같은 lock을 사용하므로 운영 수집과 화면 기반 수동 실행이 겹치는 상황을 줄인다.
+- Admin 백필 Batch step도 같은 lock을 사용하므로 운영 수집과 화면 기반 수동 실행이 겹치는 상황을 줄인다.
 - lock이 만료되거나 Redis 장애로 중복 실행이 발생해도 `exchange_rates` native upsert가 최종 중복 방어선으로 동작한다.
 - upsert는 row별 query가 아니라 날짜별 통화 목록을 bulk `VALUES` query 1회로 저장해 백필 시 DB round-trip을 줄인다.
 - conflict가 발생해도 `rate`, `source`가 동일하면 update하지 않으므로 재백필 시 불필요한 write를 줄인다.
@@ -65,7 +69,7 @@
 - 정규화 테스트로 comma 파싱, 100단위 통화 변환, 0 이하/비숫자 실패를 검증했다.
 - import service 테스트로 정상 저장, 데이터 없음, 실패 result code를 검증했다.
 - scheduler/backfill 테스트로 enabled 조건과 날짜 범위 호출을 검증했다.
-- backfill 테스트로 긴 범위를 그대로 받되 완료되지 않은 날짜 중 `max-days-per-run`개만 처리하도록 수집 service에 위임하는지 검증했다.
+- backfill 테스트로 긴 범위를 그대로 받아 완료되지 않은 날짜 전체를 수집 service에 위임하는지 검증했다.
 - scheduler catch-up 테스트로 최근 기간 중 완료되지 않은 날짜만 자동 수집하는 경로를 검증했다.
 - import run 테스트로 `RUNNING`, `SUCCESS`, `FAILED` 상태 기록과 attempt count 증가를 검증했다.
 - 비영업일 테스트로 주말에는 API/client/upsert 호출 없이 `NON_BUSINESS_DAY`로 기록되는지 검증했다.

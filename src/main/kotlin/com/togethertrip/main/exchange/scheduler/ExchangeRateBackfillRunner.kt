@@ -33,7 +33,6 @@ class ExchangeRateBackfillRunner(
             importService.importMissingRates(
                 from = from,
                 to = to,
-                maxDays = properties.backfill.maxDaysPerRun,
                 pauseBetweenRequests = properties.backfill.pauseBetweenRequests,
             )
         }

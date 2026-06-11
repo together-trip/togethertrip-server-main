@@ -189,7 +189,6 @@ class ExchangeRateImportServiceTest {
         val results = service.importMissingRates(
             from = successDate,
             to = missingDate,
-            maxDays = 31,
             pauseBetweenRequests = Duration.ZERO,
         )
 
@@ -199,7 +198,7 @@ class ExchangeRateImportServiceTest {
     }
 
     @Test
-    fun `백필은 성공하지 않은 날짜 중 최대 처리 일수만 수집한다`() {
+    fun `백필은 지정 범위의 성공하지 않은 날짜를 모두 수집한다`() {
         val firstDate = LocalDate.parse("2026-06-01")
         val secondDate = LocalDate.parse("2026-06-02")
         val thirdDate = LocalDate.parse("2026-06-03")
@@ -209,11 +208,11 @@ class ExchangeRateImportServiceTest {
         `when`(importRunService.hasCompleted(thirdDate)).thenReturn(false)
         `when`(client.fetchRates(firstDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
         `when`(client.fetchRates(secondDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
+        `when`(client.fetchRates(thirdDate)).thenReturn(KoreaEximExchangeRateFetchResult.NoData)
 
         val results = service.importMissingRates(
             from = firstDate,
             to = thirdDate,
-            maxDays = 2,
             pauseBetweenRequests = Duration.ZERO,
         )
 
@@ -221,11 +220,13 @@ class ExchangeRateImportServiceTest {
             listOf(
                 ExchangeRateImportResult.NoData(firstDate),
                 ExchangeRateImportResult.NoData(secondDate),
+                ExchangeRateImportResult.NoData(thirdDate),
             ),
             results,
         )
         verify(client).fetchRates(firstDate)
         verify(client).fetchRates(secondDate)
+        verify(client).fetchRates(thirdDate)
         verifyNoMoreInteractions(client)
     }
 

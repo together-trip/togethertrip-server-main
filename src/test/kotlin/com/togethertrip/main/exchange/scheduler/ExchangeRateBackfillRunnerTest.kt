@@ -54,17 +54,15 @@ class ExchangeRateBackfillRunnerTest {
         verify(importService).importMissingRates(
             from = LocalDate.parse("2026-06-08"),
             to = LocalDate.parse("2026-06-10"),
-            maxDays = 31,
             pauseBetweenRequests = Duration.ZERO,
         )
     }
 
     @Test
-    fun `긴 범위도 최대 처리 일수와 함께 수집 서비스에 위임한다`() {
+    fun `긴 범위도 요청한 전체 기간을 수집 서비스에 위임한다`() {
         properties.backfill.enabled = true
         properties.backfill.from = LocalDate.parse("2015-01-01")
         properties.backfill.to = LocalDate.parse("2026-06-11")
-        properties.backfill.maxDaysPerRun = 1000
         properties.backfill.pauseBetweenRequests = Duration.ofMillis(300)
         `when`(distributedLock.runIfAcquired(anyUnitBlock())).thenAnswer { invocation ->
             invocation.getArgument<() -> Unit>(0).invoke()
@@ -75,7 +73,6 @@ class ExchangeRateBackfillRunnerTest {
         verify(importService).importMissingRates(
             from = LocalDate.parse("2015-01-01"),
             to = LocalDate.parse("2026-06-11"),
-            maxDays = 1000,
             pauseBetweenRequests = Duration.ofMillis(300),
         )
     }

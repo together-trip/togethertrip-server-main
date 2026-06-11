@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface ExchangeRateBackfillJobRepository : JpaRepository<ExchangeRateBackfillJob, Long> {
 
     fun findByDeletedAtIsNullOrderByCreatedAtDesc(pageable: Pageable): List<ExchangeRateBackfillJob>
+
+    fun findByIdAndDeletedAtIsNull(id: Long): ExchangeRateBackfillJob?
 }

@@ -30,7 +30,6 @@ class ExchangeRateImportService(
         return importMissingRates(
             from = startDate,
             to = today,
-            maxDays = Long.MAX_VALUE,
             pauseBetweenRequests = Duration.ZERO,
         )
     }
@@ -38,19 +37,9 @@ class ExchangeRateImportService(
     fun importMissingRates(
         from: LocalDate,
         to: LocalDate,
-        maxDays: Long,
         pauseBetweenRequests: Duration,
     ): List<ExchangeRateImportResult> {
-        require(maxDays > 0) {
-            "maxDays는 0보다 커야 합니다."
-        }
-        val limit = maxDays.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-
-        val targetDates = generateSequence(from) { date -> date.plusDays(1) }
-            .takeWhile { date -> !date.isAfter(to) }
-            .filter { rateDate -> !importRunService.hasCompleted(rateDate) }
-            .take(limit)
-            .toList()
+        val targetDates = findMissingRateDates(from, to)
 
         return targetDates.mapIndexed { index, rateDate ->
             if (index > 0 && !pauseBetweenRequests.isZero && !pauseBetweenRequests.isNegative) {
@@ -60,6 +49,20 @@ class ExchangeRateImportService(
             logger.info("누락 환율 수집을 시작합니다. rateDate={}", rateDate)
             importByDate(rateDate)
         }
+    }
+
+    fun findMissingRateDates(
+        from: LocalDate,
+        to: LocalDate,
+    ): List<LocalDate> {
+        require(!from.isAfter(to)) {
+            "from은 to보다 이후일 수 없습니다."
+        }
+
+        return generateSequence(from) { date -> date.plusDays(1) }
+            .takeWhile { date -> !date.isAfter(to) }
+            .filter { rateDate -> !importRunService.hasCompleted(rateDate) }
+            .toList()
     }
 
     fun importByDate(rateDate: LocalDate): ExchangeRateImportResult {

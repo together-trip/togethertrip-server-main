@@ -3,6 +3,7 @@ package com.togethertrip.main.exchange.client
 import com.togethertrip.main.exchange.config.ExchangeRateProperties
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.bodyToFlux
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -29,7 +30,7 @@ class KoreaEximExchangeRateClient(
                     .build()
             }
             .retrieve()
-            .bodyToFlux(KoreaEximExchangeRateResponse::class.java)
+            .bodyToFlux<KoreaEximExchangeRateResponse>()
             .collectList()
             .block(properties.koreaExim.timeout)
             .orEmpty()

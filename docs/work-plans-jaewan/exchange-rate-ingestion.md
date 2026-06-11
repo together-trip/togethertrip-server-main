@@ -17,7 +17,7 @@
 - `(base_currency, target_currency, rate_date)` 기준 unique index가 있어 날짜/통화 중복 저장을 DB에서 방어할 수 있다.
 - `TransactionExchangeRateResolver`는 `baseCurrency = KRW`, `targetCurrency = 요청 통화`, `rateDate <= 기준일` 조건의 최신 row를 조회한다.
 - `KRW` 거래는 환율 DB 조회 없이 `1.000000`을 사용한다.
-- 외부 API 연동, 수집 스케줄러, one-shot 백필, 분산락은 아직 없다.
+- 외부 API 연동, 수집 스케줄러, Spring Batch 기반 관리자 백필, 분산락을 구현한다.
 
 ## 추천 구현 조합
 
@@ -27,7 +27,7 @@
 - 서버 이중화 중복 실행 방지: Redisson `RLock` 기반 Redis 분산락
 - 저장 idempotency: PostgreSQL native `INSERT ... ON CONFLICT ... DO UPDATE`를 사용하되, 기존 값과 달라진 경우에만 갱신
 - 초기 데이터 확보: property-gated `CommandLineRunner` one-shot 백필
-- 운영자 도구: Admin 상태 조회 API, Admin 백필 실행 API, `exchange_rate_backfill_jobs` 실행 요청 원장
+- 운영자 도구: Admin 상태 조회 API, Spring Batch 기반 비동기 백필 실행 API, `exchange_rate_backfill_jobs` 실행 요청 원장
 - 수집 핵심 로직: `ExchangeRateImportService`로 분리해 스케줄러와 백필이 같은 정책을 공유
 
 이 조합을 선택하는 이유:
@@ -41,7 +41,8 @@
 - 기본 `catch-up-days = 7`이므로 매일 실행 시 오늘 포함 최대 8일 범위를 확인하고, 완료되지 않은 날짜를 자동으로 다시 호출한다.
 - 기본 검증 기준은 `minimum-row-count = 20`, `required-currencies = USD,JPY,EUR`이다. 기준 미달이면 저장하지 않고 `FAILED`로 남긴다.
 - 기본 `skip-weekends = true`로 토요일/일요일은 API 호출 없이 `NON_BUSINESS_DAY`로 기록한다.
-- 운영자는 코드나 서버 접속 없이 Admin API로 날짜별 수집 상태와 백필 실행 이력을 확인하고, 제한된 백필을 요청할 수 있다.
+- 운영자는 코드나 서버 접속 없이 Admin API로 날짜별 수집 상태와 백필 실행 이력을 확인하고, 대량 백필을 비동기로 요청할 수 있다.
+- Spring Batch metadata는 현재 프로젝트의 기본 schema에 둔다. 별도 schema는 Flyway/JPA/search path 운영 부담이 늘어 현재 범위에서는 사용하지 않는다.
 - 추후 Lambda나 별도 worker로 이관하더라도 API client, normalizer, import service 정책을 재사용하기 쉽다.
 
 ## 제외 범위
@@ -60,7 +61,8 @@
 - `build.gradle.kts`는 Redisson 의존성 추가 위치가 로깅 AOP 의존성과 가까울 수 있으므로 rebase 시 additive conflict를 확인한다.
 - `application-*.yml`에는 `exchange-rate:` 최상위 설정 블록을 분리해 게시글 첨부 설정 등 다른 작업과 충돌 가능성을 낮춘다.
 - 환율 수집 코드는 신규 패키지/파일 중심으로 작성해 정산, 게시글, 거래 응답 DTO 작업과 직접 충돌하지 않게 한다.
-- migration 번호는 현재 최신 기준에서 `V6__...` 후보로 작성하되, 다른 migration이 먼저 병합되면 rebase 시 번호를 조정한다.
+- migration은 현재 최신 기준에서 `V7__add_exchange_rate_backfill_jobs.sql`에 환율 백필 원장과 Spring Batch metadata를 함께 둔다.
+- 로컬 sample data는 `V9001__...` versioned migration이 아니라 `R__local_sample_data.sql` repeatable migration으로 둔다. 로컬 seed 변경 때마다 checksum 때문에 DB를 수동으로 비우는 부담을 줄이기 위한 선택이다.
 
 ## TogetherTrip 에이전트 판단
 
@@ -75,7 +77,8 @@
 ### Architect
 
 아키텍처 판단:
-`exchange_rates`는 여행별 데이터가 아니라 거래 플로우가 공통으로 조회하는 전역 환율 원천 데이터다. 따라서 환율 수집과 조회 기반 코드는 `trip` 하위가 아니라 top-level `exchange` feature로 분리한다. 패키지는 가장 엄격한 feature 내부 책임 기준으로 `exchange/client`, `exchange/config`, `exchange/domain`, `exchange/repository`, `exchange/service`, `exchange/service/normalizer`, `exchange/scheduler`, `exchange/support`로 나눈다.
+`exchange_rates`는 여행별 데이터가 아니라 거래 플로우가 공통으로 조회하는 전역 환율 원천 데이터다. 따라서 환율 수집과 조회 기반 코드는 `trip` 하위가 아니라 top-level `exchange` feature로 분리한다. 패키지는 가장 엄격한 feature 내부 책임 기준으로 `exchange/batch`, `exchange/client`, `exchange/config`, `exchange/controller`, `exchange/domain`, `exchange/dto`, `exchange/repository`, `exchange/service`, `exchange/service/normalizer`, `exchange/scheduler`, `exchange/support`로 나눈다.
+Spring Batch 관련 Job/Step/Tasklet/Listener 설정은 일반 properties 설정과 분리해 `exchange/batch`에 둔다.
 
 영향받는 영역:
 `exchange` 환율 도메인, 외부 API client, 설정 properties, scheduler, Admin API, transaction 환율 조회 검증 테스트.
@@ -184,10 +187,19 @@ TDD Guide, Security Reviewer, Verify Agent.
 
 7. backfill job 원장 구현
    - `exchange_rate_backfill_jobs` 테이블을 추가한다.
-   - 운영자가 요청한 실행 단위의 `requested_by`, `from_date`, `to_date`, `max_days_per_run`, `pause_between_requests_millis`를 기록한다.
+   - 운영자가 요청한 실행 단위의 `requested_by`, `from_date`, `to_date`와 서버가 적용한 `pause_between_requests_millis`를 기록한다.
+   - Spring Batch 실행 식별자인 `batch_job_execution_id`를 기록한다.
    - 상태는 `REQUESTED`, `RUNNING`, `COMPLETED`, `FAILED`, `SKIPPED_LOCKED`로 관리한다.
    - 실행 결과로 `processed_days`, `success_count`, `failed_count`, `no_data_count`, `non_business_day_count`, `last_error_message`를 기록한다.
    - 날짜별 상세 상태는 중복 저장하지 않고 기존 `exchange_rate_import_runs`를 기준으로 조회한다.
+
+7-1. Spring Batch 백필 job 구현
+   - Spring Batch 6 기준 최신 API인 `JobOperator`와 `TaskExecutorJobOperator`를 사용한다.
+   - deprecated 된 `JobLauncher`, `TaskExecutorJobLauncher`는 사용하지 않는다.
+   - `exchangeRateBackfillJob`은 `exchangeRateBackfillStep` 단일 step으로 구성한다.
+   - step은 tasklet 기반으로 날짜 후보를 산출하고 날짜별 `importByDate`를 실행한다.
+   - Batch metadata 테이블은 별도 schema를 만들지 않고 기본 schema에 `BATCH_*` 테이블로 둔다.
+   - `exchange_rate_backfill_jobs`는 운영자 화면용 요청/진행률 원장, `BATCH_*`는 Spring Batch 기술 실행 원장, `exchange_rate_import_runs`는 날짜별 도메인 결과 원장으로 분리한다.
 
 8. import service 구현
    - `importByDate(rateDate)`를 중심 메서드로 둔다.
@@ -202,7 +214,6 @@ TDD Guide, Security Reviewer, Verify Agent.
    - `from`, `to`가 없으면 실행하지 않고 명확한 설정 오류로 실패한다.
    - 같은 날짜 범위를 재실행해도 upsert로 idempotent하게 동작한다.
    - `exchange_rate_import_runs.SUCCESS`인 날짜는 API 호출 없이 건너뛴다.
-   - 기본 `max-days-per-run = 31`로 긴 백필 범위 중 완료되지 않은 날짜를 앞에서부터 최대 31일만 처리한다.
    - 기본 `pause-between-requests = 300ms`로 provider/API/DB에 가는 연속 부하를 낮춘다.
    - 운영 기동마다 반복되는 사고를 막기 위해 기본값은 항상 disabled로 둔다.
 
@@ -217,8 +228,9 @@ TDD Guide, Security Reviewer, Verify Agent.
    - `/api/admin/**`는 `ROLE_ADMIN`만 접근할 수 있게 보안 설정을 추가한다.
    - `GET /api/admin/exchange-rates/import-runs`로 기간과 상태 기준의 날짜별 수집 상태를 조회한다.
    - `GET /api/admin/exchange-rates/backfills`로 최근 백필 실행 요청 이력을 조회한다.
-   - `POST /api/admin/exchange-rates/backfills`로 제한된 백필을 실행한다.
-   - Admin 백필 실행도 기존 Redisson lock, 완료 상태 skip, `max-days-per-run`, 날짜별 실패 격리 정책을 그대로 사용한다.
+   - `GET /api/admin/exchange-rates/backfills/{id}`로 단일 백필 요청의 진행률과 Batch execution id를 조회한다.
+   - `POST /api/admin/exchange-rates/backfills`는 `exchange_rate_backfill_jobs`를 생성하고 Spring Batch job을 비동기로 launch한 뒤 즉시 반환한다.
+   - 실제 수집은 Batch step 안에서 기존 Redisson lock, 완료 상태 skip, 날짜별 실패 격리 정책을 그대로 사용한다.
 
 12. 거래 플로우 회귀 확인
    - `TransactionExchangeRateResolver`가 외부 API client를 의존하지 않는지 확인한다.
@@ -287,9 +299,9 @@ EXCHANGE_RATE_BACKFILL_TO=2026-06-10 \
 실행 숫자 기준:
 
 - `from=2026-06-03`, `to=2026-06-10`이면 총 8일을 순서대로 수집한다.
-- 기본 `max-days-per-run = 31`이므로 전체 범위가 길어도 완료되지 않은 날짜 중 앞에서부터 최대 31일만 처리한다.
+- 전체 범위가 길어도 완료되지 않은 날짜 전체를 처리한다.
 - 이미 `exchange_rate_import_runs.SUCCESS`인 날짜는 처리 개수에 포함하지 않고 API 호출 없이 건너뛴다.
-- 예를 들어 `from=2015-01-01`, `to=2026-06-11`, `max-days-per-run=1000`이고 2019년 12월 31일까지 완료 상태라면 2020년 1월 1일부터 완료되지 않은 날짜 최대 1000개를 처리한다.
+- 예를 들어 `from=2015-01-01`, `to=2026-06-11`이고 2019년 12월 31일까지 완료 상태라면 2020년 1월 1일부터 완료되지 않은 날짜 전체를 처리한다.
 - 날짜별 수집 사이에는 기본 300ms pause를 둔다.
 - 날짜별 API timeout 기본값은 10초다.
 - Redisson lock name은 `exchange-rate:import:korea-exim`이다.
@@ -327,13 +339,11 @@ Content-Type: application/json
 
 {
   "from": "2026-06-01",
-  "to": "2026-06-11",
-  "maxDaysPerRun": 31,
-  "pauseBetweenRequestsMillis": 300
+  "to": "2026-06-11"
 }
 ```
 
-백필 실행 API는 첫 버전에서 동기 실행한다. 대신 서버가 `maxDaysPerRun`, Redisson lock, 완료 상태 skip, 날짜별 실패 격리를 강제하므로 운영자가 임의로 위험한 대량 작업을 우회하기 어렵다.
+백필 실행 API는 Spring Batch job을 비동기로 launch하고 즉시 `exchange_rate_backfill_jobs` 응답을 반환한다. 운영자는 기간만 입력하고, 서버는 Redisson lock, 완료 상태 skip, 날짜별 실패 격리, 요청 간 pause 정책을 Batch step에서 강제한다. 진행률은 `GET /api/admin/exchange-rates/backfills/{id}`로 확인한다.
 
 ## 테스트 계획
 

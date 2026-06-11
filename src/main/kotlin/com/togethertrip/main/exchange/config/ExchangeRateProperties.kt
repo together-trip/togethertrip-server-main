@@ -37,7 +37,6 @@ class ExchangeRateProperties {
         var enabled: Boolean = false
         var from: LocalDate? = null
         var to: LocalDate? = null
-        var maxDaysPerRun: Long = 31
         var pauseBetweenRequests: Duration = Duration.ofMillis(300)
     }
 

@@ -9,6 +9,7 @@ import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -42,6 +43,13 @@ class ExchangeRateAdminController(
         @RequestParam(defaultValue = "20") limit: Int,
     ): ApiResponse<List<ExchangeRateBackfillJobResponse>> {
         return ApiResponse.success(exchangeRateAdminService.getBackfillJobs(limit))
+    }
+
+    @GetMapping("/backfills/{id}")
+    fun getBackfillJob(
+        @PathVariable id: Long,
+    ): ApiResponse<ExchangeRateBackfillJobResponse> {
+        return ApiResponse.success(exchangeRateAdminService.getBackfillJob(id))
     }
 
     @PostMapping("/backfills")

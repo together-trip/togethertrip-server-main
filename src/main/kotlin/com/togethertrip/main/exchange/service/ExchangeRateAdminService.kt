@@ -1,5 +1,7 @@
 package com.togethertrip.main.exchange.service
 
+import com.togethertrip.main.exchange.batch.ExchangeRateBackfillBatchConstants
+import com.togethertrip.main.exchange.batch.ExchangeRateBackfillBatchService
 import com.togethertrip.main.exchange.config.ExchangeRateProperties
 import com.togethertrip.main.exchange.domain.ExchangeRateBackfillJob
 import com.togethertrip.main.exchange.domain.ExchangeRateBackfillJobStatus
@@ -9,10 +11,12 @@ import com.togethertrip.main.exchange.dto.response.ExchangeRateBackfillJobRespon
 import com.togethertrip.main.exchange.dto.response.ExchangeRateImportRunResponse
 import com.togethertrip.main.exchange.repository.ExchangeRateBackfillJobRepository
 import com.togethertrip.main.exchange.repository.ExchangeRateImportRunRepository
-import com.togethertrip.main.exchange.support.ExchangeRateDistributedLock
+import org.springframework.batch.core.job.Job
+import org.springframework.batch.core.job.parameters.JobParametersBuilder
+import org.springframework.batch.core.launch.JobOperator
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -20,8 +24,11 @@ import java.time.temporal.ChronoUnit
 @Service
 class ExchangeRateAdminService(
     private val properties: ExchangeRateProperties,
-    private val importService: ExchangeRateImportService,
-    private val distributedLock: ExchangeRateDistributedLock,
+    @Qualifier("asyncJobOperator")
+    private val jobOperator: JobOperator,
+    @Qualifier("exchangeRateBackfillJob")
+    private val exchangeRateBackfillJob: Job,
+    private val backfillBatchService: ExchangeRateBackfillBatchService,
     private val importRunRepository: ExchangeRateImportRunRepository,
     private val backfillJobRepository: ExchangeRateBackfillJobRepository,
 ) {
@@ -54,6 +61,13 @@ class ExchangeRateAdminService(
             .map(ExchangeRateBackfillJobResponse::from)
     }
 
+    fun getBackfillJob(id: Long): ExchangeRateBackfillJobResponse {
+        val job = backfillJobRepository.findByIdAndDeletedAtIsNull(id)
+            ?: throw IllegalArgumentException("백필 작업을 찾을 수 없습니다. id=$id")
+
+        return ExchangeRateBackfillJobResponse.from(job)
+    }
+
     fun runBackfill(
         requestedBy: Long,
         request: ExchangeRateBackfillRequest,
@@ -62,16 +76,7 @@ class ExchangeRateAdminService(
             "from은 to보다 이후일 수 없습니다."
         }
 
-        val maxDaysPerRun = request.maxDaysPerRun ?: properties.backfill.maxDaysPerRun
-        require(maxDaysPerRun > 0) {
-            "maxDaysPerRun은 0보다 커야 합니다."
-        }
-
-        val pauseMillis = request.pauseBetweenRequestsMillis
-            ?: properties.backfill.pauseBetweenRequests.toMillis()
-        require(pauseMillis >= 0) {
-            "pauseBetweenRequestsMillis는 0 이상이어야 합니다."
-        }
+        val pauseMillis = properties.backfill.pauseBetweenRequests.toMillis()
 
         val now = Instant.now()
         val job = backfillJobRepository.save(
@@ -79,7 +84,6 @@ class ExchangeRateAdminService(
                 requestedBy = requestedBy,
                 fromDate = request.from,
                 toDate = request.to,
-                maxDaysPerRun = maxDaysPerRun,
                 pauseBetweenRequestsMillis = pauseMillis,
                 totalRequestedDays = ChronoUnit.DAYS.between(request.from, request.to) + 1,
                 status = ExchangeRateBackfillJobStatus.REQUESTED,
@@ -89,81 +93,32 @@ class ExchangeRateAdminService(
             }
         )
 
-        val results = try {
-            distributedLock.runIfAcquired {
-                markRunning(job)
-                importService.importMissingRates(
-                    from = job.fromDate,
-                    to = job.toDate,
-                    maxDays = job.maxDaysPerRun,
-                    pauseBetweenRequests = Duration.ofMillis(job.pauseBetweenRequestsMillis),
-                )
-            }
+        try {
+            val parameters = JobParametersBuilder()
+                .addLong(ExchangeRateBackfillBatchConstants.PARAM_BACKFILL_JOB_ID, job.id)
+                .addString(ExchangeRateBackfillBatchConstants.PARAM_FROM, job.fromDate.toString())
+                .addString(ExchangeRateBackfillBatchConstants.PARAM_TO, job.toDate.toString())
+                .addLong(ExchangeRateBackfillBatchConstants.PARAM_PAUSE_MILLIS, job.pauseBetweenRequestsMillis)
+                .addLong(ExchangeRateBackfillBatchConstants.PARAM_REQUESTED_AT, now.toEpochMilli())
+                .toJobParameters()
+
+            val execution = jobOperator.start(exchangeRateBackfillJob, parameters)
+            backfillBatchService.markBatchExecution(
+                backfillJobId = job.id,
+                batchJobExecutionId = execution.id
+                    ?: throw IllegalStateException("Spring Batch JobExecution id가 없습니다."),
+            )
         } catch (exception: Exception) {
-            markFailed(job, exception)
+            backfillBatchService.markLaunchFailed(job.id, exception)
             return ExchangeRateBackfillJobResponse.from(job)
         }
 
-        if (results == null) {
-            markSkippedLocked(job)
-            return ExchangeRateBackfillJobResponse.from(job)
-        }
-
-        markCompleted(job, results)
-        return ExchangeRateBackfillJobResponse.from(job)
-    }
-
-    private fun markRunning(job: ExchangeRateBackfillJob) {
-        val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.RUNNING
-        job.startedAt = now
-        job.updatedAt = now
-        backfillJobRepository.save(job)
-    }
-
-    private fun markCompleted(
-        job: ExchangeRateBackfillJob,
-        results: List<ExchangeRateImportResult>,
-    ) {
-        val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.COMPLETED
-        job.processedDays = results.size
-        job.successCount = results.count { it is ExchangeRateImportResult.Imported }
-        job.failedCount = results.count {
-            it is ExchangeRateImportResult.Failed || it is ExchangeRateImportResult.Error
-        }
-        job.noDataCount = results.count { it is ExchangeRateImportResult.NoData }
-        job.nonBusinessDayCount = results.count { it is ExchangeRateImportResult.NonBusinessDay }
-        job.finishedAt = now
-        job.updatedAt = now
-        backfillJobRepository.save(job)
-    }
-
-    private fun markSkippedLocked(job: ExchangeRateBackfillJob) {
-        val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.SKIPPED_LOCKED
-        job.lastErrorMessage = "환율 수집 lock을 획득하지 못했습니다."
-        job.finishedAt = now
-        job.updatedAt = now
-        backfillJobRepository.save(job)
-    }
-
-    private fun markFailed(
-        job: ExchangeRateBackfillJob,
-        exception: Exception,
-    ) {
-        val now = Instant.now()
-        job.status = ExchangeRateBackfillJobStatus.FAILED
-        job.lastErrorMessage = (exception.message ?: exception::class.simpleName.orEmpty())
-            .take(MAX_ERROR_MESSAGE_LENGTH)
-        job.finishedAt = now
-        job.updatedAt = now
-        backfillJobRepository.save(job)
+        val launchedJob = backfillJobRepository.findByIdAndDeletedAtIsNull(job.id) ?: job
+        return ExchangeRateBackfillJobResponse.from(launchedJob)
     }
 
     companion object {
         private const val PROVIDER = "KOREA_EXIM"
         private const val MAX_JOB_LIST_LIMIT = 100
-        private const val MAX_ERROR_MESSAGE_LENGTH = 500
     }
 }

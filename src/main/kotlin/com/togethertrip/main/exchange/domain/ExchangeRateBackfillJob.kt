@@ -24,11 +24,11 @@ class ExchangeRateBackfillJob(
     @Column(name = "to_date", nullable = false)
     var toDate: LocalDate,
 
-    @Column(name = "max_days_per_run", nullable = false)
-    var maxDaysPerRun: Long,
-
     @Column(name = "pause_between_requests_millis", nullable = false)
     var pauseBetweenRequestsMillis: Long,
+
+    @Column(name = "batch_job_execution_id")
+    var batchJobExecutionId: Long? = null,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

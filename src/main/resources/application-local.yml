@@ -80,7 +80,6 @@ exchange-rate:
     enabled: ${EXCHANGE_RATE_BACKFILL_ENABLED:false}
     from: ${EXCHANGE_RATE_BACKFILL_FROM:}
     to: ${EXCHANGE_RATE_BACKFILL_TO:}
-    max-days-per-run: ${EXCHANGE_RATE_BACKFILL_MAX_DAYS_PER_RUN:31}
     pause-between-requests: ${EXCHANGE_RATE_BACKFILL_PAUSE_BETWEEN_REQUESTS:300ms}
   lock:
     name: ${EXCHANGE_RATE_LOCK_NAME:exchange-rate:import:korea-exim}
