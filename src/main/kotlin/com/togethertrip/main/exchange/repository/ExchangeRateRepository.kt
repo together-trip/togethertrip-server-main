@@ -1,6 +1,6 @@
-package com.togethertrip.main.trip.repository
+package com.togethertrip.main.exchange.repository
 
-import com.togethertrip.main.trip.domain.ExchangeRate
+import com.togethertrip.main.exchange.domain.ExchangeRate
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.LocalDate
 
