@@ -30,6 +30,15 @@ class LocalTestAuthenticationService(
             .removePrefix(TOKEN_PREFIX)
             .split(":")
 
+        // local admin 사용자 인증
+        if (parts.firstOrNull() == "admin") {
+            val user = getOrCreateAdminUser()
+            return AuthUser(
+                userId = user.id,
+                role = user.role,
+            )
+        }
+
         // 전화번호 인증 상태 파싱
         val phoneVerified = when (parts.firstOrNull()) {
             "verified" -> true
@@ -74,6 +83,31 @@ class LocalTestAuthenticationService(
 
         // local 사용자 전화번호 인증 처리
         if (phoneVerified && user.phoneVerifiedAt == null) {
+            user.verifyPhoneNumberHash(
+                phoneNumberHash = phoneNumberHasher.hash(createPhoneNumber(nickname)),
+                phoneNumberHashVersion = phoneNumberHasher.version,
+            )
+        }
+
+        return user
+    }
+
+    private fun getOrCreateAdminUser(): User {
+        val nickname = "로컬 admin"
+        val user = userRepository.findByNicknameAndDeletedAtIsNull(nickname)
+            ?: userRepository.save(
+                User(
+                    nickname = nickname,
+                    role = UserRole.ADMIN,
+                )
+            )
+
+        // local admin 권한 보정
+        if (user.role != UserRole.ADMIN) {
+            user.role = UserRole.ADMIN
+        }
+
+        if (user.phoneVerifiedAt == null) {
             user.verifyPhoneNumberHash(
                 phoneNumberHash = phoneNumberHasher.hash(createPhoneNumber(nickname)),
                 phoneNumberHashVersion = phoneNumberHasher.version,

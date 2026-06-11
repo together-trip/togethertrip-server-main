@@ -4,6 +4,7 @@
 --   local-test:verified:minseo
 --   local-test:verified:joon
 --   local-test:unverified:yuri
+--   local-test:admin
 
 INSERT INTO users (
     nickname, gender, birth_date, profile_image_url, phone_number_hash, phone_number_hash_version, phone_verified_at,
@@ -12,6 +13,7 @@ INSERT INTO users (
 SELECT *
 FROM (
     VALUES
+        ('로컬 admin', NULL, NULL, NULL, 'c9446e8da7de615e7fae28fe397071957cc06202ea57103a2419470b8e910d15', 'v1', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', 'ADMIN', 'ACTIVE', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', NULL::timestamptz),
         ('로컬 verified hana', 'FEMALE', DATE '1993-04-12', 'https://images.togethertrip.local/profiles/hana.jpg', '1570a7595ba7a92ee8946904617fd8832758ad8a35de0d418b39bb4343a689ec', 'v1', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-20T13:10:00+09:00', NULL::timestamptz),
         ('로컬 verified minseo', 'FEMALE', DATE '1994-11-03', 'https://images.togethertrip.local/profiles/minseo.jpg', '3ed0a7c60d3aa4d6df6bc49bf7078b5b75f5c6aef76bce828ff759c9a2fab8e7', 'v1', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-20T13:12:00+09:00', NULL::timestamptz),
         ('로컬 verified joon', 'MALE', DATE '1991-08-27', 'https://images.togethertrip.local/profiles/joon.jpg', '24f7b0119e429283d2f0ae886676749a52c7843ca9060de41465c0e393a09ed5', 'v1', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-20T13:15:00+09:00', NULL::timestamptz),
