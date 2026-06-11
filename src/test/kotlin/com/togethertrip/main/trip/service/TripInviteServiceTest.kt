@@ -8,6 +8,7 @@ import com.togethertrip.main.trip.domain.TripInvitationType
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.dto.request.JoinTripRequest
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripInvitationRepository
@@ -38,6 +39,7 @@ class TripInviteServiceTest {
     private lateinit var tripInvitationRepository: TripInvitationRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var userRepository: UserRepository
+    private lateinit var tripInvitationExpirationService: TripInvitationExpirationService
     private lateinit var tripInviteService: TripInviteService
 
     private val clock = Clock.fixed(
@@ -51,11 +53,13 @@ class TripInviteServiceTest {
         tripInvitationRepository = mock(TripInvitationRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         userRepository = mock(UserRepository::class.java)
+        tripInvitationExpirationService = mock(TripInvitationExpirationService::class.java)
         tripInviteService = TripInviteService(
             tripRepository = tripRepository,
             tripInvitationRepository = tripInvitationRepository,
             tripParticipantRepository = tripParticipantRepository,
             userRepository = userRepository,
+            tripInvitationExpirationService = tripInvitationExpirationService,
             clock = clock,
             inviteBaseUrl = "https://app.test/invites",
         )
@@ -176,6 +180,7 @@ class TripInviteServiceTest {
         )
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByTokenAndDeletedAtIsNull("invite-token")).thenReturn(invitation)
         `when`(tripInvitationRepository.findLockedByTokenAndDeletedAtIsNull("invite-token")).thenReturn(invitation)
         `when`(
             tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
@@ -209,6 +214,7 @@ class TripInviteServiceTest {
         val invitation = createInvitation(trip = trip, createdBy = owner)
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
         `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
         `when`(
             tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
@@ -241,7 +247,7 @@ class TripInviteServiceTest {
         )
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
-        `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
 
         val exception = assertBusinessException {
             tripInviteService.joinTrip(
@@ -251,7 +257,35 @@ class TripInviteServiceTest {
         }
 
         assertEquals(TripErrorCode.TRIP_INVITATION_EXPIRED, exception.errorCode)
-        assertEquals(TripInvitationStatus.EXPIRED, invitation.invitationStatus)
+        verify(tripInvitationExpirationService).markExpiredIfActive(
+            invitationId = 100L,
+            now = Instant.parse("2026-06-11T00:00:00Z"),
+        )
+        verify(tripParticipantRepository, never()).saveAndFlush(any(TripParticipant::class.java))
+    }
+
+    @Test
+    fun `정산이 시작된 여행은 초대 참여에 실패한다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L)
+        val trip = createTrip(
+            ownerUser = owner,
+            settlementStatus = TripSettlementStatus.IN_PROGRESS,
+        )
+        val invitation = createInvitation(trip = trip, createdBy = owner)
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+
+        val exception = assertBusinessException {
+            tripInviteService.joinTrip(
+                userId = 2L,
+                request = JoinTripRequest(code = "ABC12345"),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_JOIN_CLOSED, exception.errorCode)
         verify(tripParticipantRepository, never()).saveAndFlush(any(TripParticipant::class.java))
     }
 
@@ -269,13 +303,17 @@ class TripInviteServiceTest {
         }
     }
 
-    private fun createTrip(ownerUser: User): Trip {
+    private fun createTrip(
+        ownerUser: User,
+        settlementStatus: TripSettlementStatus = TripSettlementStatus.NOT_STARTED,
+    ): Trip {
         return Trip(
             ownerUser = ownerUser,
             title = "일본 여행",
             defaultCurrency = "JPY",
             startDate = LocalDate.of(2026, 6, 1),
             endDate = LocalDate.of(2026, 6, 5),
+            settlementStatus = settlementStatus,
         ).apply {
             id = 10L
         }

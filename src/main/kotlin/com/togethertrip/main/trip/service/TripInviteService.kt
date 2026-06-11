@@ -9,6 +9,7 @@ import com.togethertrip.main.trip.domain.TripInvitationType
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.dto.request.JoinTripRequest
 import com.togethertrip.main.trip.dto.response.JoinTripResponse
 import com.togethertrip.main.trip.dto.response.TripInviteInfoResponse
@@ -38,6 +39,7 @@ class TripInviteService(
     private val tripInvitationRepository: TripInvitationRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val userRepository: UserRepository,
+    private val tripInvitationExpirationService: TripInvitationExpirationService,
     private val clock: Clock,
     @Value("\${trip.invite.base-url:https://togethertrip.app/invites}")
     private val inviteBaseUrl: String,
@@ -84,7 +86,7 @@ class TripInviteService(
             token = token,
             lock = false,
         )
-        validateUsableInvitation(invitation, markExpired = false)
+        validateUsableInvitation(invitation)
 
         val alreadyJoined = tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
             tripId = invitation.trip.id,
@@ -107,13 +109,21 @@ class TripInviteService(
         val invitation = findInvitation(
             code = request.code,
             token = request.token,
+            lock = false,
+        )
+        validateUsableInvitation(invitation)
+
+        val lockedInvitation = findInvitation(
+            code = request.code,
+            token = request.token,
             lock = true,
         )
-        validateUsableInvitation(invitation, markExpired = true)
+        validateUsableInvitation(lockedInvitation)
+        validateJoinAllowed(lockedInvitation)
 
         if (
             tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
-                tripId = invitation.trip.id,
+                tripId = lockedInvitation.trip.id,
                 userId = user.id,
                 participantStatus = TripParticipantStatus.ACTIVE,
             )
@@ -125,7 +135,7 @@ class TripInviteService(
         val participant = try {
             tripParticipantRepository.saveAndFlush(
                 TripParticipant(
-                    trip = invitation.trip,
+                    trip = lockedInvitation.trip,
                     user = user,
                     displayName = user.nickname,
                     profileImageUrl = user.profileImageUrl,
@@ -138,13 +148,13 @@ class TripInviteService(
             throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
         }
 
-        invitation.markUsed(
+        lockedInvitation.markUsed(
             user = user,
             now = now,
         )
 
         return JoinTripResponse.from(
-            invitation = invitation,
+            invitation = lockedInvitation,
             participant = participant,
         )
     }
@@ -180,11 +190,7 @@ class TripInviteService(
                 expiresAt = Instant.now(clock).plus(DEFAULT_INVITATION_TTL),
             )
 
-            return try {
-                TripInviteResponse.from(tripInvitationRepository.saveAndFlush(invitation))
-            } catch (_: DataIntegrityViolationException) {
-                return@repeat
-            }
+            return TripInviteResponse.from(saveInvitation(invitation))
         }
 
         throw BusinessException(CommonErrorCode.CONCURRENT_MODIFICATION)
@@ -220,20 +226,32 @@ class TripInviteService(
         } ?: throw BusinessException(TripErrorCode.TRIP_INVITATION_NOT_FOUND)
     }
 
-    private fun validateUsableInvitation(
-        invitation: TripInvitation,
-        markExpired: Boolean,
-    ) {
+    private fun validateUsableInvitation(invitation: TripInvitation) {
         if (invitation.invitationStatus != TripInvitationStatus.ACTIVE) {
             throw BusinessException(TripErrorCode.TRIP_INVITATION_NOT_ACTIVE)
         }
 
         val now = Instant.now(clock)
         if (invitation.isExpired(now)) {
-            if (markExpired && invitation.invitationStatus == TripInvitationStatus.ACTIVE) {
-                invitation.markExpired(now)
-            }
+            tripInvitationExpirationService.markExpiredIfActive(
+                invitationId = invitation.id,
+                now = now,
+            )
             throw BusinessException(TripErrorCode.TRIP_INVITATION_EXPIRED)
+        }
+    }
+
+    private fun validateJoinAllowed(invitation: TripInvitation) {
+        if (invitation.trip.settlementStatus != TripSettlementStatus.NOT_STARTED) {
+            throw BusinessException(TripErrorCode.TRIP_JOIN_CLOSED)
+        }
+    }
+
+    private fun saveInvitation(invitation: TripInvitation): TripInvitation {
+        return try {
+            tripInvitationRepository.saveAndFlush(invitation)
+        } catch (_: DataIntegrityViolationException) {
+            throw BusinessException(CommonErrorCode.CONCURRENT_MODIFICATION)
         }
     }
 

@@ -71,12 +71,15 @@
 - 초대 상태가 `ACTIVE`가 아니면 `TRIP_INVITATION_NOT_ACTIVE`로 실패한다.
 - 만료 시간이 지난 초대는 `TRIP_INVITATION_EXPIRED`로 실패한다.
 - 응답에는 초대 정보, 여행 요약, 초대 생성자 요약, 현재 사용자의 이미 참여 여부를 포함한다.
+- 조회 응답에는 링크 전용 비밀값인 token을 노출하지 않는다.
 
 ### 초대 참여
 
 - 참여 요청도 `code` 또는 `token` 중 정확히 하나만 허용한다.
 - 초대 row를 pessimistic write lock으로 조회한다.
 - 초대 상태와 만료 시간을 검증한다.
+- 만료된 초대는 별도 트랜잭션에서 `EXPIRED` 상태로 전환한 뒤 실패 응답을 반환한다.
+- 정산이 시작된 여행은 새 참여자를 받지 않는다.
 - 이미 해당 여행에 active participant로 참여 중이면 `TRIP_ALREADY_JOINED`로 실패한다.
 - 참여 가능하면 현재 사용자 기준으로 `TripParticipant`를 생성한다.
 - 참여자 role은 `MEMBER`, status는 `ACTIVE`, `joinedAt`은 현재 시각으로 저장한다.
@@ -101,6 +104,7 @@
 - `TripInviteResponse`, `TripInviteInfoResponse`, `JoinTripResponse`를 추가했다.
 - `JoinTripRequest`를 `code`, `token` 기반 요청으로 변경했다.
 - `TripInvitationRepository`에 code/token 조회, exists 조회, lock 조회를 추가했다.
+- 만료 상태 전환을 롤백과 분리하기 위해 `TripInvitationExpirationService`를 추가했다.
 - `TripParticipantRepository`에 active 참여자 존재 여부 조회를 추가했다.
 - `TripErrorCode`에 초대 전용 에러 코드를 추가했다.
 - `V6__add_trip_invitation_code_and_constraints.sql`로 컬럼과 index를 추가했다.
@@ -137,6 +141,7 @@
 - 초대 토큰으로 여행 참여가 성공하는지 검증한다.
 - 이미 참여 중인 사용자의 중복 참여가 실패하는지 검증한다.
 - 만료된 초대 참여가 실패하고 상태가 `EXPIRED`로 전환되는지 검증한다.
+- 정산이 시작된 여행은 초대 참여에 실패하는지 검증한다.
 - Spring context 로딩 시 Flyway migration과 JPA validate가 통과하는지 검증한다.
 
 ## 검증 결과

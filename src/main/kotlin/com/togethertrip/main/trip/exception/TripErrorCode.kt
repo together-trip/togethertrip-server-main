@@ -62,6 +62,12 @@ enum class TripErrorCode(
         "이미 참여 중인 여행입니다.",
     ),
 
+    TRIP_JOIN_CLOSED(
+        HttpStatus.CONFLICT,
+        "TRIP_JOIN_CLOSED",
+        "정산이 시작된 여행에는 새로 참여할 수 없습니다.",
+    ),
+
     INVALID_TRIP_STATUS(
         HttpStatus.BAD_REQUEST,
         "INVALID_TRIP_STATUS",
