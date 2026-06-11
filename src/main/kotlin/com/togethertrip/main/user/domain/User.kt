@@ -28,6 +28,12 @@ class User(
     @Column(name = "phone_number", length = 30)
     var phoneNumber: String? = null,
 
+    @Column(name = "phone_number_hash", length = 64)
+    var phoneNumberHash: String? = null,
+
+    @Column(name = "phone_number_hash_version", length = 30)
+    var phoneNumberHashVersion: String? = null,
+
     @Column(name = "phone_verified_at")
     var phoneVerifiedAt: Instant? = null,
 
@@ -47,43 +53,58 @@ class User(
         birthDate: LocalDate?,
         profileImageUrl: String?,
     ) {
+        // 닉네임 변경
         if (nickname != null) {
             this.nickname = nickname
         }
 
+        // 성별 변경
         if (gender != null) {
             this.gender = gender
         }
 
+        // 생년월일 변경
         if (birthDate != null) {
             this.birthDate = birthDate
         }
 
+        // 프로필 이미지 변경
         if (profileImageUrl != null) {
             this.profileImageUrl = profileImageUrl
         }
 
+        // 수정 시각 갱신
         updatedAt = Instant.now()
     }
 
     fun withdraw(now: Instant = Instant.now()) {
+        // 탈퇴 상태 변경
         status = UserStatus.WITHDRAWN
         markDeleted(now)
     }
 
     fun reactivateForSignup(now: Instant = Instant.now()) {
+        // 재가입 상태 초기화
         status = UserStatus.ACTIVE
         deletedAt = null
         phoneNumber = null
+        phoneNumberHash = null
+        phoneNumberHashVersion = null
         phoneVerifiedAt = null
         updatedAt = now
     }
 
-    fun verifyPhoneNumber(
-        phoneNumber: String,
+    fun verifyPhoneNumberHash(
+        phoneNumberHash: String,
+        phoneNumberHashVersion: String,
         verifiedAt: Instant = Instant.now(),
     ) {
-        this.phoneNumber = phoneNumber
+        // 전화번호 인증 정보 저장
+        this.phoneNumber = null
+        this.phoneNumberHash = phoneNumberHash
+        this.phoneNumberHashVersion = phoneNumberHashVersion
+
+        // 전화번호 인증 시각 갱신
         phoneVerifiedAt = verifiedAt
         updatedAt = verifiedAt
     }

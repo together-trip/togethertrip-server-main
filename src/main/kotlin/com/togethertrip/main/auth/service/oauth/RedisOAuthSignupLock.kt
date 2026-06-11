@@ -18,16 +18,21 @@ class RedisOAuthSignupLock(
         session: OAuthTemporarySession,
         block: () -> T,
     ): T {
+        // 가입 잠금 key와 token 생성
         val key = getKey(session)
         val lockToken = UUID.randomUUID().toString()
+
+        // 가입 잠금 획득
         val acquired = redisTemplate
             .opsForValue()
             .setIfAbsent(key, lockToken, LOCK_TTL) == true
 
+        // 가입 진행 중 여부 확인
         if (!acquired) {
             throw BusinessException(AuthErrorCode.SIGNUP_CONFIRMATION_IN_PROGRESS)
         }
 
+        // 트랜잭션 종료 후 잠금 해제 등록
         val releaseAfterTransaction = TransactionSynchronizationManager.isSynchronizationActive()
         if (releaseAfterTransaction) {
             TransactionSynchronizationManager.registerSynchronization(
@@ -39,9 +44,11 @@ class RedisOAuthSignupLock(
             )
         }
 
+        // 가입 처리 실행
         try {
             return block()
         } finally {
+            // 트랜잭션이 없으면 즉시 잠금 해제
             if (!releaseAfterTransaction) {
                 release(key, lockToken)
             }
@@ -52,12 +59,14 @@ class RedisOAuthSignupLock(
         key: String,
         lockToken: String,
     ) {
+        // 내가 잡은 잠금만 해제
         if (redisTemplate.opsForValue().get(key) == lockToken) {
             redisTemplate.delete(key)
         }
     }
 
     private fun getKey(session: OAuthTemporarySession): String {
+        // OAuth 가입 잠금 key
         return "auth:oauth-signup-lock:${session.provider}:${session.providerUserId}"
     }
 

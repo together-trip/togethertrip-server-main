@@ -3,6 +3,7 @@ package com.togethertrip.main.user.service
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.phone.PhoneNumberHasher
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -31,6 +32,7 @@ class UserServiceTest {
     private lateinit var userRepository: UserRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var phoneNumberNormalizer: PhoneNumberNormalizer
+    private lateinit var phoneNumberHasher: PhoneNumberHasher
     private lateinit var userService: UserService
 
     @BeforeEach
@@ -38,10 +40,15 @@ class UserServiceTest {
         userRepository = mock(UserRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         phoneNumberNormalizer = PhoneNumberNormalizer()
+        phoneNumberHasher = PhoneNumberHasher(
+            key = "test-phone-hash-key-must-be-at-least-32-bytes",
+            version = "v1",
+        )
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
             phoneNumberNormalizer = phoneNumberNormalizer,
+            phoneNumberHasher = phoneNumberHasher,
         )
     }
 
@@ -200,6 +207,21 @@ class UserServiceTest {
     }
 
     @Test
+    fun `프로필 이미지 URL이 http 또는 https가 아니면 실패한다`() {
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(
+                    profileImageUrl = "javascript:alert(1)",
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(userRepository)
+    }
+
+    @Test
     fun `사용 가능한 닉네임이면 available true를 반환한다`() {
         `when`(userRepository.existsByNicknameAndDeletedAtIsNull("여행자"))
             .thenReturn(false)
@@ -296,19 +318,25 @@ class UserServiceTest {
     @Test
     fun `전화번호로 인증 완료 활성 사용자를 검색한다`() {
         val authUser = createUser().apply {
-            verifyPhoneNumber("+821011112222")
+            verifyPhoneNumberHash(
+                phoneNumberHash = phoneNumberHasher.hash("+821011112222"),
+                phoneNumberHashVersion = phoneNumberHasher.version,
+            )
         }
         val targetUser = createUser().apply {
             id = 2L
             nickname = "동행자"
-            verifyPhoneNumber("+821033334444")
+            verifyPhoneNumberHash(
+                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
+                phoneNumberHashVersion = phoneNumberHasher.version,
+            )
         }
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
             .thenReturn(authUser)
         `when`(
-            userRepository.findByPhoneNumberAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-                phoneNumber = "+821033334444",
+            userRepository.findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
+                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
                 status = UserStatus.ACTIVE,
             )
         ).thenReturn(targetUser)
@@ -328,14 +356,17 @@ class UserServiceTest {
     @Test
     fun `전화번호 검색 결과가 없으면 found false를 반환한다`() {
         val authUser = createUser().apply {
-            verifyPhoneNumber("+821011112222")
+            verifyPhoneNumberHash(
+                phoneNumberHash = phoneNumberHasher.hash("+821011112222"),
+                phoneNumberHashVersion = phoneNumberHasher.version,
+            )
         }
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
             .thenReturn(authUser)
         `when`(
-            userRepository.findByPhoneNumberAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-                phoneNumber = "+821033334444",
+            userRepository.findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
+                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
                 status = UserStatus.ACTIVE,
             )
         ).thenReturn(null)

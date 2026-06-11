@@ -6,19 +6,19 @@
 --   local-test:unverified:yuri
 
 INSERT INTO users (
-    nickname, gender, birth_date, profile_image_url, phone_number, phone_verified_at,
+    nickname, gender, birth_date, profile_image_url, phone_number_hash, phone_number_hash_version, phone_verified_at,
     role, status, created_at, updated_at, deleted_at
 )
 SELECT *
 FROM (
     VALUES
-        ('로컬 verified hana', 'FEMALE', DATE '1993-04-12', 'https://images.togethertrip.local/profiles/hana.jpg', '+821012340001', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-20T13:10:00+09:00', NULL::timestamptz),
-        ('로컬 verified minseo', 'FEMALE', DATE '1994-11-03', 'https://images.togethertrip.local/profiles/minseo.jpg', '+821012340002', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-20T13:12:00+09:00', NULL::timestamptz),
-        ('로컬 verified joon', 'MALE', DATE '1991-08-27', 'https://images.togethertrip.local/profiles/joon.jpg', '+821012340003', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-20T13:15:00+09:00', NULL::timestamptz),
-        ('로컬 unverified yuri', 'FEMALE', DATE '1996-02-18', 'https://images.togethertrip.local/profiles/yuri.jpg', NULL, NULL::timestamptz, 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-20T13:17:00+09:00', NULL::timestamptz),
-        ('정우 휴면계정', 'MALE', DATE '1989-12-09', NULL, '+821012340005', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', 'USER', 'SUSPENDED', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
-        ('탈퇴한 수아', 'FEMALE', DATE '1995-07-21', NULL, '+821012340006', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', 'USER', 'WITHDRAWN', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00')
-) AS sample(nickname, gender, birth_date, profile_image_url, phone_number, phone_verified_at, role, status, created_at, updated_at, deleted_at)
+        ('로컬 verified hana', 'FEMALE', DATE '1993-04-12', 'https://images.togethertrip.local/profiles/hana.jpg', '1570a7595ba7a92ee8946904617fd8832758ad8a35de0d418b39bb4343a689ec', 'v1', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-20T13:10:00+09:00', NULL::timestamptz),
+        ('로컬 verified minseo', 'FEMALE', DATE '1994-11-03', 'https://images.togethertrip.local/profiles/minseo.jpg', '3ed0a7c60d3aa4d6df6bc49bf7078b5b75f5c6aef76bce828ff759c9a2fab8e7', 'v1', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-20T13:12:00+09:00', NULL::timestamptz),
+        ('로컬 verified joon', 'MALE', DATE '1991-08-27', 'https://images.togethertrip.local/profiles/joon.jpg', '24f7b0119e429283d2f0ae886676749a52c7843ca9060de41465c0e393a09ed5', 'v1', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-20T13:15:00+09:00', NULL::timestamptz),
+        ('로컬 unverified yuri', 'FEMALE', DATE '1996-02-18', 'https://images.togethertrip.local/profiles/yuri.jpg', NULL, NULL, NULL::timestamptz, 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-20T13:17:00+09:00', NULL::timestamptz),
+        ('정우 휴면계정', 'MALE', DATE '1989-12-09', NULL, 'c666565e50157966a94a4140f2cd1ec20ccda7c4e3007965dbdb01314f738a9f', 'v1', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', 'USER', 'SUSPENDED', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
+        ('탈퇴한 수아', 'FEMALE', DATE '1995-07-21', NULL, '8fabb51070e475188b12a21fe4eae3d2b050634930c7ec70f1fed041ef14c79c', 'v1', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', 'USER', 'WITHDRAWN', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00')
+) AS sample(nickname, gender, birth_date, profile_image_url, phone_number_hash, phone_number_hash_version, phone_verified_at, role, status, created_at, updated_at, deleted_at)
 WHERE NOT EXISTS (
     SELECT 1 FROM users u WHERE u.nickname = sample.nickname
 );

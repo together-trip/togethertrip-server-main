@@ -43,6 +43,11 @@ jwt:
   access-token-expiration: 1800
   refresh-token-expiration: 1209600
 
+phone:
+  hash:
+    key: ${PHONE_HASH_KEY:local-phone-hash-key-at-least-32-bytes}
+    version: ${PHONE_HASH_VERSION:v1}
+
 auth:
   local-test:
     enabled: true

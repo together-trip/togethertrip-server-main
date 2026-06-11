@@ -40,6 +40,11 @@ jwt:
   access-token-expiration: 1800
   refresh-token-expiration: 1209600
 
+phone:
+  hash:
+    key: ${PHONE_HASH_KEY}
+    version: ${PHONE_HASH_VERSION:v1}
+
 sms:
   solapi:
     base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
