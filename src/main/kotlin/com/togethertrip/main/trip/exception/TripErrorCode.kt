@@ -32,6 +32,36 @@ enum class TripErrorCode(
         "여행 방장만 수행할 수 있는 작업입니다.",
     ),
 
+    TRIP_INVITATION_NOT_FOUND(
+        HttpStatus.NOT_FOUND,
+        "TRIP_INVITATION_NOT_FOUND",
+        "여행 초대 정보를 찾을 수 없습니다.",
+    ),
+
+    INVALID_TRIP_INVITATION_LOOKUP(
+        HttpStatus.BAD_REQUEST,
+        "INVALID_TRIP_INVITATION_LOOKUP",
+        "초대 코드 또는 초대 토큰 중 하나만 전달해야 합니다.",
+    ),
+
+    TRIP_INVITATION_NOT_ACTIVE(
+        HttpStatus.CONFLICT,
+        "TRIP_INVITATION_NOT_ACTIVE",
+        "사용할 수 없는 여행 초대입니다.",
+    ),
+
+    TRIP_INVITATION_EXPIRED(
+        HttpStatus.GONE,
+        "TRIP_INVITATION_EXPIRED",
+        "만료된 여행 초대입니다.",
+    ),
+
+    TRIP_ALREADY_JOINED(
+        HttpStatus.CONFLICT,
+        "TRIP_ALREADY_JOINED",
+        "이미 참여 중인 여행입니다.",
+    ),
+
     INVALID_TRIP_STATUS(
         HttpStatus.BAD_REQUEST,
         "INVALID_TRIP_STATUS",

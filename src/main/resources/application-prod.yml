@@ -49,6 +49,10 @@ post:
     local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH:/var/togethertrip/uploads/post-attachments}
     public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX:/uploads/post-attachments}
 
+trip:
+  invite:
+    base-url: ${TRIP_INVITE_BASE_URL:https://togethertrip.app/invites}
+
 springdoc:
   swagger-ui:
     enabled: false
