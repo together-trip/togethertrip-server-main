@@ -17,11 +17,27 @@ class ExchangeRateBackfillTasklet(
         contribution: StepContribution,
         chunkContext: ChunkContext,
     ): RepeatStatus {
-        val parameters = chunkContext.stepContext.jobParameters
-        val backfillJobId = parameters[ExchangeRateBackfillBatchConstants.PARAM_BACKFILL_JOB_ID].toString().toLong()
-        val from = LocalDate.parse(parameters[ExchangeRateBackfillBatchConstants.PARAM_FROM].toString())
-        val to = LocalDate.parse(parameters[ExchangeRateBackfillBatchConstants.PARAM_TO].toString())
-        val pauseMillis = parameters[ExchangeRateBackfillBatchConstants.PARAM_PAUSE_MILLIS].toString().toLong()
+        val parameters = contribution.stepExecution.jobParameters
+        val backfillJobId = requireNotNull(
+            parameters.getLong(ExchangeRateBackfillBatchConstants.PARAM_BACKFILL_JOB_ID)
+        ) {
+            "backfillJobId job parameter가 필요합니다."
+        }
+        val from = LocalDate.parse(
+            requireNotNull(parameters.getString(ExchangeRateBackfillBatchConstants.PARAM_FROM)) {
+                "from job parameter가 필요합니다."
+            }
+        )
+        val to = LocalDate.parse(
+            requireNotNull(parameters.getString(ExchangeRateBackfillBatchConstants.PARAM_TO)) {
+                "to job parameter가 필요합니다."
+            }
+        )
+        val pauseMillis = requireNotNull(
+            parameters.getLong(ExchangeRateBackfillBatchConstants.PARAM_PAUSE_MILLIS)
+        ) {
+            "pauseMillis job parameter가 필요합니다."
+        }
 
         backfillBatchService.run(
             backfillJobId = backfillJobId,
