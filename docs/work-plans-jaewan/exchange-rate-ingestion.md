@@ -25,31 +25,33 @@
 - 실패 보정: scheduler 실행 시 최근 `exchange-rate.scheduler.catch-up-days`일과 오늘을 포함한 기간에서 아직 완료되지 않은 날짜를 자동 수집
 - 수집 정합성 원장: `exchange_rate_import_runs`에 provider/date별 `PENDING`, `RUNNING`, `SUCCESS`, `NO_DATA`, `FAILED`, `NON_BUSINESS_DAY`와 시도 횟수, row 수, upsert 수, 마지막 오류를 기록
 - 서버 이중화 중복 실행 방지: Redisson `RLock` 기반 Redis 분산락
-- 저장 idempotency: PostgreSQL native `INSERT ... ON CONFLICT ... DO UPDATE`
+- 저장 idempotency: PostgreSQL native `INSERT ... ON CONFLICT ... DO UPDATE`를 사용하되, 기존 값과 달라진 경우에만 갱신
 - 초기 데이터 확보: property-gated `CommandLineRunner` one-shot 백필
+- 운영자 도구: Admin 상태 조회 API, Admin 백필 실행 API, `exchange_rate_backfill_jobs` 실행 요청 원장
 - 수집 핵심 로직: `ExchangeRateImportService`로 분리해 스케줄러와 백필이 같은 정책을 공유
 
 이 조합을 선택하는 이유:
 
-- 별도 서버, Lambda, Spring Batch, Quartz 없이 현재 Spring Boot API 서버 안에서 구현할 수 있다.
+- 별도 서버, Lambda, Quartz 없이 현재 Spring Boot API 서버 안에서 구현할 수 있다.
 - 서버 이중화 환경에서도 한 인스턴스만 스케줄 작업을 수행하게 할 수 있다.
 - Redisson은 Redis 분산락에 특화된 `RLock`, lease time, watchdog, 안전한 unlock API를 제공하므로 Jedis로 직접 `SET NX PX`/Lua unlock을 구현하는 것보다 구현 위험이 낮다.
 - 락이 만료되거나 수동 백필이 겹쳐도 DB upsert가 최종 중복 방어선이 된다.
 - 한 날짜의 여러 통화 row는 bulk `VALUES` upsert 1회로 저장해 DB round-trip을 줄인다.
+- 이미 저장된 값과 동일한 재수집 결과는 update하지 않아 장기 백필 재실행 시 불필요한 write를 줄인다.
 - 기본 `catch-up-days = 7`이므로 매일 실행 시 오늘 포함 최대 8일 범위를 확인하고, 완료되지 않은 날짜를 자동으로 다시 호출한다.
 - 기본 검증 기준은 `minimum-row-count = 20`, `required-currencies = USD,JPY,EUR`이다. 기준 미달이면 저장하지 않고 `FAILED`로 남긴다.
 - 기본 `skip-weekends = true`로 토요일/일요일은 API 호출 없이 `NON_BUSINESS_DAY`로 기록한다.
+- 운영자는 코드나 서버 접속 없이 Admin API로 날짜별 수집 상태와 백필 실행 이력을 확인하고, 제한된 백필을 요청할 수 있다.
 - 추후 Lambda나 별도 worker로 이관하더라도 API client, normalizer, import service 정책을 재사용하기 쉽다.
 
 ## 제외 범위
 
 - AWS Lambda 기반 환율 수집 파이프라인
 - 별도 환율 수집 서버
-- Spring Batch 도입
 - Quartz clustered scheduler 도입
 - 거래 등록/수정 요청 중 외부 환율 API 직접 호출
 - Flyway migration을 통한 대량 환율 seed 데이터 삽입
-- 관리자용 백필 HTTP API
+- 관리자용 UI 화면
 
 ## 브랜치 및 미병합 작업 충돌 판단
 
@@ -76,13 +78,13 @@
 `exchange_rates`는 여행별 데이터가 아니라 거래 플로우가 공통으로 조회하는 전역 환율 원천 데이터다. 따라서 환율 수집과 조회 기반 코드는 `trip` 하위가 아니라 top-level `exchange` feature로 분리한다. 패키지는 가장 엄격한 feature 내부 책임 기준으로 `exchange/client`, `exchange/config`, `exchange/domain`, `exchange/repository`, `exchange/service`, `exchange/service/normalizer`, `exchange/scheduler`, `exchange/support`로 나눈다.
 
 영향받는 영역:
-`exchange` 환율 도메인, 외부 API client, 설정 properties, scheduler, transaction 환율 조회 검증 테스트.
+`exchange` 환율 도메인, 외부 API client, 설정 properties, scheduler, Admin API, transaction 환율 조회 검증 테스트.
 
 의존성 규칙:
-Controller는 추가하지 않는다. 외부 API 호출은 `client`, 설정은 `config`, 저장 모델은 `domain`, DB 접근은 `repository`, 수집 orchestration은 `service`, provider 응답 정규화는 `service.normalizer`, 자동 실행은 `scheduler`, Redisson 분산락 adapter는 `support`에 둔다. 거래 서비스는 계속 `ExchangeRateRepository` 조회만 사용한다.
+거래/정산용 공개 Controller는 추가하지 않는다. 운영자용 Controller는 `exchange.controller`에 두고 `/api/admin/**` 경로에서 `ROLE_ADMIN`만 접근하게 한다. 외부 API 호출은 `client`, 설정은 `config`, 저장 모델은 `domain`, DB 접근은 `repository`, 수집 orchestration은 `service`, provider 응답 정규화는 `service.normalizer`, 자동 실행은 `scheduler`, Redisson 분산락 adapter는 `support`에 둔다. 거래 서비스는 계속 `ExchangeRateRepository` 조회만 사용한다.
 
 절충점:
-Redisson 의존성이 추가되지만 Quartz나 Spring Batch보다 작고, 이중화 스케줄러 문제를 현재 요구에 맞게 해결한다. Jedis로 직접 분산락을 구현할 수도 있으나 lock token, TTL, 안전한 unlock, 재시도 정책을 직접 유지해야 하므로 #54 범위에서는 Redisson이 더 타당하다. native upsert는 DB 종속성이 있지만 이미 PostgreSQL/Flyway 기반 운영과 잘 맞고 idempotency를 명확히 보장한다.
+Redisson 의존성이 추가되지만 별도 스케줄러 인프라보다 작고, 이중화 스케줄러 문제를 현재 요구에 맞게 해결한다. Jedis로 직접 분산락을 구현할 수도 있으나 lock token, TTL, 안전한 unlock, 재시도 정책을 직접 유지해야 하므로 #54 범위에서는 Redisson이 더 타당하다. native upsert는 DB 종속성이 있지만 이미 PostgreSQL/Flyway 기반 운영과 잘 맞고 idempotency를 명확히 보장한다.
 
 필요한 테스트:
 API result code 처리, `deal_bas_r` 파싱, 100단위 통화 정규화, upsert 재실행, 백필 범위 반복, 스케줄러가 import service를 호출하는지 검증한다.
@@ -171,7 +173,7 @@ TDD Guide, Security Reviewer, Verify Agent.
    - native query로 `exchange_rates`에 idempotent bulk upsert를 수행한다.
    - 한 날짜의 통화 row 목록은 `NamedParameterJdbcTemplate`과 다중 `VALUES` 구문으로 한 번에 저장한다.
    - conflict target은 `base_currency`, `target_currency`, `rate_date`를 사용한다.
-   - 기존 row가 있으면 `rate`, `source`, `updated_at`, `deleted_at` 복구 여부를 정책화한다.
+   - 기존 row가 있으면 `rate` 또는 `source`가 달라진 경우에만 `rate`, `source`, `updated_at`을 갱신한다.
    - 부분 unique index와 `ON CONFLICT` 호환성을 확인하고 필요하면 unique constraint 또는 index 구조 보강 migration을 검토한다.
 
 6. import run 원장 구현
@@ -180,7 +182,14 @@ TDD Guide, Security Reviewer, Verify Agent.
    - `attempt_count`, `row_count`, `upsert_count`, `last_result_code`, `last_error_message`, `started_at`, `finished_at`을 기록한다.
    - run 상태 전이는 별도 service에서 `REQUIRES_NEW` 트랜잭션으로 처리해 외부 API 호출/DB 저장 실패와 상태 기록을 분리한다.
 
-7. import service 구현
+7. backfill job 원장 구현
+   - `exchange_rate_backfill_jobs` 테이블을 추가한다.
+   - 운영자가 요청한 실행 단위의 `requested_by`, `from_date`, `to_date`, `max_days_per_run`, `pause_between_requests_millis`를 기록한다.
+   - 상태는 `REQUESTED`, `RUNNING`, `COMPLETED`, `FAILED`, `SKIPPED_LOCKED`로 관리한다.
+   - 실행 결과로 `processed_days`, `success_count`, `failed_count`, `no_data_count`, `non_business_day_count`, `last_error_message`를 기록한다.
+   - 날짜별 상세 상태는 중복 저장하지 않고 기존 `exchange_rate_import_runs`를 기준으로 조회한다.
+
+8. import service 구현
    - `importByDate(rateDate)`를 중심 메서드로 둔다.
    - client 호출, result code 판단, 정규화, upsert, 로그 기록을 순서대로 수행한다.
    - 데이터 없음과 오류를 구분한다.
@@ -188,7 +197,7 @@ TDD Guide, Security Reviewer, Verify Agent.
    - provider 성공 응답이어도 정규화 row 수가 `minimum-row-count`보다 작거나 필수 통화가 빠지면 실패로 처리한다.
    - 일부 row 실패 정책은 초기에 보수적으로 전체 실패를 추천하되, API가 부분적으로 이상한 row를 줄 가능성을 고려해 실패 row 로그 후 skip 대안도 검토한다.
 
-8. one-shot 백필 runner 구현
+9. one-shot 백필 runner 구현
    - `exchange-rate.backfill.enabled=true`일 때만 실행한다.
    - `from`, `to`가 없으면 실행하지 않고 명확한 설정 오류로 실패한다.
    - 같은 날짜 범위를 재실행해도 upsert로 idempotent하게 동작한다.
@@ -197,19 +206,26 @@ TDD Guide, Security Reviewer, Verify Agent.
    - 기본 `pause-between-requests = 300ms`로 provider/API/DB에 가는 연속 부하를 낮춘다.
    - 운영 기동마다 반복되는 사고를 막기 위해 기본값은 항상 disabled로 둔다.
 
-9. 운영 scheduler 구현
+10. 운영 scheduler 구현
    - `exchange-rate.scheduler.enabled=true`일 때만 실행한다.
    - `Asia/Seoul` 기준 현재 날짜를 기준으로 최근 `catch-up-days`일과 오늘을 확인한다.
    - 기본값은 `catch-up-days = 7`이며, 오늘 포함 최대 8일 범위에서 완료되지 않은 날짜만 수집한다.
    - 한국수출입은행 데이터 공개 지연을 고려해 운영 실행 시각은 오전 늦은 시간 또는 오후로 둔다.
    - Redisson `RLock`으로 이중화 서버 중 하나만 실행하게 한다.
 
-10. 거래 플로우 회귀 확인
+11. Admin API 구현
+   - `/api/admin/**`는 `ROLE_ADMIN`만 접근할 수 있게 보안 설정을 추가한다.
+   - `GET /api/admin/exchange-rates/import-runs`로 기간과 상태 기준의 날짜별 수집 상태를 조회한다.
+   - `GET /api/admin/exchange-rates/backfills`로 최근 백필 실행 요청 이력을 조회한다.
+   - `POST /api/admin/exchange-rates/backfills`로 제한된 백필을 실행한다.
+   - Admin 백필 실행도 기존 Redisson lock, 완료 상태 skip, `max-days-per-run`, 날짜별 실패 격리 정책을 그대로 사용한다.
+
+12. 거래 플로우 회귀 확인
    - `TransactionExchangeRateResolver`가 외부 API client를 의존하지 않는지 확인한다.
    - `KRW` 거래는 DB 조회 없이 `1.000000`을 유지한다.
    - 외화 거래는 `rateDate <= 기준일` 최신 row 조회 정책을 유지한다.
 
-11. 문서 및 검증
+13. 문서 및 검증
     - 구현 후 검증 문서를 작성한다.
     - `./gradlew test`를 실행한다.
     - 실패 시 로그 기준으로 최소 수정한다.
@@ -280,9 +296,44 @@ EXCHANGE_RATE_BACKFILL_TO=2026-06-10 \
 - lock wait time은 0초이므로 다른 서버가 이미 수집 중이면 즉시 건너뛴다.
 - lock lease time은 10분이다.
 - 저장은 `(base_currency, target_currency, rate_date)` 기준 upsert라 같은 범위를 다시 실행해도 중복 row는 만들지 않는다.
+- 저장된 `rate`, `source`가 동일하면 conflict가 발생해도 실제 update는 수행하지 않는다.
 - 수집 성공/실패 이력은 `exchange_rate_import_runs`에 provider/date별로 남는다.
+- 운영자 백필 실행 요청과 집계 결과는 `exchange_rate_backfill_jobs`에 남는다.
 
 백필 실행 후에는 운영 기동 때마다 같은 범위가 반복 호출되지 않도록 반드시 `EXCHANGE_RATE_BACKFILL_ENABLED=false`로 내리거나 `secret.yml` 기본값을 false로 되돌린다. 중복 저장은 upsert로 막히지만 외부 API 호출은 다시 발생한다.
+
+## Admin API
+
+Admin API는 `ROLE_ADMIN` 권한만 접근할 수 있다.
+
+날짜별 수집 상태 조회:
+
+```http
+GET /api/admin/exchange-rates/import-runs?from=2026-06-01&to=2026-06-11
+GET /api/admin/exchange-rates/import-runs?from=2026-06-01&to=2026-06-11&status=FAILED
+```
+
+백필 실행 이력 조회:
+
+```http
+GET /api/admin/exchange-rates/backfills?limit=20
+```
+
+백필 실행 요청:
+
+```http
+POST /api/admin/exchange-rates/backfills
+Content-Type: application/json
+
+{
+  "from": "2026-06-01",
+  "to": "2026-06-11",
+  "maxDaysPerRun": 31,
+  "pauseBetweenRequestsMillis": 300
+}
+```
+
+백필 실행 API는 첫 버전에서 동기 실행한다. 대신 서버가 `maxDaysPerRun`, Redisson lock, 완료 상태 skip, 날짜별 실패 격리를 강제하므로 운영자가 임의로 위험한 대량 작업을 우회하기 어렵다.
 
 ## 테스트 계획
 
@@ -298,8 +349,13 @@ EXCHANGE_RATE_BACKFILL_TO=2026-06-10 \
 
 - repository 테스트
   - 동일 날짜/통화 upsert 재실행 시 row가 중복되지 않는다.
-  - 기존 row의 `rate`, `source`, `updated_at`이 갱신된다.
+  - 기존 row와 값이 달라진 경우에만 `rate`, `source`, `updated_at`이 갱신된다.
   - soft-deleted row 처리 정책이 의도대로 동작한다.
+
+- Admin API 테스트
+  - `/api/admin/**`는 `ROLE_ADMIN`만 접근 가능하다.
+  - 백필 실행 요청은 `exchange_rate_backfill_jobs`에 요청/실행/결과 상태를 남긴다.
+  - 날짜별 상태 조회는 `exchange_rate_import_runs`를 기준으로 반환한다.
 
 - 회귀 테스트
   - 소비일 기준 이하 최신 환율 조회가 유지된다.
@@ -315,6 +371,7 @@ EXCHANGE_RATE_BACKFILL_TO=2026-06-10 \
 - `deleted_at`이 있는 기존 row를 upsert 시 복구할지, 새 insert를 허용할지 정책 결정이 필요하다.
 - 백필 범위는 최초 운영 반영 시 어느 기간까지 확보할지 결정이 필요하다.
 - Redis 단일 노드 장애/Redis failover 시 lock 안전성은 운영 Redis topology에 의존한다. 그래도 `exchange_rates` upsert를 최종 방어선으로 유지한다.
+- 운영자 UI가 필요해지면 현재 Admin API를 화면에서 호출하고, 날짜별 수집 상태는 기존 `exchange_rate_import_runs`를 계속 기준으로 삼는다.
 
 ## 완료 기준
 
@@ -322,6 +379,8 @@ EXCHANGE_RATE_BACKFILL_TO=2026-06-10 \
 - 동일 날짜/통화 재실행 시 중복 row가 생기지 않는다.
 - 서버 이중화 환경에서 스케줄러 중복 실행을 방지한다.
 - 초기 백필을 property로 명시적으로 실행할 수 있고 재실행해도 idempotent하다.
+- Admin API로 날짜별 수집 상태와 백필 실행 이력을 조회할 수 있다.
+- Admin API로 제한된 백필 실행을 요청할 수 있다.
 - 거래 등록/수정 플로우는 외부 API가 아니라 DB 환율만 사용한다.
 - API 오류, 인증 오류, 일일 제한 초과, 데이터 없음이 구분되어 처리된다.
 - 관련 테스트와 검증 문서가 완료된다.

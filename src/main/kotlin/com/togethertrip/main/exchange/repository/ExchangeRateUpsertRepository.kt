@@ -52,6 +52,8 @@ class ExchangeRateUpsertRepository(
                 rate = EXCLUDED.rate,
                 source = EXCLUDED.source,
                 updated_at = now()
+            WHERE exchange_rates.rate IS DISTINCT FROM EXCLUDED.rate
+               OR exchange_rates.source IS DISTINCT FROM EXCLUDED.source
             """.trimIndent(),
             parameters,
         )

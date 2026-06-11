@@ -68,5 +68,7 @@ class ExchangeRateUpsertRepositoryTest {
         assertTrue(sql.contains(":baseCurrency0"))
         assertTrue(sql.contains(":baseCurrency1"))
         assertTrue(sql.contains("ON CONFLICT"))
+        assertTrue(sql.contains("WHERE exchange_rates.rate IS DISTINCT FROM EXCLUDED.rate"))
+        assertTrue(sql.contains("OR exchange_rates.source IS DISTINCT FROM EXCLUDED.source"))
     }
 }

@@ -34,6 +34,8 @@ class SecurityConfig(
                 it.accessDeniedHandler(accessDeniedHandler)
             }
             .authorizeHttpRequests {
+                it.requestMatchers("/api/admin/**").hasRole("ADMIN")
+
                 it.requestMatchers(
                     "/api/auth/oauth/kakao",
                     "/api/auth/phone/request",

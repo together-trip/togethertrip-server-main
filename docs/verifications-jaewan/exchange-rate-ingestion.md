@@ -16,6 +16,9 @@
   - row 수/필수 통화 검증
   - 날짜별 bulk upsert
   - 주말 API 호출 skip
+  - Admin 상태 조회 API
+  - Admin 백필 실행 API
+  - `exchange_rate_backfill_jobs` 실행 요청 원장
   - top-level `exchange` feature의 엄격 패키지 분리
   - 관련 단위 테스트
 
@@ -37,7 +40,11 @@
 - Redisson lock을 획득한 서버만 scheduler/backfill 수집을 수행한다.
 - lock 획득 실패 시 수집을 건너뛴다.
 - 동일 날짜/통화 저장은 native upsert로 처리된다.
+- 동일 날짜/통화가 재수집되더라도 `rate`, `source`가 같으면 실제 update는 수행하지 않는다.
 - 한 날짜의 여러 통화 row는 bulk upsert query 1회로 저장된다.
+- `/api/admin/**`는 `ROLE_ADMIN`만 접근 가능하다.
+- Admin API로 날짜별 `exchange_rate_import_runs` 상태를 기간/상태 기준으로 조회할 수 있다.
+- Admin API로 백필을 실행하면 `exchange_rate_backfill_jobs`에 요청자, 기간, 제한값, 실행 결과 집계가 기록된다.
 - 거래 등록/수정 플로우는 외부 API client에 의존하지 않는다.
 - 환율 수집 코드는 `exchange/client`, `exchange/config`, `exchange/domain`, `exchange/repository`, `exchange/service`, `exchange/service/normalizer`, `exchange/scheduler`, `exchange/support`로 분리되어 있다.
 - scheduler 기본 `catch-up-days = 7` 기준으로 오늘 포함 최대 8일 범위에서 완료되지 않은 날짜만 자동 수집한다.

@@ -23,6 +23,12 @@ interface ExchangeRateImportRunRepository : JpaRepository<ExchangeRateImportRun,
         statuses: Collection<ExchangeRateImportRunStatus>,
     ): Boolean
 
+    fun findByProviderAndRateDateBetweenAndDeletedAtIsNullOrderByRateDateAsc(
+        provider: String,
+        from: LocalDate,
+        to: LocalDate,
+    ): List<ExchangeRateImportRun>
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query(
         """
