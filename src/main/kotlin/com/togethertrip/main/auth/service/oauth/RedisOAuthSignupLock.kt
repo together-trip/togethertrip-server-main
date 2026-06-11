@@ -3,6 +3,7 @@ package com.togethertrip.main.auth.service.oauth
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Component
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
@@ -59,10 +60,12 @@ class RedisOAuthSignupLock(
         key: String,
         lockToken: String,
     ) {
-        // 내가 잡은 잠금만 해제
-        if (redisTemplate.opsForValue().get(key) == lockToken) {
-            redisTemplate.delete(key)
-        }
+        // token 확인과 삭제를 원자적으로 실행
+        redisTemplate.execute(
+            RELEASE_SCRIPT,
+            listOf(key),
+            lockToken,
+        )
     }
 
     private fun getKey(session: OAuthTemporarySession): String {
@@ -72,5 +75,14 @@ class RedisOAuthSignupLock(
 
     companion object {
         private val LOCK_TTL: Duration = Duration.ofSeconds(10)
+        private val RELEASE_SCRIPT = DefaultRedisScript(
+            """
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                return redis.call('DEL', KEYS[1])
+            end
+            return 0
+            """.trimIndent(),
+            Long::class.java,
+        )
     }
 }
