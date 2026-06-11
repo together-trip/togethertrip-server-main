@@ -4,45 +4,39 @@ import com.togethertrip.main.exchange.domain.ExchangeRateBackfillJobStatus
 import com.togethertrip.main.exchange.repository.ExchangeRateBackfillJobRepository
 import com.togethertrip.main.exchange.service.ExchangeRateImportResult
 import com.togethertrip.main.exchange.service.ExchangeRateImportService
-import com.togethertrip.main.exchange.support.ExchangeRateDistributedLock
 import org.springframework.stereotype.Service
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
 @Service
 class ExchangeRateBackfillBatchService(
     private val importService: ExchangeRateImportService,
-    private val distributedLock: ExchangeRateDistributedLock,
     private val backfillJobRepository: ExchangeRateBackfillJobRepository,
 ) {
 
-    fun run(
+    fun prepareTargetDates(
         backfillJobId: Long,
         from: LocalDate,
         to: LocalDate,
-        pauseBetweenRequests: Duration,
+    ): List<LocalDate> {
+        val targetDates = importService.findMissingRateDates(from, to)
+        markRunning(
+            backfillJobId = backfillJobId,
+            totalRequestedDays = targetDates.size.toLong(),
+        )
+        return targetDates
+    }
+
+    fun importByDate(rateDate: LocalDate): ExchangeRateImportResult {
+        return importService.importByDate(rateDate)
+    }
+
+    fun recordResults(
+        backfillJobId: Long,
+        results: Iterable<ExchangeRateImportResult>,
     ) {
-        val executed = distributedLock.runIfAcquired {
-            val targetDates = importService.findMissingRateDates(from, to)
-            markRunning(
-                backfillJobId = backfillJobId,
-                totalRequestedDays = targetDates.size.toLong(),
-            )
-            targetDates.forEachIndexed { index, rateDate ->
-                if (index > 0 && !pauseBetweenRequests.isZero && !pauseBetweenRequests.isNegative) {
-                    Thread.sleep(pauseBetweenRequests.toMillis())
-                }
-
-                val result = importService.importByDate(rateDate)
-                recordResult(backfillJobId, result)
-            }
-
-            markCompleted(backfillJobId)
-        }
-
-        if (executed == null) {
-            markSkippedLocked(backfillJobId)
+        results.forEach { result ->
+            recordResult(backfillJobId, result)
         }
     }
 
@@ -93,6 +87,33 @@ class ExchangeRateBackfillBatchService(
         if (job.status !in TERMINAL_STATUSES) {
             throw IllegalStateException("백필 실패 상태를 기록하지 못했습니다. id=$backfillJobId status=${job.status}")
         }
+    }
+
+    fun markCompleted(backfillJobId: Long) {
+        val now = Instant.now()
+        requireUpdated(
+            updatedRows = backfillJobRepository.markFinished(
+                id = backfillJobId,
+                status = ExchangeRateBackfillJobStatus.COMPLETED,
+                finishedAt = now,
+                updatedAt = now,
+            ),
+            backfillJobId = backfillJobId,
+        )
+    }
+
+    fun markSkippedLocked(backfillJobId: Long) {
+        val now = Instant.now()
+        requireUpdated(
+            updatedRows = backfillJobRepository.markFailed(
+                id = backfillJobId,
+                status = ExchangeRateBackfillJobStatus.SKIPPED_LOCKED,
+                lastErrorMessage = "환율 수집 lock을 획득하지 못했습니다.",
+                finishedAt = now,
+                updatedAt = now,
+            ),
+            backfillJobId = backfillJobId,
+        )
     }
 
     private fun markRunning(
@@ -158,33 +179,6 @@ class ExchangeRateBackfillBatchService(
                 noDataIncrement = noDataIncrement,
                 nonBusinessDayIncrement = nonBusinessDayIncrement,
                 updatedAt = Instant.now(),
-            ),
-            backfillJobId = backfillJobId,
-        )
-    }
-
-    private fun markCompleted(backfillJobId: Long) {
-        val now = Instant.now()
-        requireUpdated(
-            updatedRows = backfillJobRepository.markFinished(
-                id = backfillJobId,
-                status = ExchangeRateBackfillJobStatus.COMPLETED,
-                finishedAt = now,
-                updatedAt = now,
-            ),
-            backfillJobId = backfillJobId,
-        )
-    }
-
-    private fun markSkippedLocked(backfillJobId: Long) {
-        val now = Instant.now()
-        requireUpdated(
-            updatedRows = backfillJobRepository.markFailed(
-                id = backfillJobId,
-                status = ExchangeRateBackfillJobStatus.SKIPPED_LOCKED,
-                lastErrorMessage = "환율 수집 lock을 획득하지 못했습니다.",
-                finishedAt = now,
-                updatedAt = now,
             ),
             backfillJobId = backfillJobId,
         )

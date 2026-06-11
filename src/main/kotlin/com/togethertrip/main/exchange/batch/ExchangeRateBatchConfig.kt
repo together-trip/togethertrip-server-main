@@ -1,7 +1,8 @@
 package com.togethertrip.main.exchange.batch
 
-import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing
+import com.togethertrip.main.exchange.service.ExchangeRateImportResult
 import org.springframework.batch.core.configuration.JobRegistry
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing
 import org.springframework.batch.core.configuration.support.MapJobRegistry
 import org.springframework.batch.core.job.Job
 import org.springframework.batch.core.job.builder.JobBuilder
@@ -14,9 +15,10 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.task.TaskExecutor
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
-import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.interceptor.DefaultTransactionAttribute
+import java.time.LocalDate
 import java.util.concurrent.ThreadPoolExecutor
 
 @Configuration
@@ -45,9 +47,9 @@ class ExchangeRateBatchConfig {
     @Bean
     fun exchangeRateBatchTaskExecutor(): TaskExecutor {
         return ThreadPoolTaskExecutor().apply {
-            setCorePoolSize(1)
-            setMaxPoolSize(1)
-            setQueueCapacity(0)
+            corePoolSize = 1
+            maxPoolSize = 1
+            queueCapacity = 0
             setThreadNamePrefix("exchange-rate-batch-")
             setRejectedExecutionHandler(ThreadPoolExecutor.AbortPolicy())
             initialize()
@@ -70,11 +72,24 @@ class ExchangeRateBatchConfig {
     fun exchangeRateBackfillStep(
         jobRepository: JobRepository,
         transactionManager: PlatformTransactionManager,
-        tasklet: ExchangeRateBackfillTasklet,
+        reader: ExchangeRateBackfillDateReader,
+        processor: ExchangeRateBackfillItemProcessor,
+        writer: ExchangeRateBackfillResultWriter,
     ): Step {
         return StepBuilder(ExchangeRateBackfillBatchConstants.STEP_NAME, jobRepository)
-            .tasklet(tasklet, transactionManager)
+            .chunk<LocalDate, ExchangeRateImportResult>(CHUNK_SIZE)
+            .transactionManager(transactionManager)
+            .reader(reader)
+            .processor(processor)
+            .writer(writer)
             .transactionAttribute(DefaultTransactionAttribute(TransactionDefinition.PROPAGATION_NOT_SUPPORTED))
+            .listener(reader)
+            .listener(processor)
+            .listener(writer)
             .build()
+    }
+
+    companion object {
+        private const val CHUNK_SIZE = 10
     }
 }
