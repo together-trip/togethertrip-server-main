@@ -8,9 +8,11 @@ import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionPaymentsRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequest
+import com.togethertrip.main.transaction.dto.response.CommonFundBalanceResponse
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
 import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
+import com.togethertrip.main.transaction.dto.response.TransactionStatisticsResponse
 import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import com.togethertrip.main.transaction.service.TransactionService
 import com.togethertrip.main.trip.security.RequireActiveTripParticipant
@@ -197,8 +199,13 @@ class TransactionController(
     override fun getCommonFundBalance(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-    ): ApiResponse<Unit> {
-        return ApiResponse.success()
+    ): ApiResponse<CommonFundBalanceResponse> {
+        return ApiResponse.success(
+            transactionService.getCommonFundBalance(
+                userId = authUser.userId,
+                tripId = tripId,
+            )
+        )
     }
 
     @GetMapping("/transaction-statistics")
@@ -209,7 +216,15 @@ class TransactionController(
         @RequestParam(required = false) from: String?,
         @RequestParam(required = false) to: String?,
         @RequestParam(required = false) groupBy: String?,
-    ): ApiResponse<Unit> {
-        return ApiResponse.success()
+    ): ApiResponse<TransactionStatisticsResponse> {
+        return ApiResponse.success(
+            transactionService.getTransactionStatistics(
+                userId = authUser.userId,
+                tripId = tripId,
+                from = from,
+                to = to,
+                groupBy = groupBy,
+            )
+        )
     }
 }

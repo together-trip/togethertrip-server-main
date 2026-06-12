@@ -1,12 +1,14 @@
 package com.togethertrip.main.transaction.service
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionEvent
 import com.togethertrip.main.transaction.domain.TransactionEventType
 import com.togethertrip.main.transaction.domain.TransactionPayment
 import com.togethertrip.main.transaction.domain.TransactionShare
 import com.togethertrip.main.transaction.domain.TransactionStatus
+import com.togethertrip.main.transaction.domain.TransactionType
 import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.TransactionPaymentInput
 import com.togethertrip.main.transaction.dto.request.TransactionShareInput
@@ -17,6 +19,9 @@ import com.togethertrip.main.transaction.repository.TransactionEventRepository
 import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
+import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
+import com.togethertrip.main.transaction.repository.projection.CommonFundBalanceRow
+import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
 import com.togethertrip.main.exchange.domain.ExchangeRate
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -50,6 +55,7 @@ class TransactionServiceTest {
     private lateinit var transactionShareRepository: TransactionShareRepository
     private lateinit var transactionPaymentRepository: TransactionPaymentRepository
     private lateinit var transactionEventRepository: TransactionEventRepository
+    private lateinit var transactionStatisticsQueryRepository: TransactionStatisticsQueryRepository
     private lateinit var tripRepository: TripRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var exchangeRateRepository: ExchangeRateRepository
@@ -62,6 +68,7 @@ class TransactionServiceTest {
         transactionShareRepository = mock(TransactionShareRepository::class.java)
         transactionPaymentRepository = mock(TransactionPaymentRepository::class.java)
         transactionEventRepository = mock(TransactionEventRepository::class.java)
+        transactionStatisticsQueryRepository = mock(TransactionStatisticsQueryRepository::class.java)
         tripRepository = mock(TripRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         exchangeRateRepository = mock(ExchangeRateRepository::class.java)
@@ -78,6 +85,7 @@ class TransactionServiceTest {
             transactionShareRepository = transactionShareRepository,
             transactionPaymentRepository = transactionPaymentRepository,
             transactionEventRepository = transactionEventRepository,
+            transactionStatisticsQueryRepository = transactionStatisticsQueryRepository,
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
@@ -570,7 +578,7 @@ class TransactionServiceTest {
             exchangeRate = BigDecimal("9.150000"),
             baseCurrency = "KRW",
             baseAmount = BigDecimal("9150.00"),
-            transactionType = com.togethertrip.main.transaction.domain.TransactionType.EXPENSE,
+            transactionType = TransactionType.EXPENSE,
         ).apply {
             id = 300L
         }
@@ -756,6 +764,287 @@ class TransactionServiceTest {
         assertEquals(299L, nextCursor.id)
     }
 
+    @Test
+    fun `공동경비 잔액은 충전 합계에서 사용 합계를 차감한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            transactionStatisticsQueryRepository.findCommonFundBalance(
+                tripId = 10L,
+                status = TransactionStatus.ACTIVE,
+            )
+        ).thenReturn(
+            CommonFundBalanceRow(
+                baseCurrency = "KRW",
+                chargedBaseAmount = BigDecimal("150000.00"),
+                usedBaseAmount = BigDecimal("43000.00"),
+            )
+        )
+
+        val response = transactionService.getCommonFundBalance(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        assertEquals(10L, response.tripId)
+        assertEquals("KRW", response.baseCurrency)
+        assertEquals(BigDecimal("150000.00"), response.chargedBaseAmount)
+        assertEquals(BigDecimal("43000.00"), response.usedBaseAmount)
+        assertEquals(BigDecimal("107000.00"), response.balanceBaseAmount)
+    }
+
+    @Test
+    fun `공동경비 거래가 없으면 여행 기본 통화를 사용한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            transactionStatisticsQueryRepository.findCommonFundBalance(
+                tripId = 10L,
+                status = TransactionStatus.ACTIVE,
+            )
+        ).thenReturn(
+            CommonFundBalanceRow(
+                baseCurrency = null,
+                chargedBaseAmount = BigDecimal.ZERO,
+                usedBaseAmount = BigDecimal.ZERO,
+            )
+        )
+
+        val response = transactionService.getCommonFundBalance(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        assertEquals("KRW", response.baseCurrency)
+        assertEquals(BigDecimal.ZERO, response.balanceBaseAmount)
+    }
+
+    @Test
+    fun `거래 통계는 기본 groupBy type으로 조회한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            transactionStatisticsQueryRepository.findTypeStatistics(
+                tripId = 10L,
+                from = null,
+                toExclusive = null,
+                status = TransactionStatus.ACTIVE,
+            )
+        ).thenReturn(
+            listOf(
+                TransactionStatisticsRow(
+                    key = "EXPENSE",
+                    label = "EXPENSE",
+                    transactionCount = 2L,
+                    totalBaseAmount = BigDecimal("32000.00"),
+                ),
+                TransactionStatisticsRow(
+                    key = "FUND_USE",
+                    label = "FUND_USE",
+                    transactionCount = 1L,
+                    totalBaseAmount = BigDecimal("12000.00"),
+                ),
+            )
+        )
+
+        val response = transactionService.getTransactionStatistics(
+            userId = 1L,
+            tripId = 10L,
+            from = null,
+            to = null,
+            groupBy = null,
+        )
+
+        assertEquals("type", response.groupBy)
+        assertEquals(BigDecimal("44000.00"), response.totalBaseAmount)
+        assertEquals(2, response.items.size)
+        assertEquals("EXPENSE", response.items.first().key)
+    }
+
+    @Test
+    fun `거래 통계는 카테고리와 기간 필터로 조회한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            transactionStatisticsQueryRepository.findCategoryStatistics(
+                tripId = 10L,
+                from = Instant.parse("2026-07-01T15:00:00Z"),
+                toExclusive = Instant.parse("2026-07-05T15:00:00Z"),
+                status = TransactionStatus.ACTIVE,
+            )
+        ).thenReturn(
+            listOf(
+                TransactionStatisticsRow(
+                    key = "FOOD",
+                    label = "FOOD",
+                    transactionCount = 3L,
+                    totalBaseAmount = BigDecimal("56000.00"),
+                )
+            )
+        )
+
+        val response = transactionService.getTransactionStatistics(
+            userId = 1L,
+            tripId = 10L,
+            from = "2026-07-02",
+            to = "2026-07-05",
+            groupBy = "category",
+        )
+
+        assertEquals("category", response.groupBy)
+        assertEquals(LocalDate.of(2026, 7, 2), response.from)
+        assertEquals(LocalDate.of(2026, 7, 5), response.to)
+        assertEquals("FOOD", response.items.first().label)
+    }
+
+    @Test
+    fun `거래 통계는 참여자 부담 금액 기준으로 조회한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            transactionStatisticsQueryRepository.findParticipantShareStatistics(
+                tripId = 10L,
+                from = null,
+                toExclusive = null,
+                status = TransactionStatus.ACTIVE,
+            )
+        ).thenReturn(
+            listOf(
+                TransactionStatisticsRow(
+                    key = "100",
+                    label = "재완",
+                    transactionCount = 2L,
+                    totalBaseAmount = BigDecimal("28000.00"),
+                )
+            )
+        )
+
+        val response = transactionService.getTransactionStatistics(
+            userId = 1L,
+            tripId = 10L,
+            from = null,
+            to = null,
+            groupBy = "participant",
+        )
+
+        assertEquals("participant", response.groupBy)
+        assertEquals("100", response.items.first().key)
+        assertEquals(BigDecimal("28000.00"), response.totalBaseAmount)
+    }
+
+    @Test
+    fun `거래 통계 groupBy가 지원 값이 아니면 실패한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+
+        val exception = assertBusinessException {
+            transactionService.getTransactionStatistics(
+                userId = 1L,
+                tripId = 10L,
+                from = null,
+                to = null,
+                groupBy = "payer",
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+    }
+
+    @Test
+    fun `거래 통계 시작일이 종료일보다 늦으면 실패한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+
+        val exception = assertBusinessException {
+            transactionService.getTransactionStatistics(
+                userId = 1L,
+                tripId = 10L,
+                from = "2026-07-06",
+                to = "2026-07-05",
+                groupBy = "type",
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+    }
+
     private fun mockWritableTrip(
         user: User,
         trip: Trip,
@@ -860,7 +1149,7 @@ class TransactionServiceTest {
             exchangeRate = BigDecimal("9.150000"),
             baseCurrency = "KRW",
             baseAmount = BigDecimal("9150.00"),
-            transactionType = com.togethertrip.main.transaction.domain.TransactionType.EXPENSE,
+            transactionType = TransactionType.EXPENSE,
         ).apply {
             this.id = id
             this.createdAt = createdAt

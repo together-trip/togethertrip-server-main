@@ -26,7 +26,7 @@ import java.time.temporal.ChronoUnit
 @Service
 class ExchangeRateAdminService(
     private val properties: ExchangeRateProperties,
-    @Qualifier("asyncJobOperator")
+    @Qualifier("jobOperator")
     private val jobOperator: JobOperator,
     @Qualifier("exchangeRateBackfillJob")
     private val exchangeRateBackfillJob: Job,
@@ -143,10 +143,12 @@ class ExchangeRateAdminService(
 
         try {
             val execution = jobOperator.start(exchangeRateBackfillJob, parameters)
+            val executionId = execution.id
+                ?: throw IllegalStateException("Spring Batch JobExecution id가 없습니다.")
+
             backfillBatchService.markBatchExecution(
                 backfillJobId = job.id,
-                batchJobExecutionId = execution.id
-                    ?: throw IllegalStateException("Spring Batch JobExecution id가 없습니다."),
+                batchJobExecutionId = executionId,
             )
         } catch (exception: Exception) {
             backfillBatchService.markLaunchFailed(job.id, exception)

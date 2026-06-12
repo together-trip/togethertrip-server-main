@@ -4,6 +4,7 @@ import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.user.controller.spec.UserApiSpec
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
+import com.togethertrip.main.user.dto.request.UpdateUserMultipartRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
 import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
@@ -11,9 +12,11 @@ import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.service.UserService
 import jakarta.validation.Valid
+import org.springframework.http.MediaType
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -60,7 +63,7 @@ class UserController(
         )
     }
 
-    @PatchMapping("/me")
+    @PatchMapping("/me", consumes = [MediaType.APPLICATION_JSON_VALUE])
     override fun updateMe(
         @AuthenticationPrincipal authUser: AuthUser,
         @Valid @RequestBody request: UpdateUserRequest,
@@ -69,6 +72,20 @@ class UserController(
             userService.updateMe(
                 userId = authUser.userId,
                 request = request,
+            )
+        )
+    }
+
+    @PatchMapping("/me", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    override fun updateMeWithMultipart(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @Valid @ModelAttribute request: UpdateUserMultipartRequest,
+    ): ApiResponse<UserResponse> {
+        return ApiResponse.success(
+            userService.updateMe(
+                userId = authUser.userId,
+                request = request.toUpdateUserRequest(),
+                profileImage = request.profileImage,
             )
         )
     }

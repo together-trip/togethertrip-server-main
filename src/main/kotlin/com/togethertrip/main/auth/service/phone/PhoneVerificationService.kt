@@ -6,6 +6,8 @@ import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.phone.PhoneNumberCrypto
+import com.togethertrip.main.global.phone.PhoneNumberHasher
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.stereotype.Service
@@ -16,6 +18,8 @@ import java.time.Instant
 @Service
 class PhoneVerificationService(
     private val phoneNumberNormalizer: PhoneNumberNormalizer,
+    private val phoneNumberHasher: PhoneNumberHasher,
+    private val phoneNumberCrypto: PhoneNumberCrypto,
     private val temporarySessionService: OAuthTemporarySessionService,
     private val smsSender: SmsSender,
     private val userRepository: UserRepository,
@@ -26,15 +30,19 @@ class PhoneVerificationService(
     fun requestCode(request: RequestPhoneVerificationRequest): PhoneVerificationCodeSentResponse {
         temporarySessionService.get(request.temporaryToken)
 
+        // 전화번호 정규화 및 hash 생성
         val phoneNumber = phoneNumberNormalizer.normalize(request.phoneNumber)
+        val phoneNumberHash = phoneNumberHasher.hash(phoneNumber)
 
-        validatePhoneNumberAvailable(phoneNumber)
+        // 인증번호 발송 전 검증
+        validatePhoneNumberAvailable(phoneNumberHash)
         smsSender.validateSendable()
-        phoneVerificationRateLimiter.validate(phoneNumber)
+        phoneVerificationRateLimiter.validate(phoneNumberHash)
 
         val code = createVerificationCode()
+        // Redis 인증 상태 생성
         val state = PhoneVerificationState(
-            phoneNumber = phoneNumber,
+            phoneNumberHash = phoneNumberHash,
             code = code,
             expiresAt = Instant.now().plus(CODE_TTL),
         )
@@ -45,13 +53,14 @@ class PhoneVerificationService(
             ttl = CODE_TTL,
         )
 
+        // SMS 인증번호 발송
         smsSender.sendVerificationCode(
             phoneNumber = phoneNumber,
             code = code,
         )
 
+        // 인증번호 요청 응답
         return PhoneVerificationCodeSentResponse(
-            phoneNumber = phoneNumber,
             expiresInSeconds = CODE_TTL.seconds,
         )
     }
@@ -59,23 +68,18 @@ class PhoneVerificationService(
     fun confirmCode(request: ConfirmPhoneVerificationRequest): ConfirmedPhoneVerification {
         val session = temporarySessionService.get(request.temporaryToken)
         val phoneNumber = phoneNumberNormalizer.normalize(request.phoneNumber)
+        val phoneNumberHash = phoneNumberHasher.hash(phoneNumber)
         val state = phoneVerificationStore.get(request.temporaryToken)
 
-        if (state.phoneNumber != phoneNumber) {
-            throw BusinessException(AuthErrorCode.INVALID_PHONE_VERIFICATION_CODE)
-        }
-
+        // 인증번호 만료 확인
         if (Instant.now().isAfter(state.expiresAt)) {
             phoneVerificationStore.delete(request.temporaryToken)
             throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_CODE_EXPIRED)
         }
 
-        if (state.attemptCount >= MAX_ATTEMPT_COUNT) {
-            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_ATTEMPT_EXCEEDED)
-        }
-
-        if (state.code != request.code) {
-            phoneVerificationStore.saveAttemptFailure(
+        // 인증번호 검증 실패 처리
+        if (state.phoneNumberHash != phoneNumberHash || state.code != request.code) {
+            phoneVerificationStore.incrementAttemptFailure(
                 temporaryToken = request.temporaryToken,
                 state = state,
                 maxAttemptCount = MAX_ATTEMPT_COUNT,
@@ -83,11 +87,17 @@ class PhoneVerificationService(
             throw BusinessException(AuthErrorCode.INVALID_PHONE_VERIFICATION_CODE)
         }
 
+        // 인증 상태 삭제
         phoneVerificationStore.delete(request.temporaryToken)
 
+        // 전화번호 인증 완료 결과
         return ConfirmedPhoneVerification(
             session = session,
-            phoneNumber = phoneNumber,
+            phoneNumberHash = phoneNumberHash,
+            phoneNumberHashVersion = phoneNumberHasher.version,
+            phoneNumberEncrypted = phoneNumberCrypto.encrypt(phoneNumber),
+            phoneNumberEncryptionVersion = phoneNumberCrypto.version,
+            phoneNumberMasked = phoneNumberCrypto.mask(phoneNumber),
         )
     }
 
@@ -95,10 +105,11 @@ class PhoneVerificationService(
         temporarySessionService.delete(temporaryToken)
     }
 
-    private fun validatePhoneNumberAvailable(phoneNumber: String) {
+    private fun validatePhoneNumberAvailable(phoneNumberHash: String) {
         val alreadyUsed = userRepository
-            .existsByPhoneNumberAndDeletedAtIsNull(phoneNumber)
+            .existsByPhoneNumberHashAndDeletedAtIsNull(phoneNumberHash)
 
+        // 이미 사용 중인 전화번호 확인
         if (alreadyUsed) {
             throw BusinessException(AuthErrorCode.PHONE_NUMBER_ALREADY_USED)
         }

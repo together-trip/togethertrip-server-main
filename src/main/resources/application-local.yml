@@ -43,6 +43,14 @@ jwt:
   access-token-expiration: 1800
   refresh-token-expiration: 1209600
 
+phone:
+  hash:
+    key: ${PHONE_HASH_KEY:local-phone-hash-key-at-least-32-bytes}
+    version: ${PHONE_HASH_VERSION:v1}
+  encryption:
+    key: ${PHONE_ENCRYPTION_KEY:local-phone-encryption-key-at-least-32-bytes}
+    version: ${PHONE_ENCRYPTION_VERSION:v1}
+
 auth:
   local-test:
     enabled: true
@@ -61,6 +69,11 @@ post:
   attachments:
     local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH:./uploads/post-attachments}
     public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX:/uploads/post-attachments}
+
+user:
+  profile-images:
+    local-storage-path: ${USER_PROFILE_IMAGE_LOCAL_STORAGE_PATH:./uploads/user-profile-images}
+    public-url-prefix: ${USER_PROFILE_IMAGE_PUBLIC_URL_PREFIX:/uploads/user-profile-images}
 
 trip:
   invite:

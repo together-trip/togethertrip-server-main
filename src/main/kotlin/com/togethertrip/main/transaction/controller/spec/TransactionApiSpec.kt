@@ -7,9 +7,11 @@ import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionPaymentsRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequest
+import com.togethertrip.main.transaction.dto.response.CommonFundBalanceResponse
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
 import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
+import com.togethertrip.main.transaction.dto.response.TransactionStatisticsResponse
 import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
@@ -94,7 +96,7 @@ interface TransactionApiSpec {
     fun getCommonFundBalance(
         authUser: AuthUser,
         tripId: Long,
-    ): ApiResponse<Unit>
+    ): ApiResponse<CommonFundBalanceResponse>
 
     @Operation(summary = "거래 통계 조회", description = "여행의 카테고리별, 참여자별 거래 통계를 조회합니다.")
     fun getTransactionStatistics(
@@ -103,5 +105,5 @@ interface TransactionApiSpec {
         from: String?,
         to: String?,
         groupBy: String?,
-    ): ApiResponse<Unit>
+    ): ApiResponse<TransactionStatisticsResponse>
 }

@@ -20,11 +20,14 @@ import com.togethertrip.main.transaction.dto.request.TransactionShareInput
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionPaymentsRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequest
+import com.togethertrip.main.transaction.dto.response.CommonFundBalanceResponse
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
 import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
 import com.togethertrip.main.transaction.dto.response.TransactionPaymentResponse
 import com.togethertrip.main.transaction.dto.response.TransactionShareResponse
+import com.togethertrip.main.transaction.dto.response.TransactionStatisticsItemResponse
+import com.togethertrip.main.transaction.dto.response.TransactionStatisticsResponse
 import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import com.togethertrip.main.transaction.exception.TransactionErrorCode
 import com.togethertrip.main.transaction.pagination.TransactionCursor
@@ -32,6 +35,10 @@ import com.togethertrip.main.transaction.repository.TransactionEventRepository
 import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
+import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
+import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
+import com.togethertrip.main.transaction.service.support.TransactionStatisticsGroupBy
+import com.togethertrip.main.transaction.service.support.TransactionStatisticsPeriod
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -46,6 +53,7 @@ import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
 import java.time.LocalDate
 
 @Service
@@ -54,6 +62,7 @@ class TransactionService(
     private val transactionShareRepository: TransactionShareRepository,
     private val transactionPaymentRepository: TransactionPaymentRepository,
     private val transactionEventRepository: TransactionEventRepository,
+    private val transactionStatisticsQueryRepository: TransactionStatisticsQueryRepository,
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
@@ -325,6 +334,83 @@ class TransactionService(
         return transactionEventRepository
             .findByTransactionIdOrderByAggregateVersionAsc(transactionId)
             .map(TransactionEventResponse::from)
+    }
+
+    @Transactional(readOnly = true)
+    fun getCommonFundBalance(
+        userId: Long,
+        tripId: Long,
+    ): CommonFundBalanceResponse {
+        getActiveUser(userId)
+        val trip = getAccessibleTrip(
+            userId = userId,
+            tripId = tripId,
+        )
+        val row = transactionStatisticsQueryRepository.findCommonFundBalance(
+            tripId = tripId,
+            status = TransactionStatus.ACTIVE,
+        )
+        val chargedBaseAmount = row.chargedBaseAmount
+        val usedBaseAmount = row.usedBaseAmount
+
+        // 공동경비 잔액은 충전 합계에서 사용 합계를 차감한다.
+        return CommonFundBalanceResponse(
+            tripId = tripId,
+            baseCurrency = row.baseCurrency ?: trip.defaultCurrency,
+            chargedBaseAmount = chargedBaseAmount,
+            usedBaseAmount = usedBaseAmount,
+            balanceBaseAmount = chargedBaseAmount - usedBaseAmount,
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun getTransactionStatistics(
+        userId: Long,
+        tripId: Long,
+        from: String?,
+        to: String?,
+        groupBy: String?,
+    ): TransactionStatisticsResponse {
+        getActiveUser(userId)
+        getAccessibleTrip(
+            userId = userId,
+            tripId = tripId,
+        )
+        val parsedPeriod = TransactionStatisticsPeriod.from(
+            from = from,
+            to = to,
+        )
+        val parsedGroupBy = TransactionStatisticsGroupBy.from(groupBy)
+        // groupBy 값에 따라 거래 원장 집계 기준을 분기한다.
+        val rows = when (parsedGroupBy) {
+            TransactionStatisticsGroupBy.TYPE -> transactionStatisticsQueryRepository.findTypeStatistics(
+                tripId = tripId,
+                from = parsedPeriod.fromInstant,
+                toExclusive = parsedPeriod.toExclusiveInstant,
+            )
+
+            TransactionStatisticsGroupBy.CATEGORY -> transactionStatisticsQueryRepository.findCategoryStatistics(
+                tripId = tripId,
+                from = parsedPeriod.fromInstant,
+                toExclusive = parsedPeriod.toExclusiveInstant,
+            )
+
+            TransactionStatisticsGroupBy.PARTICIPANT -> transactionStatisticsQueryRepository.findParticipantShareStatistics(
+                tripId = tripId,
+                from = parsedPeriod.fromInstant,
+                toExclusive = parsedPeriod.toExclusiveInstant,
+            )
+        }
+
+        // 전체 합계는 응답 항목 합계를 기준으로 계산한다.
+        return TransactionStatisticsResponse(
+            tripId = tripId,
+            groupBy = parsedGroupBy.value,
+            from = parsedPeriod.from,
+            to = parsedPeriod.to,
+            totalBaseAmount = rows.fold(BigDecimal.ZERO) { total, row -> total + row.totalBaseAmount },
+            items = rows.map(::toStatisticsItemResponse),
+        )
     }
 
     @Transactional
@@ -631,6 +717,15 @@ class TransactionService(
         } catch (_: RuntimeException) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
+    }
+
+    private fun toStatisticsItemResponse(row: TransactionStatisticsRow): TransactionStatisticsItemResponse {
+        return TransactionStatisticsItemResponse(
+            key = row.key,
+            label = row.label,
+            transactionCount = row.transactionCount,
+            totalBaseAmount = row.totalBaseAmount,
+        )
     }
 
     companion object {

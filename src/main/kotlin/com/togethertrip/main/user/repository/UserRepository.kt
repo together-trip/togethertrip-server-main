@@ -28,15 +28,15 @@ interface UserRepository : JpaRepository<User, Long> {
         id: Long,
     ): Boolean
 
-    fun existsByPhoneNumberAndDeletedAtIsNull(phoneNumber: String): Boolean
+    fun existsByPhoneNumberHashAndDeletedAtIsNull(phoneNumberHash: String): Boolean
 
-    fun existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
-        phoneNumber: String,
+    fun existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
+        phoneNumberHash: String,
         id: Long,
     ): Boolean
 
-    fun findByPhoneNumberAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-        phoneNumber: String,
+    fun findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
+        phoneNumberHash: String,
         status: UserStatus,
     ): User?
 }

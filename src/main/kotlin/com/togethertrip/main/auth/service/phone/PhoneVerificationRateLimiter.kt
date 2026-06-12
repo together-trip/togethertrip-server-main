@@ -14,15 +14,18 @@ class PhoneVerificationRateLimiter(
     private val redisTemplate: StringRedisTemplate,
 ) {
 
-    fun validate(phoneNumber: String) {
-        if (redisTemplate.hasKey(getRateLimitKey(phoneNumber))) {
+    fun validate(phoneNumberHash: String) {
+        // 재요청 간격 확인
+        if (redisTemplate.hasKey(getRateLimitKey(phoneNumberHash))) {
             throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_REQUEST_TOO_SOON)
         }
 
-        val dailyLimitKey = getDailyLimitKey(phoneNumber)
+        // 일일 요청 횟수 증가
+        val dailyLimitKey = getDailyLimitKey(phoneNumberHash)
         val dailyCount = redisTemplate.opsForValue()
             .increment(dailyLimitKey) ?: 0
 
+        // 일일 요청 횟수 TTL 설정
         if (dailyCount == 1L) {
             redisTemplate.expire(
                 dailyLimitKey,
@@ -30,26 +33,31 @@ class PhoneVerificationRateLimiter(
             )
         }
 
+        // 일일 요청 한도 확인
         if (dailyCount > DAILY_REQUEST_LIMIT) {
             throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_DAILY_LIMIT_EXCEEDED)
         }
 
+        // 재요청 간격 key 저장
         redisTemplate.opsForValue().set(
-            getRateLimitKey(phoneNumber),
+            getRateLimitKey(phoneNumberHash),
             "1",
             REQUEST_INTERVAL,
         )
     }
 
-    private fun getRateLimitKey(phoneNumber: String): String {
-        return "auth:phone-verification:rate:$phoneNumber"
+    private fun getRateLimitKey(phoneNumberHash: String): String {
+        // 인증번호 재요청 제한 key
+        return "auth:phone-verification:rate:$phoneNumberHash"
     }
 
-    private fun getDailyLimitKey(phoneNumber: String): String {
+    private fun getDailyLimitKey(phoneNumberHash: String): String {
+        // 일일 요청 기준 날짜
         val today = LocalDate.now(SEOUL_ZONE)
             .format(DateTimeFormatter.BASIC_ISO_DATE)
 
-        return "auth:phone-verification:daily:$phoneNumber:$today"
+        // 인증번호 일일 요청 제한 key
+        return "auth:phone-verification:daily:$phoneNumberHash:$today"
     }
 
     companion object {

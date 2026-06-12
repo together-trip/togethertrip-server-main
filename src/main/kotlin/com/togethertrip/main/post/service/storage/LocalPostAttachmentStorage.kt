@@ -2,15 +2,18 @@ package com.togethertrip.main.post.service.storage
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.storage.UploadFileType
+import com.togethertrip.main.global.storage.UploadFileTypeDetector
+import com.togethertrip.main.global.storage.UploadMediaKind
 import com.togethertrip.main.post.domain.PostAttachmentType
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.multipart.MultipartFile
+import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.UUID
-import kotlin.io.path.extension
 
 @Component
 class LocalPostAttachmentStorage(
@@ -18,6 +21,7 @@ class LocalPostAttachmentStorage(
     private val storagePath: String,
     @Value("\${post.attachments.public-url-prefix:/uploads/post-attachments}")
     private val publicUrlPrefix: String,
+    private val uploadFileTypeDetector: UploadFileTypeDetector,
 ) : PostAttachmentStorage {
 
     override fun store(file: MultipartFile): StoredPostAttachment {
@@ -25,8 +29,11 @@ class LocalPostAttachmentStorage(
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
 
-        val attachmentType = resolveAttachmentType(file.contentType)
-        val storedFileName = createStoredFileName(file.originalFilename)
+        val fileBytes = file.bytes
+        val fileType = uploadFileTypeDetector.detect(fileBytes)
+            ?: throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        val attachmentType = resolveAttachmentType(fileType)
+        val storedFileName = createStoredFileName(fileType)
         val storageDirectory = Path.of(storagePath).toAbsolutePath().normalize()
         val targetPath = storageDirectory.resolve(storedFileName).normalize()
 
@@ -35,7 +42,7 @@ class LocalPostAttachmentStorage(
         }
 
         Files.createDirectories(storageDirectory)
-        file.inputStream.use { inputStream ->
+        ByteArrayInputStream(fileBytes).use { inputStream ->
             Files.copy(
                 inputStream,
                 targetPath,
@@ -49,7 +56,7 @@ class LocalPostAttachmentStorage(
             fileUrl = "${publicUrlPrefix.trimEnd('/')}/$storedFileName",
             thumbnailUrl = null,
             fileSize = file.size,
-            mimeType = file.contentType,
+            mimeType = fileType.mimeType,
         )
     }
 
@@ -62,25 +69,14 @@ class LocalPostAttachmentStorage(
         }
     }
 
-    private fun resolveAttachmentType(contentType: String?): PostAttachmentType {
-        return when {
-            contentType?.startsWith("image/") == true -> PostAttachmentType.IMAGE
-            contentType?.startsWith("video/") == true -> PostAttachmentType.VIDEO
-            else -> throw BusinessException(CommonErrorCode.INVALID_INPUT)
+    private fun resolveAttachmentType(fileType: UploadFileType): PostAttachmentType {
+        return when (fileType.mediaKind) {
+            UploadMediaKind.IMAGE -> PostAttachmentType.IMAGE
+            UploadMediaKind.VIDEO -> PostAttachmentType.VIDEO
         }
     }
 
-    private fun createStoredFileName(originalFilename: String?): String {
-        val extension = originalFilename
-            ?.let { Path.of(it).fileName }
-            ?.extension
-            ?.lowercase()
-            ?.takeIf { it.isNotBlank() }
-
-        return if (extension == null) {
-            UUID.randomUUID().toString()
-        } else {
-            "${UUID.randomUUID()}.$extension"
-        }
+    private fun createStoredFileName(fileType: UploadFileType): String {
+        return "${UUID.randomUUID()}.${fileType.extension}"
     }
 }

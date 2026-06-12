@@ -16,6 +16,7 @@ import com.togethertrip.main.auth.service.phone.ConfirmedPhoneVerification
 import com.togethertrip.main.auth.service.phone.PhoneVerificationService
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
+import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.repository.UserRepository
@@ -39,6 +40,7 @@ class AuthServiceTest {
     private lateinit var temporarySessionService: OAuthTemporarySessionService
     private lateinit var phoneVerificationService: PhoneVerificationService
     private lateinit var oauthSignupLock: OAuthSignupLock
+    private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
     private lateinit var authService: AuthService
 
     @BeforeEach
@@ -56,6 +58,9 @@ class AuthServiceTest {
                 block: () -> T,
             ): T = block()
         }
+        profileImageUrlPolicy = ProfileImageUrlPolicy(
+            userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
+        )
         authService = AuthService(
             kakaoOAuthClient = kakaoOAuthClient,
             oauthAccountRepository = oauthAccountRepository,
@@ -65,6 +70,7 @@ class AuthServiceTest {
             temporarySessionService = temporarySessionService,
             phoneVerificationService = phoneVerificationService,
             oauthSignupLock = oauthSignupLock,
+            profileImageUrlPolicy = profileImageUrlPolicy,
         )
     }
 
@@ -78,7 +84,10 @@ class AuthServiceTest {
         )
         val user = User(nickname = "여행자").apply {
             id = 1L
-            verifyPhoneNumber("+821012345678")
+            verifyPhoneNumberHash(
+                phoneNumberHash = "phone-hash-old",
+                phoneNumberHashVersion = "v1",
+            )
             withdraw()
         }
         val oauthAccount = OAuthAccount(
@@ -125,7 +134,10 @@ class AuthServiceTest {
         )
         val user = User(nickname = "여행자").apply {
             id = 1L
-            verifyPhoneNumber("+821011112222")
+            verifyPhoneNumberHash(
+                phoneNumberHash = "phone-hash-old",
+                phoneNumberHashVersion = "v1",
+            )
         }
         val oauthAccount = OAuthAccount(
             user = user,
@@ -186,14 +198,18 @@ class AuthServiceTest {
         )).thenReturn(
             ConfirmedPhoneVerification(
                 session = session,
-                phoneNumber = "+821033334444",
+                phoneNumberHash = "phone-hash-3333",
+                phoneNumberHashVersion = "v1",
+                phoneNumberEncrypted = "encrypted-phone",
+                phoneNumberEncryptionVersion = "v1",
+                phoneNumberMasked = "010-****-3333",
             )
         )
         `when`(userRepository.findLockedByIdIncludingDeleted(1L))
             .thenReturn(user)
         `when`(
-            userRepository.existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
-                phoneNumber = "+821033334444",
+            userRepository.existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
+                phoneNumberHash = "phone-hash-3333",
                 id = 1L,
             )
         ).thenReturn(false)
@@ -211,7 +227,11 @@ class AuthServiceTest {
         )
 
         assertEquals(AuthStatus.PROFILE_REQUIRED, response.status)
-        assertEquals("+821033334444", user.phoneNumber)
+        assertEquals("phone-hash-3333", user.phoneNumberHash)
+        assertEquals("encrypted-phone", user.phoneNumberEncrypted)
+        assertEquals("v1", user.phoneNumberEncryptionVersion)
+        assertEquals("010-****-3333", user.phoneNumberMasked)
+        assertNull(user.phoneNumber)
         verify(phoneVerificationService).deleteTemporarySession("temporary-token")
         verify(refreshTokenService).save(
             userId = 1L,
@@ -234,7 +254,10 @@ class AuthServiceTest {
             birthDate = LocalDate.of(1990, 1, 1),
         ).apply {
             id = 1L
-            verifyPhoneNumber("+821011112222")
+            verifyPhoneNumberHash(
+                phoneNumberHash = "phone-hash-old",
+                phoneNumberHashVersion = "v1",
+            )
             withdraw()
         }
 
@@ -255,14 +278,15 @@ class AuthServiceTest {
         )).thenReturn(
             ConfirmedPhoneVerification(
                 session = session,
-                phoneNumber = "+821033334444",
+                phoneNumberHash = "phone-hash-3333",
+                phoneNumberHashVersion = "v1",
             )
         )
         `when`(userRepository.findLockedByIdIncludingDeleted(1L))
             .thenReturn(user)
         `when`(
-            userRepository.existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
-                phoneNumber = "+821033334444",
+            userRepository.existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
+                phoneNumberHash = "phone-hash-3333",
                 id = 1L,
             )
         ).thenReturn(false)
@@ -282,7 +306,8 @@ class AuthServiceTest {
         assertEquals(AuthStatus.AUTHENTICATED, response.status)
         assertEquals(UserStatus.ACTIVE, user.status)
         assertNull(user.deletedAt)
-        assertEquals("+821033334444", user.phoneNumber)
+        assertEquals("phone-hash-3333", user.phoneNumberHash)
+        assertNull(user.phoneNumber)
         verify(phoneVerificationService).deleteTemporarySession("temporary-token")
     }
 
@@ -297,7 +322,10 @@ class AuthServiceTest {
         )
         val user = User(nickname = "여행자").apply {
             id = 1L
-            verifyPhoneNumber("+821011112222")
+            verifyPhoneNumberHash(
+                phoneNumberHash = "phone-hash-old",
+                phoneNumberHashVersion = "v1",
+            )
             withdraw()
         }
 
@@ -318,14 +346,15 @@ class AuthServiceTest {
         )).thenReturn(
             ConfirmedPhoneVerification(
                 session = session,
-                phoneNumber = "+821033334444",
+                phoneNumberHash = "phone-hash-3333",
+                phoneNumberHashVersion = "v1",
             )
         )
         `when`(userRepository.findLockedByIdIncludingDeleted(1L))
             .thenReturn(user)
         `when`(
-            userRepository.existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
-                phoneNumber = "+821033334444",
+            userRepository.existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
+                phoneNumberHash = "phone-hash-3333",
                 id = 1L,
             )
         ).thenReturn(false)
@@ -345,7 +374,8 @@ class AuthServiceTest {
         assertEquals(AuthStatus.PROFILE_REQUIRED, response.status)
         assertEquals(UserStatus.ACTIVE, user.status)
         assertNull(user.deletedAt)
-        assertEquals("+821033334444", user.phoneNumber)
+        assertEquals("phone-hash-3333", user.phoneNumberHash)
+        assertNull(user.phoneNumber)
         verify(phoneVerificationService).deleteTemporarySession("temporary-token")
     }
 
@@ -376,7 +406,8 @@ class AuthServiceTest {
         )).thenReturn(
             ConfirmedPhoneVerification(
                 session = session,
-                phoneNumber = "+821033334444",
+                phoneNumberHash = "phone-hash-3333",
+                phoneNumberHashVersion = "v1",
             )
         )
         `when`(userRepository.findLockedByIdIncludingDeleted(1L))
