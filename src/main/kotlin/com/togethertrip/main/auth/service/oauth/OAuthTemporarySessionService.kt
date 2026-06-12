@@ -19,7 +19,10 @@ class OAuthTemporarySessionService(
         oauthUserInfo: OAuthUserInfo,
         existingUserId: Long?,
     ): String {
+        // 임시 토큰 생성
         val temporaryToken = UUID.randomUUID().toString()
+
+        // OAuth 임시 세션 생성
         val session = OAuthTemporarySession(
             provider = oauthUserInfo.provider,
             providerUserId = oauthUserInfo.providerUserId,
@@ -28,12 +31,14 @@ class OAuthTemporarySessionService(
             existingUserId = existingUserId,
         )
 
+        // Redis 임시 세션 저장
         redisTemplate.opsForValue().set(
             getKey(temporaryToken),
             objectMapper.writeValueAsString(session),
             TEMPORARY_TOKEN_TTL,
         )
 
+        // 임시 토큰 반환
         return temporaryToken
     }
 
@@ -41,6 +46,7 @@ class OAuthTemporarySessionService(
         val value = redisTemplate.opsForValue().get(getKey(temporaryToken))
             ?: throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_TOKEN_EXPIRED)
 
+        // Redis 임시 세션 역직렬화
         return objectMapper.readValue(value, OAuthTemporarySession::class.java)
     }
 
@@ -49,6 +55,7 @@ class OAuthTemporarySessionService(
     }
 
     private fun getKey(temporaryToken: String): String {
+        // OAuth 임시 세션 key
         return "auth:oauth-temporary:$temporaryToken"
     }
 

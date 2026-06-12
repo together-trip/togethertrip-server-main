@@ -20,7 +20,8 @@ class OpenApiConfig {
             .`in`(SecurityScheme.In.HEADER)
             .name("Authorization")
             .description(
-                "한지민(인증): local-test:verified:hana<br>" +
+                "관리자: local-test:admin<br>" +
+                    "한지민(인증): local-test:verified:hana<br>" +
                     "김민서(인증): local-test:verified:minseo<br>" +
                     "박서준(인증): local-test:verified:joon<br>" +
                     "이유리(미인증): local-test:unverified:yuri"

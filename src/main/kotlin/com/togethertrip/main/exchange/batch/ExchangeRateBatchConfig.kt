@@ -1,13 +1,9 @@
 package com.togethertrip.main.exchange.batch
 
 import com.togethertrip.main.exchange.service.ExchangeRateImportResult
-import org.springframework.batch.core.configuration.JobRegistry
-import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing
-import org.springframework.batch.core.configuration.support.MapJobRegistry
+import org.springframework.batch.core.configuration.support.JdbcDefaultBatchConfiguration
 import org.springframework.batch.core.job.Job
 import org.springframework.batch.core.job.builder.JobBuilder
-import org.springframework.batch.core.launch.JobOperator
-import org.springframework.batch.core.launch.support.TaskExecutorJobOperator
 import org.springframework.batch.core.repository.JobRepository
 import org.springframework.batch.core.step.Step
 import org.springframework.batch.core.step.builder.StepBuilder
@@ -20,26 +16,10 @@ import java.time.LocalDate
 import java.util.concurrent.ThreadPoolExecutor
 
 @Configuration
-@EnableBatchProcessing
-class ExchangeRateBatchConfig {
+class ExchangeRateBatchConfig : JdbcDefaultBatchConfiguration() {
 
-    @Bean
-    fun jobRegistry(): JobRegistry {
-        return MapJobRegistry()
-    }
-
-    @Bean
-    fun asyncJobOperator(
-        jobRepository: JobRepository,
-        jobRegistry: JobRegistry,
-        exchangeRateBatchTaskExecutor: TaskExecutor,
-    ): JobOperator {
-        val jobOperator = TaskExecutorJobOperator()
-        jobOperator.setJobRepository(jobRepository)
-        jobOperator.setJobRegistry(jobRegistry)
-        jobOperator.setTaskExecutor(exchangeRateBatchTaskExecutor)
-        jobOperator.afterPropertiesSet()
-        return jobOperator
+    override fun getTaskExecutor(): TaskExecutor {
+        return applicationContext.getBean("exchangeRateBatchTaskExecutor", TaskExecutor::class.java)
     }
 
     @Bean

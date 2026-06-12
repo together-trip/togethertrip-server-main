@@ -10,10 +10,22 @@ import java.nio.file.Path
 class StaticResourceConfig(
     @Value("\${post.attachments.local-storage-path:./uploads/post-attachments}")
     private val postAttachmentStoragePath: String,
+    @Value("\${user.profile-images.local-storage-path:./uploads/user-profile-images}")
+    private val userProfileImageStoragePath: String,
 ) : WebMvcConfigurer {
 
     override fun addResourceHandlers(registry: ResourceHandlerRegistry) {
-        val storageLocation = Path.of(postAttachmentStoragePath)
+        registry
+            .addResourceHandler("/uploads/post-attachments/**")
+            .addResourceLocations(toResourceLocation(postAttachmentStoragePath))
+
+        registry
+            .addResourceHandler("/uploads/user-profile-images/**")
+            .addResourceLocations(toResourceLocation(userProfileImageStoragePath))
+    }
+
+    private fun toResourceLocation(storagePath: String): String {
+        return Path.of(storagePath)
             .toAbsolutePath()
             .normalize()
             .toUri()
@@ -21,9 +33,5 @@ class StaticResourceConfig(
             .let { location ->
                 if (location.endsWith("/")) location else "$location/"
             }
-
-        registry
-            .addResourceHandler("/uploads/post-attachments/**")
-            .addResourceLocations(storageLocation)
     }
 }

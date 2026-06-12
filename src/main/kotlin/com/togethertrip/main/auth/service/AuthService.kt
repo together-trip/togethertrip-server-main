@@ -2,29 +2,34 @@ package com.togethertrip.main.auth.service
 
 import com.togethertrip.main.auth.client.KakaoOAuthClient
 import com.togethertrip.main.auth.domain.OAuthAccount
-import com.togethertrip.main.auth.dto.response.AuthResponse
+import com.togethertrip.main.auth.dto.OAuthUserInfo
+import com.togethertrip.main.auth.dto.TokenResponse
 import com.togethertrip.main.auth.dto.request.ConfirmPhoneVerificationRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
-import com.togethertrip.main.auth.dto.OAuthUserInfo
-import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
 import com.togethertrip.main.auth.dto.request.RequestPhoneVerificationRequest
 import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
-import com.togethertrip.main.auth.dto.TokenResponse
+import com.togethertrip.main.auth.dto.response.AuthResponse
+import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
 import com.togethertrip.main.auth.service.oauth.OAuthSignupLock
 import com.togethertrip.main.auth.service.oauth.OAuthTemporarySession
 import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
+import com.togethertrip.main.auth.service.phone.ConfirmedPhoneVerification
 import com.togethertrip.main.auth.service.phone.PhoneVerificationService
 import com.togethertrip.main.global.exception.BusinessException
-import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
 import com.togethertrip.main.global.security.jwt.TokenType
+import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 class AuthService(
@@ -36,25 +41,32 @@ class AuthService(
     private val temporarySessionService: OAuthTemporarySessionService,
     private val phoneVerificationService: PhoneVerificationService,
     private val oauthSignupLock: OAuthSignupLock,
+    private val profileImageUrlPolicy: ProfileImageUrlPolicy,
 ) {
 
     @Transactional
     fun loginWithKakao(request: KakaoLoginRequest): AuthResponse {
-        val oauthUserInfo = kakaoOAuthClient.getUserInfo(request.accessToken)
+        val oauthUserInfo = sanitizeOAuthUserInfo(
+            kakaoOAuthClient.getUserInfo(request.accessToken)
+        )
 
+        // OAuth 계정 조회
         val oauthAccount = oauthAccountRepository
             .findByProviderAndProviderUserId(
                 provider = oauthUserInfo.provider,
                 providerUserId = oauthUserInfo.providerUserId,
             )
 
+        // 기존 OAuth 계정 로그인
         if (oauthAccount != null) {
             val user = resolveOAuthAccountUser(oauthAccount)
 
+            // 전화번호 인증 완료 사용자 로그인
             if (user.phoneVerifiedAt != null) {
                 return createAuthenticatedResponse(user)
             }
 
+            // 기존 사용자 전화번호 인증 요구
             return AuthResponse.phoneVerificationRequired(
                 temporarySessionService.create(
                     oauthUserInfo = oauthUserInfo,
@@ -63,6 +75,7 @@ class AuthService(
             )
         }
 
+        // 신규 OAuth 사용자 전화번호 인증 요구
         return AuthResponse.phoneVerificationRequired(
             temporarySessionService.create(
                 oauthUserInfo = oauthUserInfo,
@@ -83,6 +96,7 @@ class AuthService(
     ): AuthResponse {
         val session = temporarySessionService.get(request.temporaryToken)
 
+        // OAuth 가입 단위 잠금
         return oauthSignupLock.withLock(session) {
             confirmPhoneVerificationWithLockedSession(
                 request = request,
@@ -100,85 +114,70 @@ class AuthService(
             temporaryToken = request.temporaryToken,
         )
 
+        // 인증번호 확인
         val confirmedPhoneVerification = phoneVerificationService.confirmCode(request)
-        val user = if (session.existingUserId != null) {
-            val existingUser = userRepository.findLockedByIdIncludingDeleted(session.existingUserId)
-                ?: rejectExpiredTemporarySession(request.temporaryToken)
+        // 인증된 전화번호로 회원가입 완료
+        val user = completeSignup(
+            session = session,
+            temporaryToken = request.temporaryToken,
+            confirmedPhoneVerification = confirmedPhoneVerification,
+        )
 
-            if (existingUser.status == UserStatus.WITHDRAWN || existingUser.deletedAt != null) {
-                existingUser.reactivateForSignup()
-            }
-
-            if (existingUser.status != UserStatus.ACTIVE) {
-                throw BusinessException(UserErrorCode.INACTIVE_USER)
-            }
-
-            if (existingUser.phoneVerifiedAt != null) {
-                rejectAlreadyCompleted(request.temporaryToken)
-            }
-
-            validatePhoneNumberAvailable(
-                phoneNumber = confirmedPhoneVerification.phoneNumber,
-                currentUserId = existingUser.id,
-            )
-            existingUser.verifyPhoneNumber(confirmedPhoneVerification.phoneNumber)
-            existingUser
-        } else {
-            validatePhoneNumberAvailable(
-                phoneNumber = confirmedPhoneVerification.phoneNumber,
-                currentUserId = null,
-            )
-            registerNewUser(
-                oauthUserInfo = OAuthUserInfo(
-                    provider = session.provider,
-                    providerUserId = session.providerUserId,
-                    nickname = session.nickname,
-                    profileImageUrl = session.profileImageUrl,
-                ),
-                phoneNumber = confirmedPhoneVerification.phoneNumber,
-            )
-        }
-
+        // 가입 상태 저장 및 인증 세션 삭제
+        flushSignupState(request.temporaryToken)
         phoneVerificationService.deleteTemporarySession(request.temporaryToken)
 
+        // 인증 응답 생성
         return createAuthenticatedResponse(user)
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     fun refreshToken(request: TokenRefreshRequest): TokenResponse {
         if (!jwtTokenProvider.validateToken(request.refreshToken)) {
             throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         }
 
+        // refresh token claim 조회
         val claims = jwtTokenProvider.getClaims(request.refreshToken)
 
+        // refresh token 타입 확인
         if (claims.tokenType != TokenType.REFRESH) {
             throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         }
 
-        if (!refreshTokenService.matches(
-                userId = claims.userId,
-                refreshToken = request.refreshToken,
+        // token 사용자 조회
+        val user = userRepository.findById(claims.userId)
+            .orElseThrow { BusinessException(UserErrorCode.USER_NOT_FOUND) }
+
+        // 활성 사용자 확인
+        if (user.status != UserStatus.ACTIVE) {
+            throw BusinessException(UserErrorCode.INACTIVE_USER)
+        }
+
+        // 새 token 발급
+        val accessToken = jwtTokenProvider.createAccessToken(
+            userId = user.id,
+            role = user.role,
+        )
+        val refreshToken = jwtTokenProvider.createRefreshToken(
+            userId = user.id,
+            role = user.role,
+        )
+
+        // refresh token 회전
+        if (!refreshTokenService.rotate(
+                userId = user.id,
+                currentRefreshToken = request.refreshToken,
+                newRefreshToken = refreshToken,
             )
         ) {
             throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         }
 
-        val user = userRepository.findById(claims.userId)
-            .orElseThrow { BusinessException(UserErrorCode.USER_NOT_FOUND) }
-
-        if (user.status != UserStatus.ACTIVE) {
-            throw BusinessException(UserErrorCode.INACTIVE_USER)
-        }
-
-        val accessToken = jwtTokenProvider.createAccessToken(
-            userId = user.id,
-            role = user.role,
-        )
-
+        // token 갱신 응답
         return TokenResponse(
             accessToken = accessToken,
-            refreshToken = request.refreshToken,
+            refreshToken = refreshToken,
         )
     }
 
@@ -190,31 +189,101 @@ class AuthService(
     private fun resolveOAuthAccountUser(oauthAccount: OAuthAccount): User {
         val user = oauthAccount.user
 
+        // 탈퇴 사용자 재가입 상태 전환
         if (user.status == UserStatus.WITHDRAWN) {
             user.reactivateForSignup()
             return user
         }
 
+        // 활성 사용자 확인
         if (user.status != UserStatus.ACTIVE) {
             throw BusinessException(UserErrorCode.INACTIVE_USER)
         }
 
+        // OAuth 사용자 반환
+        return user
+    }
+
+    private fun completeSignup(
+        session: OAuthTemporarySession,
+        temporaryToken: String,
+        confirmedPhoneVerification: ConfirmedPhoneVerification,
+    ): User {
+        return if (session.existingUserId != null) {
+            // 기존 사용자 가입 완료
+            completeExistingUserSignup(
+                userId = session.existingUserId,
+                temporaryToken = temporaryToken,
+                confirmedPhoneVerification = confirmedPhoneVerification,
+            )
+        } else {
+            // 신규 사용자 가입 완료
+            registerNewUser(
+                oauthUserInfo = session.toOAuthUserInfo(),
+                confirmedPhoneVerification = confirmedPhoneVerification,
+            )
+        }
+    }
+
+    private fun completeExistingUserSignup(
+        userId: Long,
+        temporaryToken: String,
+        confirmedPhoneVerification: ConfirmedPhoneVerification,
+    ): User {
+        val user = userRepository.findLockedByIdIncludingDeleted(userId)
+            ?: rejectExpiredTemporarySession(temporaryToken)
+
+        // 탈퇴 사용자 재활성화
+        if (user.status == UserStatus.WITHDRAWN || user.deletedAt != null) {
+            user.reactivateForSignup()
+        }
+
+        // 활성 사용자 확인
+        if (user.status != UserStatus.ACTIVE) {
+            throw BusinessException(UserErrorCode.INACTIVE_USER)
+        }
+
+        // 이미 인증된 사용자 확인
+        if (user.phoneVerifiedAt != null) {
+            rejectAlreadyCompleted(temporaryToken)
+        }
+
+        // 기존 사용자 전화번호 인증 정보 저장
+        verifyPhoneNumberForSignup(
+            user = user,
+            confirmedPhoneVerification = confirmedPhoneVerification,
+        )
+
+        // 기존 사용자 반환
         return user
     }
 
     private fun registerNewUser(
         oauthUserInfo: OAuthUserInfo,
-        phoneNumber: String,
+        confirmedPhoneVerification: ConfirmedPhoneVerification,
     ): User {
+        validatePhoneNumberAvailable(
+            phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
+            currentUserId = null,
+        )
+
+        // 신규 사용자 저장
         val user = userRepository.save(
             User(
                 nickname = oauthUserInfo.nickname ?: "카카오 사용자",
                 profileImageUrl = oauthUserInfo.profileImageUrl,
             ).apply {
-                verifyPhoneNumber(phoneNumber)
+                verifyPhoneNumberHash(
+                    phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
+                    phoneNumberHashVersion = confirmedPhoneVerification.phoneNumberHashVersion,
+                    phoneNumberEncrypted = confirmedPhoneVerification.phoneNumberEncrypted,
+                    phoneNumberEncryptionVersion = confirmedPhoneVerification.phoneNumberEncryptionVersion,
+                    phoneNumberMasked = confirmedPhoneVerification.phoneNumberMasked,
+                )
             }
         )
 
+        // OAuth 계정 저장
         oauthAccountRepository.save(
             OAuthAccount(
                 user = user,
@@ -225,18 +294,38 @@ class AuthService(
             )
         )
 
+        // 신규 사용자 반환
         return user
+    }
+
+    private fun verifyPhoneNumberForSignup(
+        user: User,
+        confirmedPhoneVerification: ConfirmedPhoneVerification,
+    ) {
+        validatePhoneNumberAvailable(
+            phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
+            currentUserId = user.id,
+        )
+        user.verifyPhoneNumberHash(
+            phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
+            phoneNumberHashVersion = confirmedPhoneVerification.phoneNumberHashVersion,
+            phoneNumberEncrypted = confirmedPhoneVerification.phoneNumberEncrypted,
+            phoneNumberEncryptionVersion = confirmedPhoneVerification.phoneNumberEncryptionVersion,
+            phoneNumberMasked = confirmedPhoneVerification.phoneNumberMasked,
+        )
     }
 
     private fun rejectIfSignupAlreadyCompleted(
         session: OAuthTemporarySession,
         temporaryToken: String,
     ) {
+        // OAuth 계정 완료 여부 조회
         val oauthAccount = oauthAccountRepository.findByProviderAndProviderUserId(
             provider = session.provider,
             providerUserId = session.providerUserId,
         ) ?: return
 
+        // 이미 가입 완료된 세션 거부
         if (oauthAccount.user.phoneVerifiedAt != null) {
             rejectAlreadyCompleted(temporaryToken)
         }
@@ -253,19 +342,30 @@ class AuthService(
     }
 
     private fun validatePhoneNumberAvailable(
-        phoneNumber: String,
+        phoneNumberHash: String,
         currentUserId: Long?,
     ) {
+        // 전화번호 hash 중복 확인
         val alreadyUsed = if (currentUserId == null) {
-            userRepository.existsByPhoneNumberAndDeletedAtIsNull(phoneNumber)
+            userRepository.existsByPhoneNumberHashAndDeletedAtIsNull(phoneNumberHash)
         } else {
-            userRepository.existsByPhoneNumberAndIdNotAndDeletedAtIsNull(
-                phoneNumber = phoneNumber,
+            userRepository.existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
+                phoneNumberHash = phoneNumberHash,
                 id = currentUserId,
             )
         }
 
         if (alreadyUsed) {
+            throw BusinessException(AuthErrorCode.PHONE_NUMBER_ALREADY_USED)
+        }
+    }
+
+    private fun flushSignupState(temporaryToken: String) {
+        try {
+            // 가입 상태 DB 반영
+            userRepository.flush()
+        } catch (_: DataIntegrityViolationException) {
+            phoneVerificationService.deleteTemporarySession(temporaryToken)
             throw BusinessException(AuthErrorCode.PHONE_NUMBER_ALREADY_USED)
         }
     }
@@ -281,11 +381,10 @@ class AuthService(
             role = user.role,
         )
 
-        refreshTokenService.save(
-            userId = user.id,
-            refreshToken = refreshToken,
-        )
+        // refresh token 저장 예약
+        saveRefreshTokenAfterCommit(user.id, refreshToken)
 
+        // token 응답 생성
         return TokenResponse(
             accessToken = accessToken,
             refreshToken = refreshToken,
@@ -294,10 +393,54 @@ class AuthService(
 
     private fun createAuthenticatedResponse(user: User): AuthResponse {
         val tokenResponse = issueTokens(user)
+
+        // 프로필 입력 필요 응답
         if (!user.isProfileCompleted()) {
             return AuthResponse.profileRequired(tokenResponse)
         }
 
+        // 인증 완료 응답
         return AuthResponse.authenticated(tokenResponse)
+    }
+
+    private fun saveRefreshTokenAfterCommit(
+        userId: Long,
+        refreshToken: String,
+    ) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            refreshTokenService.save(
+                userId = userId,
+                refreshToken = refreshToken,
+            )
+            return
+        }
+
+        // 커밋 후 refresh token 저장
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCommit() {
+                    refreshTokenService.save(
+                        userId = userId,
+                        refreshToken = refreshToken,
+                    )
+                }
+            }
+        )
+    }
+
+    private fun OAuthTemporarySession.toOAuthUserInfo(): OAuthUserInfo {
+        // 임시 세션을 OAuth 사용자 정보로 변환
+        return OAuthUserInfo(
+            provider = provider,
+            providerUserId = providerUserId,
+            nickname = nickname,
+            profileImageUrl = profileImageUrlPolicy.sanitize(profileImageUrl),
+        )
+    }
+
+    private fun sanitizeOAuthUserInfo(oauthUserInfo: OAuthUserInfo): OAuthUserInfo {
+        return oauthUserInfo.copy(
+            profileImageUrl = profileImageUrlPolicy.sanitize(oauthUserInfo.profileImageUrl)
+        )
     }
 }
