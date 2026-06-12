@@ -158,6 +158,43 @@ class TripParticipantServiceTest {
     }
 
     @Test
+    fun `삭제 포함 상태 조회는 방장만 할 수 있다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L, nickname = "민서")
+        val trip = createTrip(owner)
+        val memberParticipant = createParticipant(
+            trip = trip,
+            user = member,
+            id = 200L,
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(memberParticipant)
+
+        val exception = assertBusinessException {
+            tripParticipantService.getParticipants(
+                userId = 2L,
+                tripId = 10L,
+                status = "removed",
+                type = null,
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_OWNER_ONLY, exception.errorCode)
+        verify(tripParticipantRepository, never()).findByTripIdAndParticipantStatusIncludingDeleted(
+            10L,
+            TripParticipantStatus.REMOVED.name,
+        )
+    }
+
+    @Test
     fun `참여자 표시 정보를 수정한다`() {
         val owner = createUser()
         val trip = createTrip(owner)
@@ -170,7 +207,13 @@ class TripParticipantServiceTest {
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
         `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
-        `when`(tripParticipantRepository.findByIdAndTripIdAndDeletedAtIsNull(100L, 10L)).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
 
         val response = tripParticipantService.updateParticipant(
             userId = 1L,
@@ -188,6 +231,92 @@ class TripParticipantServiceTest {
     }
 
     @Test
+    fun `정산 시작 이후에는 참여자 표시 정보를 수정할 수 없다`() {
+        val owner = createUser()
+        val trip = createTrip(owner, settlementStatus = TripSettlementStatus.IN_PROGRESS)
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        val exception = assertBusinessException {
+            tripParticipantService.updateParticipant(
+                userId = 1L,
+                tripId = 10L,
+                participantId = 100L,
+                request = UpdateTripParticipantRequest(displayName = "지훈"),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_JOIN_CLOSED, exception.errorCode)
+        verify(tripParticipantRepository, never()).findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+            100L,
+            10L,
+            TripParticipantStatus.ACTIVE,
+        )
+    }
+
+    @Test
+    fun `회원 참여자의 표시 정보는 수정할 수 없다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L, nickname = "민서")
+        val trip = createTrip(owner)
+        val participant = createParticipant(
+            trip = trip,
+            user = member,
+            id = 100L,
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+
+        val exception = assertBusinessException {
+            tripParticipantService.updateParticipant(
+                userId = 1L,
+                tripId = 10L,
+                participantId = 100L,
+                request = UpdateTripParticipantRequest(displayName = "지훈"),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_PROFILE_EDIT_DENIED, exception.errorCode)
+        assertEquals("민서", participant.displayName)
+    }
+
+    @Test
+    fun `active 상태가 아닌 참여자는 수정할 수 없다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(null)
+
+        val exception = assertBusinessException {
+            tripParticipantService.updateParticipant(
+                userId = 1L,
+                tripId = 10L,
+                participantId = 100L,
+                request = UpdateTripParticipantRequest(displayName = "지훈"),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
+    }
+
+    @Test
     fun `참여자 제거는 상태와 삭제 시각만 변경한다`() {
         val owner = createUser()
         val trip = createTrip(owner)
@@ -199,7 +328,13 @@ class TripParticipantServiceTest {
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
         `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
-        `when`(tripParticipantRepository.findByIdAndTripIdAndDeletedAtIsNull(100L, 10L)).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
 
         tripParticipantService.removeParticipant(
             userId = 1L,
@@ -210,6 +345,56 @@ class TripParticipantServiceTest {
         assertEquals(TripParticipantStatus.REMOVED, participant.participantStatus)
         assertEquals(Instant.parse("2026-06-12T00:00:00Z"), participant.leftAt)
         assertEquals(Instant.parse("2026-06-12T00:00:00Z"), participant.deletedAt)
+    }
+
+    @Test
+    fun `정산 시작 이후에는 참여자를 제거할 수 없다`() {
+        val owner = createUser()
+        val trip = createTrip(owner, settlementStatus = TripSettlementStatus.IN_PROGRESS)
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        val exception = assertBusinessException {
+            tripParticipantService.removeParticipant(
+                userId = 1L,
+                tripId = 10L,
+                participantId = 100L,
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_JOIN_CLOSED, exception.errorCode)
+        verify(tripParticipantRepository, never()).findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+            100L,
+            10L,
+            TripParticipantStatus.ACTIVE,
+        )
+    }
+
+    @Test
+    fun `active 상태가 아닌 참여자는 제거할 수 없다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(null)
+
+        val exception = assertBusinessException {
+            tripParticipantService.removeParticipant(
+                userId = 1L,
+                tripId = 10L,
+                participantId = 100L,
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
     }
 
     @Test
@@ -225,7 +410,13 @@ class TripParticipantServiceTest {
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
         `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
-        `when`(tripParticipantRepository.findByIdAndTripIdAndDeletedAtIsNull(100L, 10L)).thenReturn(leader)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(leader)
 
         val exception = assertBusinessException {
             tripParticipantService.removeParticipant(
@@ -240,7 +431,7 @@ class TripParticipantServiceTest {
     }
 
     @Test
-    fun `임시 참여자를 회원과 연결한다`() {
+    fun `방장은 임시 참여자를 지정 회원과 연결한다`() {
         val owner = createUser()
         val member = createUser(id = 2L, nickname = "민서", profileImageUrl = "https://image.test/member.png")
         val trip = createTrip(owner)

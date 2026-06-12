@@ -64,7 +64,7 @@ class TripParticipantService(
         type: String?,
     ): List<TripParticipantSummaryResponse> {
         getActiveUser(userId)
-        getAccessibleTrip(userId, tripId)
+        val trip = getAccessibleTrip(userId, tripId)
 
         val participantStatus = status?.let(::parseParticipantStatus)
         val participantType = type?.let(::parseParticipantType)
@@ -72,6 +72,7 @@ class TripParticipantService(
         val participants = if (participantStatus == null) {
             tripParticipantRepository.findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(tripId)
         } else {
+            validateTripOwner(userId, trip)
             tripParticipantRepository.findByTripIdAndParticipantStatusIncludingDeleted(
                 tripId = tripId,
                 participantStatus = participantStatus.name,
@@ -109,13 +110,17 @@ class TripParticipantService(
         request: UpdateTripParticipantRequest,
     ): TripParticipantSummaryResponse {
         getActiveUser(userId)
-        getOwnedTrip(userId, tripId)
+        val trip = getOwnedTrip(userId, tripId)
+        validateParticipantWritable(trip)
         validateUpdateRequest(request)
 
-        val participant = getParticipantInTrip(
+        val participant = getActiveParticipantInTrip(
             tripId = tripId,
             participantId = participantId,
         )
+        if (participant.user != null) {
+            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_PROFILE_EDIT_DENIED)
+        }
 
         request.displayName?.let {
             participant.displayName = normalizeRequiredName(it)
@@ -136,8 +141,9 @@ class TripParticipantService(
     ) {
         getActiveUser(userId)
         val trip = getOwnedTrip(userId, tripId)
+        validateParticipantWritable(trip)
 
-        val participant = getParticipantInTrip(
+        val participant = getActiveParticipantInTrip(
             tripId = tripId,
             participantId = participantId,
         )
@@ -230,12 +236,18 @@ class TripParticipantService(
         tripId: Long,
     ): Trip {
         val trip = getAccessibleTrip(userId, tripId)
+        validateTripOwner(userId, trip)
 
+        return trip
+    }
+
+    private fun validateTripOwner(
+        userId: Long,
+        trip: Trip,
+    ) {
         if (trip.ownerUser.id != userId) {
             throw BusinessException(TripErrorCode.TRIP_OWNER_ONLY)
         }
-
-        return trip
     }
 
     private fun getParticipantInTrip(
@@ -245,6 +257,17 @@ class TripParticipantService(
         return tripParticipantRepository.findByIdAndTripIdAndDeletedAtIsNull(
             id = participantId,
             tripId = tripId,
+        ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
+    }
+
+    private fun getActiveParticipantInTrip(
+        tripId: Long,
+        participantId: Long,
+    ): TripParticipant {
+        return tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+            id = participantId,
+            tripId = tripId,
+            participantStatus = TripParticipantStatus.ACTIVE,
         ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
     }
 

@@ -36,7 +36,7 @@ interface TripParticipantApiSpec {
         participantId: Long,
     ): ApiResponse<TripParticipantSummaryResponse>
 
-    @Operation(summary = "여행 참여자 수정", description = "참여자의 표시명과 프로필 정보를 수정합니다.")
+    @Operation(summary = "여행 참여자 수정", description = "여행 owner가 임시 참여자의 표시명과 프로필 정보를 수정합니다.")
     fun updateParticipant(
         authUser: AuthUser,
         tripId: Long,
@@ -44,14 +44,14 @@ interface TripParticipantApiSpec {
         request: UpdateTripParticipantRequest,
     ): ApiResponse<TripParticipantSummaryResponse>
 
-    @Operation(summary = "여행 참여자 제거", description = "여행 참여자를 제거합니다.")
+    @Operation(summary = "여행 참여자 제거", description = "여행 owner가 active 참여자를 제거합니다.")
     fun removeParticipant(
         authUser: AuthUser,
         tripId: Long,
         participantId: Long,
     ): ApiResponse<Unit>
 
-    @Operation(summary = "임시 참여자 연결", description = "임시 동행자를 현재 로그인 사용자와 연결합니다.")
+    @Operation(summary = "임시 참여자 연결", description = "여행 owner가 임시 동행자를 지정한 active 회원과 연결합니다.")
     fun linkParticipant(
         authUser: AuthUser,
         tripId: Long,

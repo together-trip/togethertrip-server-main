@@ -63,18 +63,22 @@ TogetherTrip 정산 기준은 `User`가 아니라 `TripParticipant`다.
 - `type`은 `USER`, `TEMPORARY`를 대소문자 무관하게 받는다.
 - 잘못된 status/type 값은 각각 `INVALID_TRIP_PARTICIPANT_STATUS`, `INVALID_TRIP_PARTICIPANT_TYPE`으로 실패한다.
 - 일반 목록 조회는 `deleted_at IS NULL` 참여자만 조회한다.
-- `status`가 명시되면 native query로 삭제 시각이 기록된 참여자도 상태 기준 조회 대상에 포함한다.
+- `status`가 명시되면 owner만 조회할 수 있고, native query로 삭제 시각이 기록된 참여자도 상태 기준 조회 대상에 포함한다.
 - 응답은 기존 `TripParticipantSummaryResponse`를 재사용하고 `participantType`을 추가한다.
 
 ### 참여자 수정
 
 - 현재 범위에서는 표시 정보만 수정한다.
+- 수정은 여행 owner만 가능하고, 정산 시작 이후에는 막는다.
+- 수정 대상은 active 임시 참여자로 제한한다.
 - `displayName`과 `profileImageUrl`이 모두 null이면 `INVALID_INPUT`으로 실패한다.
 - 회원 참여자는 표시 응답에서 `User` 프로필 값을 우선 사용하므로, participant row의 표시 정보 수정은 임시 참여자 중심으로 사용된다.
 
 ### 참여자 제거
 
 - 방장 또는 `LEADER` 참여자는 제거할 수 없다.
+- 제거는 여행 owner만 가능하고, 정산 시작 이후에는 막는다.
+- 제거 대상은 active 참여자로 제한해 `LEFT` 같은 비활성 상태를 `REMOVED`로 덮어쓰지 않는다.
 - 제거는 hard delete가 아니라 `participantStatus = REMOVED`, `leftAt`, `deletedAt`을 함께 기록한다.
 - `@SQLRestriction("deleted_at IS NULL")` 때문에 일반 조회에서는 제거된 참여자가 제외된다.
 - 기존 거래/정산 row의 participant id 참조는 유지된다.

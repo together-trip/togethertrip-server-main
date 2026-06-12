@@ -80,6 +80,12 @@ enum class TripErrorCode(
         "여행 방장은 참여자 제거 대상이 될 수 없습니다.",
     ),
 
+    TRIP_PARTICIPANT_PROFILE_EDIT_DENIED(
+        HttpStatus.CONFLICT,
+        "TRIP_PARTICIPANT_PROFILE_EDIT_DENIED",
+        "회원 참여자의 표시 정보는 여행 참여자 API로 수정할 수 없습니다.",
+    ),
+
     INVALID_TRIP_STATUS(
         HttpStatus.BAD_REQUEST,
         "INVALID_TRIP_STATUS",
