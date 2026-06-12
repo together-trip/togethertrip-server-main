@@ -5,6 +5,7 @@ import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.phone.PhoneNumberHasher
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
+import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -17,12 +18,17 @@ import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
+import com.togethertrip.main.user.service.storage.StoredUserProfileImage
+import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
+import org.springframework.mock.web.MockMultipartFile
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -33,6 +39,8 @@ class UserServiceTest {
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var phoneNumberNormalizer: PhoneNumberNormalizer
     private lateinit var phoneNumberHasher: PhoneNumberHasher
+    private lateinit var userProfileImageStorage: UserProfileImageStorage
+    private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
     private lateinit var userService: UserService
 
     @BeforeEach
@@ -44,11 +52,17 @@ class UserServiceTest {
             key = "test-phone-hash-key-must-be-at-least-32-bytes",
             version = "v1",
         )
+        userProfileImageStorage = mock(UserProfileImageStorage::class.java)
+        profileImageUrlPolicy = ProfileImageUrlPolicy(
+            userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
+        )
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
             phoneNumberNormalizer = phoneNumberNormalizer,
             phoneNumberHasher = phoneNumberHasher,
+            userProfileImageStorage = userProfileImageStorage,
+            profileImageUrlPolicy = profileImageUrlPolicy,
         )
     }
 
@@ -103,13 +117,92 @@ class UserServiceTest {
             userId = 1L,
             request = UpdateUserRequest(
                 nickname = "새닉네임",
-                profileImageUrl = "https://example.com/profile.png",
+                profileImageUrl = "/uploads/user-profile-images/profile.png",
             ),
         )
 
         assertEquals("새닉네임", user.nickname)
-        assertEquals("https://example.com/profile.png", user.profileImageUrl)
+        assertEquals("/uploads/user-profile-images/profile.png", user.profileImageUrl)
         assertEquals("새닉네임", response.nickname)
+    }
+
+    @Test
+    fun `업로드한 프로필 이미지를 저장하고 저장된 URL로 수정한다`() {
+        val user = createUser()
+        val profileImage = MockMultipartFile(
+            "profileImage",
+            "profile.JPG",
+            "image/jpeg",
+            "image-content".toByteArray(),
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(userProfileImageStorage.store(profileImage))
+            .thenReturn(
+                StoredUserProfileImage(
+                    storageKey = "stored-profile.jpg",
+                    fileUrl = "/uploads/user-profile-images/stored-profile.jpg",
+                    fileSize = profileImage.size,
+                    mimeType = "image/jpeg",
+                )
+            )
+
+        val response = userService.updateMe(
+            userId = 1L,
+            request = UpdateUserRequest(
+                nickname = "새닉네임",
+            ),
+            profileImage = profileImage,
+        )
+
+        assertEquals("새닉네임", user.nickname)
+        assertEquals("/uploads/user-profile-images/stored-profile.jpg", user.profileImageUrl)
+        assertEquals("/uploads/user-profile-images/stored-profile.jpg", response.profileImageUrl)
+        verify(userProfileImageStorage).store(profileImage)
+    }
+
+    @Test
+    fun `업로드한 프로필 이미지 수정 트랜잭션이 롤백되면 저장된 파일을 삭제한다`() {
+        val user = createUser()
+        val profileImage = MockMultipartFile(
+            "profileImage",
+            "profile.JPG",
+            "image/jpeg",
+            "image-content".toByteArray(),
+        )
+        val storedImage = StoredUserProfileImage(
+            storageKey = "rollback-profile.jpg",
+            fileUrl = "/uploads/user-profile-images/rollback-profile.jpg",
+            fileSize = profileImage.size,
+            mimeType = "image/jpeg",
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(user)
+        `when`(userProfileImageStorage.store(profileImage))
+            .thenReturn(storedImage)
+
+        TransactionSynchronizationManager.initSynchronization()
+        TransactionSynchronizationManager.setActualTransactionActive(true)
+        try {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(
+                    nickname = "새닉네임",
+                ),
+                profileImage = profileImage,
+            )
+
+            TransactionSynchronizationManager
+                .getSynchronizations()
+                .forEach { it.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK) }
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false)
+            TransactionSynchronizationManager.clearSynchronization()
+        }
+
+        verify(userProfileImageStorage).delete(storedImage)
     }
 
     @Test
@@ -148,6 +241,21 @@ class UserServiceTest {
             userService.updateMe(
                 userId = 1L,
                 request = UpdateUserRequest(nickname = " "),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verifyNoInteractions(userRepository)
+    }
+
+    @Test
+    fun `신뢰하지 않는 외부 프로필 이미지 URL이면 실패한다`() {
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(
+                    profileImageUrl = "https://example.com/profile.png",
+                ),
             )
         }
 

@@ -1,4 +1,7 @@
 ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS phone_number_encrypted TEXT,
+    ADD COLUMN IF NOT EXISTS phone_number_encryption_version VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS phone_number_masked VARCHAR(30),
     ADD COLUMN IF NOT EXISTS phone_number_hash VARCHAR(64),
     ADD COLUMN IF NOT EXISTS phone_number_hash_version VARCHAR(30);
 

@@ -6,4 +6,7 @@ data class ConfirmedPhoneVerification(
     val session: OAuthTemporarySession,
     val phoneNumberHash: String,
     val phoneNumberHashVersion: String,
+    val phoneNumberEncrypted: String? = null,
+    val phoneNumberEncryptionVersion: String? = null,
+    val phoneNumberMasked: String? = null,
 )

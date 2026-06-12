@@ -3,6 +3,7 @@ package com.togethertrip.main.user.controller.spec
 import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
+import com.togethertrip.main.user.dto.request.UpdateUserMultipartRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
 import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
@@ -38,10 +39,16 @@ interface UserApiSpec {
         nickname: String,
     ): ApiResponse<NicknameAvailabilityResponse>
 
-    @Operation(summary = "내 정보 수정", description = "현재 사용자의 닉네임, 성별, 생년월일, 프로필 이미지를 수정합니다.")
+    @Operation(summary = "내 정보 수정", description = "application/json으로 현재 사용자의 닉네임, 성별, 생년월일, 프로필 이미지 URL을 수정합니다.")
     fun updateMe(
         authUser: AuthUser,
         request: UpdateUserRequest,
+    ): ApiResponse<UserResponse>
+
+    @Operation(summary = "내 정보 수정", description = "multipart/form-data로 현재 사용자의 닉네임, 성별, 생년월일, 프로필 이미지 파일을 수정합니다. profileImage 파일이 있으면 저장 후 프로필 이미지 URL로 반영합니다.")
+    fun updateMeWithMultipart(
+        authUser: AuthUser,
+        request: UpdateUserMultipartRequest,
     ): ApiResponse<UserResponse>
 
     @Operation(summary = "회원 탈퇴", description = "현재 사용자를 탈퇴 처리합니다.")

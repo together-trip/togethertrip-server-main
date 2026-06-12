@@ -5,6 +5,7 @@ import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.phone.PhoneNumberHasher
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
+import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
@@ -18,9 +19,13 @@ import com.togethertrip.main.user.dto.response.PhoneUserSummaryResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
+import com.togethertrip.main.user.service.storage.StoredUserProfileImage
+import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.net.URI
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.web.multipart.MultipartFile
 import java.time.LocalDate
 
 @Service
@@ -29,6 +34,8 @@ class UserService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val phoneNumberNormalizer: PhoneNumberNormalizer,
     private val phoneNumberHasher: PhoneNumberHasher,
+    private val userProfileImageStorage: UserProfileImageStorage,
+    private val profileImageUrlPolicy: ProfileImageUrlPolicy,
 ) {
 
     @Transactional(readOnly = true)
@@ -54,6 +61,7 @@ class UserService(
     fun updateMe(
         userId: Long,
         request: UpdateUserRequest,
+        profileImage: MultipartFile? = null,
     ): UserResponse {
         validateUpdateRequest(request)
 
@@ -72,12 +80,17 @@ class UserService(
             throw BusinessException(UserErrorCode.NICKNAME_ALREADY_USED)
         }
 
+        val profileImageUrl = resolveProfileImageUrl(
+            request = request,
+            profileImage = profileImage,
+        )
+
         // 프로필 수정
         user.updateProfile(
             nickname = request.nickname,
             gender = request.gender,
             birthDate = request.birthDate,
-            profileImageUrl = request.profileImageUrl,
+            profileImageUrl = profileImageUrl,
         )
 
         // 수정된 사용자 응답
@@ -166,9 +179,46 @@ class UserService(
         }
 
         // 프로필 이미지 URL 검증
-        if (request.profileImageUrl != null && !isValidProfileImageUrl(request.profileImageUrl)) {
-            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        request.profileImageUrl?.let { profileImageUrl ->
+            val trimmedProfileImageUrl = profileImageUrl.trim()
+            if (
+                trimmedProfileImageUrl.isBlank() ||
+                trimmedProfileImageUrl.length > MAX_PROFILE_IMAGE_URL_LENGTH ||
+                !profileImageUrlPolicy.isAllowed(trimmedProfileImageUrl)
+            ) {
+                throw BusinessException(CommonErrorCode.INVALID_INPUT)
+            }
         }
+    }
+
+    private fun resolveProfileImageUrl(
+        request: UpdateUserRequest,
+        profileImage: MultipartFile?,
+    ): String? {
+        if (profileImage == null || profileImage.isEmpty) {
+            return request.profileImageUrl?.trim()
+        }
+
+        val storedImage = userProfileImageStorage.store(profileImage)
+        deleteStoredImageAfterRollback(storedImage)
+
+        return storedImage.fileUrl
+    }
+
+    private fun deleteStoredImageAfterRollback(storedImage: StoredUserProfileImage) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            return
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCompletion(status: Int) {
+                    if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                        userProfileImageStorage.delete(storedImage)
+                    }
+                }
+            }
+        )
     }
 
     private fun validateNickname(nickname: String) {
@@ -181,20 +231,10 @@ class UserService(
         }
     }
 
-    private fun isValidProfileImageUrl(profileImageUrl: String): Boolean {
-        val uri = runCatching { URI(profileImageUrl) }
-            .getOrNull()
-            ?: return false
-
-        // URL 스킴과 host 확인
-        return uri.scheme in ALLOWED_PROFILE_IMAGE_URL_SCHEMES &&
-            uri.host != null
-    }
-
     companion object {
         private const val MIN_NICKNAME_LENGTH = 2
         private const val MAX_NICKNAME_LENGTH = 20
+        private const val MAX_PROFILE_IMAGE_URL_LENGTH = 500
         private val ALLOWED_GENDERS = setOf("MALE", "FEMALE")
-        private val ALLOWED_PROFILE_IMAGE_URL_SCHEMES = setOf("http", "https")
     }
 }

@@ -6,6 +6,7 @@ import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.phone.PhoneNumberCrypto
 import com.togethertrip.main.global.phone.PhoneNumberHasher
 import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.user.repository.UserRepository
@@ -18,6 +19,7 @@ import java.time.Instant
 class PhoneVerificationService(
     private val phoneNumberNormalizer: PhoneNumberNormalizer,
     private val phoneNumberHasher: PhoneNumberHasher,
+    private val phoneNumberCrypto: PhoneNumberCrypto,
     private val temporarySessionService: OAuthTemporarySessionService,
     private val smsSender: SmsSender,
     private val userRepository: UserRepository,
@@ -93,6 +95,9 @@ class PhoneVerificationService(
             session = session,
             phoneNumberHash = phoneNumberHash,
             phoneNumberHashVersion = phoneNumberHasher.version,
+            phoneNumberEncrypted = phoneNumberCrypto.encrypt(phoneNumber),
+            phoneNumberEncryptionVersion = phoneNumberCrypto.version,
+            phoneNumberMasked = phoneNumberCrypto.mask(phoneNumber),
         )
     }
 

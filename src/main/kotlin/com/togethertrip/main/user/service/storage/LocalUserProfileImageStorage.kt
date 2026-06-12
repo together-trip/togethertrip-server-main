@@ -1,11 +1,9 @@
-package com.togethertrip.main.post.service.storage
+package com.togethertrip.main.user.service.storage
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.storage.UploadFileType
 import com.togethertrip.main.global.storage.UploadFileTypeDetector
-import com.togethertrip.main.global.storage.UploadMediaKind
-import com.togethertrip.main.post.domain.PostAttachmentType
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.multipart.MultipartFile
@@ -16,24 +14,23 @@ import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 @Component
-class LocalPostAttachmentStorage(
-    @Value("\${post.attachments.local-storage-path:./uploads/post-attachments}")
+class LocalUserProfileImageStorage(
+    @Value("\${user.profile-images.local-storage-path:./uploads/user-profile-images}")
     private val storagePath: String,
-    @Value("\${post.attachments.public-url-prefix:/uploads/post-attachments}")
+    @Value("\${user.profile-images.public-url-prefix:/uploads/user-profile-images}")
     private val publicUrlPrefix: String,
     private val uploadFileTypeDetector: UploadFileTypeDetector,
-) : PostAttachmentStorage {
+) : UserProfileImageStorage {
 
-    override fun store(file: MultipartFile): StoredPostAttachment {
+    override fun store(file: MultipartFile): StoredUserProfileImage {
         if (file.isEmpty) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
 
         val fileBytes = file.bytes
-        val fileType = uploadFileTypeDetector.detect(fileBytes)
-            ?: throw BusinessException(CommonErrorCode.INVALID_INPUT)
-        val attachmentType = resolveAttachmentType(fileType)
-        val storedFileName = createStoredFileName(fileType)
+        val imageType = detectProfileImageType(fileBytes)
+
+        val storedFileName = createStoredFileName(imageType)
         val storageDirectory = Path.of(storagePath).toAbsolutePath().normalize()
         val targetPath = storageDirectory.resolve(storedFileName).normalize()
 
@@ -50,30 +47,31 @@ class LocalPostAttachmentStorage(
             )
         }
 
-        return StoredPostAttachment(
+        return StoredUserProfileImage(
             storageKey = storedFileName,
-            attachmentType = attachmentType,
             fileUrl = "${publicUrlPrefix.trimEnd('/')}/$storedFileName",
-            thumbnailUrl = null,
             fileSize = file.size,
-            mimeType = fileType.mimeType,
+            mimeType = imageType.mimeType,
         )
     }
 
-    override fun delete(storedAttachment: StoredPostAttachment) {
+    override fun delete(storedImage: StoredUserProfileImage) {
         val storageDirectory = Path.of(storagePath).toAbsolutePath().normalize()
-        val targetPath = storageDirectory.resolve(storedAttachment.storageKey).normalize()
+        val targetPath = storageDirectory.resolve(storedImage.storageKey).normalize()
 
         if (targetPath.startsWith(storageDirectory)) {
             Files.deleteIfExists(targetPath)
         }
     }
 
-    private fun resolveAttachmentType(fileType: UploadFileType): PostAttachmentType {
-        return when (fileType.mediaKind) {
-            UploadMediaKind.IMAGE -> PostAttachmentType.IMAGE
-            UploadMediaKind.VIDEO -> PostAttachmentType.VIDEO
+    private fun detectProfileImageType(fileBytes: ByteArray): UploadFileType {
+        val fileType = uploadFileTypeDetector.detect(fileBytes)
+
+        if (fileType != UploadFileType.JPEG && fileType != UploadFileType.PNG) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
+
+        return fileType
     }
 
     private fun createStoredFileName(fileType: UploadFileType): String {

@@ -20,11 +20,14 @@ data class UserResponse(
     @field:Schema(example = "1990-01-01")
     val birthDate: LocalDate?,
 
-    @field:Schema(example = "https://example.com/profile.png")
+    @field:Schema(example = "/uploads/user-profile-images/profile.jpg")
     val profileImageUrl: String?,
 
     @field:Schema(example = "2026-06-04T00:00:00Z")
     val phoneVerifiedAt: Instant?,
+
+    @field:Schema(example = "010-****-5678")
+    val phoneNumberMasked: String?,
 
     @field:Schema(example = "true")
     val phoneVerified: Boolean,
@@ -45,6 +48,7 @@ data class UserResponse(
                 birthDate = user.birthDate,
                 profileImageUrl = user.profileImageUrl,
                 phoneVerifiedAt = user.phoneVerifiedAt,
+                phoneNumberMasked = user.phoneNumberMasked,
                 phoneVerified = user.phoneVerifiedAt != null,
                 role = user.role,
                 status = user.status,

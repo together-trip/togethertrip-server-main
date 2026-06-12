@@ -1,5 +1,6 @@
 package com.togethertrip.main.global.security.local
 
+import com.togethertrip.main.global.phone.PhoneNumberCrypto
 import com.togethertrip.main.global.phone.PhoneNumberHasher
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.user.domain.User
@@ -14,6 +15,7 @@ import kotlin.math.abs
 class LocalTestAuthenticationService(
     private val userRepository: UserRepository,
     private val phoneNumberHasher: PhoneNumberHasher,
+    private val phoneNumberCrypto: PhoneNumberCrypto,
     @Value("\${auth.local-test.enabled:false}")
     private val enabled: Boolean,
 ) {
@@ -83,9 +85,13 @@ class LocalTestAuthenticationService(
 
         // local 사용자 전화번호 인증 처리
         if (phoneVerified && user.phoneVerifiedAt == null) {
+            val phoneNumber = createPhoneNumber(nickname)
             user.verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash(createPhoneNumber(nickname)),
+                phoneNumberHash = phoneNumberHasher.hash(phoneNumber),
                 phoneNumberHashVersion = phoneNumberHasher.version,
+                phoneNumberEncrypted = phoneNumberCrypto.encrypt(phoneNumber),
+                phoneNumberEncryptionVersion = phoneNumberCrypto.version,
+                phoneNumberMasked = phoneNumberCrypto.mask(phoneNumber),
             )
         }
 
@@ -108,9 +114,13 @@ class LocalTestAuthenticationService(
         }
 
         if (user.phoneVerifiedAt == null) {
+            val phoneNumber = createPhoneNumber(nickname)
             user.verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash(createPhoneNumber(nickname)),
+                phoneNumberHash = phoneNumberHasher.hash(phoneNumber),
                 phoneNumberHashVersion = phoneNumberHasher.version,
+                phoneNumberEncrypted = phoneNumberCrypto.encrypt(phoneNumber),
+                phoneNumberEncryptionVersion = phoneNumberCrypto.version,
+                phoneNumberMasked = phoneNumberCrypto.mask(phoneNumber),
             )
         }
 

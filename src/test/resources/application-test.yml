@@ -19,6 +19,7 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 1
+    clean-disabled: false
 
   jpa:
     defer-datasource-initialization: false
@@ -35,4 +36,7 @@ jwt:
 phone:
   hash:
     key: test-phone-hash-key-must-be-at-least-32-bytes
+    version: v1
+  encryption:
+    key: test-phone-encryption-key-must-be-at-least-32-bytes
     version: v1

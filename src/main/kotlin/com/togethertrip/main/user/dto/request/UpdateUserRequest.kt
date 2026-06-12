@@ -32,7 +32,7 @@ data class UpdateUserRequest(
     @field:Size(max = 500)
     @field:Schema(
         description = "프로필 이미지 URL.",
-        example = "https://example.com/profile.png",
+        example = "/uploads/user-profile-images/profile.jpg",
     )
     val profileImageUrl: String? = null,
 )

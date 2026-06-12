@@ -28,6 +28,15 @@ class User(
     @Column(name = "phone_number", length = 30)
     var phoneNumber: String? = null,
 
+    @Column(name = "phone_number_encrypted", columnDefinition = "TEXT")
+    var phoneNumberEncrypted: String? = null,
+
+    @Column(name = "phone_number_encryption_version", length = 30)
+    var phoneNumberEncryptionVersion: String? = null,
+
+    @Column(name = "phone_number_masked", length = 30)
+    var phoneNumberMasked: String? = null,
+
     @Column(name = "phone_number_hash", length = 64)
     var phoneNumberHash: String? = null,
 
@@ -88,6 +97,9 @@ class User(
         status = UserStatus.ACTIVE
         deletedAt = null
         phoneNumber = null
+        phoneNumberEncrypted = null
+        phoneNumberEncryptionVersion = null
+        phoneNumberMasked = null
         phoneNumberHash = null
         phoneNumberHashVersion = null
         phoneVerifiedAt = null
@@ -97,10 +109,16 @@ class User(
     fun verifyPhoneNumberHash(
         phoneNumberHash: String,
         phoneNumberHashVersion: String,
+        phoneNumberEncrypted: String? = null,
+        phoneNumberEncryptionVersion: String? = null,
+        phoneNumberMasked: String? = null,
         verifiedAt: Instant = Instant.now(),
     ) {
         // 전화번호 인증 정보 저장
         this.phoneNumber = null
+        this.phoneNumberEncrypted = phoneNumberEncrypted
+        this.phoneNumberEncryptionVersion = phoneNumberEncryptionVersion
+        this.phoneNumberMasked = phoneNumberMasked
         this.phoneNumberHash = phoneNumberHash
         this.phoneNumberHashVersion = phoneNumberHashVersion
 

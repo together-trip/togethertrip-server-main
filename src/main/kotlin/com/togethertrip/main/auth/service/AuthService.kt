@@ -20,6 +20,7 @@ import com.togethertrip.main.auth.service.phone.PhoneVerificationService
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
 import com.togethertrip.main.global.security.jwt.TokenType
+import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.exception.UserErrorCode
@@ -40,11 +41,14 @@ class AuthService(
     private val temporarySessionService: OAuthTemporarySessionService,
     private val phoneVerificationService: PhoneVerificationService,
     private val oauthSignupLock: OAuthSignupLock,
+    private val profileImageUrlPolicy: ProfileImageUrlPolicy,
 ) {
 
     @Transactional
     fun loginWithKakao(request: KakaoLoginRequest): AuthResponse {
-        val oauthUserInfo = kakaoOAuthClient.getUserInfo(request.accessToken)
+        val oauthUserInfo = sanitizeOAuthUserInfo(
+            kakaoOAuthClient.getUserInfo(request.accessToken)
+        )
 
         // OAuth 계정 조회
         val oauthAccount = oauthAccountRepository
@@ -216,8 +220,7 @@ class AuthService(
             // 신규 사용자 가입 완료
             registerNewUser(
                 oauthUserInfo = session.toOAuthUserInfo(),
-                phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
-                phoneNumberHashVersion = confirmedPhoneVerification.phoneNumberHashVersion,
+                confirmedPhoneVerification = confirmedPhoneVerification,
             )
         }
     }
@@ -257,11 +260,10 @@ class AuthService(
 
     private fun registerNewUser(
         oauthUserInfo: OAuthUserInfo,
-        phoneNumberHash: String,
-        phoneNumberHashVersion: String,
+        confirmedPhoneVerification: ConfirmedPhoneVerification,
     ): User {
         validatePhoneNumberAvailable(
-            phoneNumberHash = phoneNumberHash,
+            phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
             currentUserId = null,
         )
 
@@ -272,8 +274,11 @@ class AuthService(
                 profileImageUrl = oauthUserInfo.profileImageUrl,
             ).apply {
                 verifyPhoneNumberHash(
-                    phoneNumberHash = phoneNumberHash,
-                    phoneNumberHashVersion = phoneNumberHashVersion,
+                    phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
+                    phoneNumberHashVersion = confirmedPhoneVerification.phoneNumberHashVersion,
+                    phoneNumberEncrypted = confirmedPhoneVerification.phoneNumberEncrypted,
+                    phoneNumberEncryptionVersion = confirmedPhoneVerification.phoneNumberEncryptionVersion,
+                    phoneNumberMasked = confirmedPhoneVerification.phoneNumberMasked,
                 )
             }
         )
@@ -304,6 +309,9 @@ class AuthService(
         user.verifyPhoneNumberHash(
             phoneNumberHash = confirmedPhoneVerification.phoneNumberHash,
             phoneNumberHashVersion = confirmedPhoneVerification.phoneNumberHashVersion,
+            phoneNumberEncrypted = confirmedPhoneVerification.phoneNumberEncrypted,
+            phoneNumberEncryptionVersion = confirmedPhoneVerification.phoneNumberEncryptionVersion,
+            phoneNumberMasked = confirmedPhoneVerification.phoneNumberMasked,
         )
     }
 
@@ -426,7 +434,13 @@ class AuthService(
             provider = provider,
             providerUserId = providerUserId,
             nickname = nickname,
-            profileImageUrl = profileImageUrl,
+            profileImageUrl = profileImageUrlPolicy.sanitize(profileImageUrl),
+        )
+    }
+
+    private fun sanitizeOAuthUserInfo(oauthUserInfo: OAuthUserInfo): OAuthUserInfo {
+        return oauthUserInfo.copy(
+            profileImageUrl = profileImageUrlPolicy.sanitize(oauthUserInfo.profileImageUrl)
         )
     }
 }

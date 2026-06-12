@@ -6,24 +6,47 @@
 --   local-test:unverified:yuri
 --   local-test:admin
 
-INSERT INTO users (
-    nickname, gender, birth_date, profile_image_url, phone_number_hash, phone_number_hash_version, phone_verified_at,
-    role, status, created_at, updated_at, deleted_at
-)
-SELECT *
-FROM (
+MERGE INTO users AS u
+USING (
     VALUES
-        ('로컬 admin', NULL, NULL, NULL, 'c9446e8da7de615e7fae28fe397071957cc06202ea57103a2419470b8e910d15', 'v1', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', 'ADMIN', 'ACTIVE', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', NULL::timestamptz),
-        ('로컬 verified hana', 'FEMALE', DATE '1993-04-12', 'https://images.togethertrip.local/profiles/hana.jpg', '1570a7595ba7a92ee8946904617fd8832758ad8a35de0d418b39bb4343a689ec', 'v1', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-20T13:10:00+09:00', NULL::timestamptz),
-        ('로컬 verified minseo', 'FEMALE', DATE '1994-11-03', 'https://images.togethertrip.local/profiles/minseo.jpg', '3ed0a7c60d3aa4d6df6bc49bf7078b5b75f5c6aef76bce828ff759c9a2fab8e7', 'v1', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-20T13:12:00+09:00', NULL::timestamptz),
-        ('로컬 verified joon', 'MALE', DATE '1991-08-27', 'https://images.togethertrip.local/profiles/joon.jpg', '24f7b0119e429283d2f0ae886676749a52c7843ca9060de41465c0e393a09ed5', 'v1', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-20T13:15:00+09:00', NULL::timestamptz),
-        ('로컬 unverified yuri', 'FEMALE', DATE '1996-02-18', 'https://images.togethertrip.local/profiles/yuri.jpg', NULL, NULL, NULL::timestamptz, 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-20T13:17:00+09:00', NULL::timestamptz),
-        ('정우 휴면계정', 'MALE', DATE '1989-12-09', NULL, 'c666565e50157966a94a4140f2cd1ec20ccda7c4e3007965dbdb01314f738a9f', 'v1', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', 'USER', 'SUSPENDED', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
-        ('탈퇴한 수아', 'FEMALE', DATE '1995-07-21', NULL, '8fabb51070e475188b12a21fe4eae3d2b050634930c7ec70f1fed041ef14c79c', 'v1', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', 'USER', 'WITHDRAWN', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00')
-) AS sample(nickname, gender, birth_date, profile_image_url, phone_number_hash, phone_number_hash_version, phone_verified_at, role, status, created_at, updated_at, deleted_at)
-WHERE NOT EXISTS (
-    SELECT 1 FROM users u WHERE u.nickname = sample.nickname
-);
+        ('로컬 admin', NULL, NULL, NULL, 'v1:AAAAAAAAAAAAAAAB:cPIdEt7BDh8WjIhKty5ZBY6IJ+JFLgngB//u2Y8=', 'v1', '010-****-4463', '3e2edec33184e8f112051ac1eb0876c0c65676a1ef96ca0d4f7e098a6818dfff', 'v1', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', 'ADMIN', 'ACTIVE', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', NULL::timestamptz),
+        ('로컬 verified hana', 'FEMALE', DATE '1993-04-12', '/uploads/user-profile-images/local-hana.jpg', 'v1:AAAAAAAAAAAAAAAC:rTrCzBM/YaOylQHtHw+eT6EVzufrE9HfbmhhGNQ=', 'v1', '010-****-1860', 'd09113b049cb3640e4d64db43331d68f325b18f0b3be9dfdd1e6d503c8b3bc58', 'v1', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-20T13:10:00+09:00', NULL::timestamptz),
+        ('로컬 verified minseo', 'FEMALE', DATE '1994-11-03', '/uploads/user-profile-images/local-minseo.jpg', 'v1:AAAAAAAAAAAAAAAD:HdR0nEl9e0E6vr9r0AxF+W0y1Ar7i8StEDotK78=', 'v1', '010-****-8861', '4a14f641c38bb900c4e582fea7f760b5485d1e5abb74216fc72cef86046b4382', 'v1', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-20T13:12:00+09:00', NULL::timestamptz),
+        ('로컬 verified joon', 'MALE', DATE '1991-08-27', '/uploads/user-profile-images/local-joon.jpg', 'v1:AAAAAAAAAAAAAAAE:Ljx4x3KyJDhuaFkoxAdJx+2yWInvo5arv012mLI=', 'v1', '010-****-4940', '613c01f3d2e2305b882ecdfcc6a9bfe517f7f19d7096354fa3f49dac585dc52c', 'v1', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-20T13:15:00+09:00', NULL::timestamptz),
+        ('로컬 unverified yuri', 'FEMALE', DATE '1996-02-18', '/uploads/user-profile-images/local-yuri.jpg', NULL, NULL, NULL, NULL, NULL, NULL::timestamptz, 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-20T13:17:00+09:00', NULL::timestamptz),
+        ('정우 휴면계정', 'MALE', DATE '1989-12-09', NULL, 'v1:AAAAAAAAAAAAAAAF:HIgTOEbhocXLirDc48frlkNlwDE+v/ulw8QnAqc=', 'v1', '010-****-9354', '737fc8c881aaefda9ba78d5587ad0fade3003336620fc49b06b08e0a4ef955e9', 'v1', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', 'USER', 'SUSPENDED', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
+        ('탈퇴한 수아', 'FEMALE', DATE '1995-07-21', NULL, 'v1:AAAAAAAAAAAAAAAG:VohT09sh7p3FFRM5QZBl4rp3f5Pj3sOVHlxqKhw=', 'v1', '010-****-0428', '2b79da0b34f7e4b6bd98093f57d11ffb00615f825961654d4d28066d3cfcc502', 'v1', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', 'USER', 'WITHDRAWN', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00')
+) AS sample(nickname, gender, birth_date, profile_image_url, phone_number_encrypted, phone_number_encryption_version, phone_number_masked, phone_number_hash, phone_number_hash_version, phone_verified_at, role, status, created_at, updated_at, deleted_at)
+ON u.nickname = sample.nickname
+WHEN MATCHED THEN
+    UPDATE SET
+        gender = sample.gender,
+        birth_date = sample.birth_date,
+        profile_image_url = sample.profile_image_url,
+        phone_number = NULL,
+        phone_number_encrypted = sample.phone_number_encrypted,
+        phone_number_encryption_version = sample.phone_number_encryption_version,
+        phone_number_masked = sample.phone_number_masked,
+        phone_number_hash = sample.phone_number_hash,
+        phone_number_hash_version = sample.phone_number_hash_version,
+        phone_verified_at = sample.phone_verified_at,
+        role = sample.role,
+        status = sample.status,
+        updated_at = sample.updated_at,
+        deleted_at = sample.deleted_at
+WHEN NOT MATCHED THEN
+    INSERT (
+        nickname, gender, birth_date, profile_image_url,
+        phone_number_encrypted, phone_number_encryption_version, phone_number_masked,
+        phone_number_hash, phone_number_hash_version, phone_verified_at,
+        role, status, created_at, updated_at, deleted_at
+    )
+    VALUES (
+        sample.nickname, sample.gender, sample.birth_date, sample.profile_image_url,
+        sample.phone_number_encrypted, sample.phone_number_encryption_version, sample.phone_number_masked,
+        sample.phone_number_hash, sample.phone_number_hash_version, sample.phone_verified_at,
+        sample.role, sample.status, sample.created_at, sample.updated_at, sample.deleted_at
+    );
 
 INSERT INTO oauth_accounts (
     user_id, provider, provider_user_id, nickname, profile_image_url, created_at, updated_at, deleted_at
@@ -31,13 +54,18 @@ INSERT INTO oauth_accounts (
 SELECT u.id, 'KAKAO', sample.provider_user_id, sample.nickname, sample.profile_image_url, sample.created_at, sample.updated_at, NULL
 FROM (
     VALUES
-        ('로컬 verified hana', 'local-kakao-hana', '한지민', 'https://images.togethertrip.local/profiles/hana.jpg', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
-        ('로컬 verified minseo', 'local-kakao-minseo', '김민서', 'https://images.togethertrip.local/profiles/minseo.jpg', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-01T09:05:00+09:00'),
-        ('로컬 verified joon', 'local-kakao-joon', '박서준', 'https://images.togethertrip.local/profiles/joon.jpg', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-01T09:10:00+09:00'),
-        ('로컬 unverified yuri', 'local-kakao-yuri', '이유리', 'https://images.togethertrip.local/profiles/yuri.jpg', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-01T09:15:00+09:00')
+        ('로컬 verified hana', 'local-kakao-hana', '한지민', '/uploads/user-profile-images/local-hana.jpg', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
+        ('로컬 verified minseo', 'local-kakao-minseo', '김민서', '/uploads/user-profile-images/local-minseo.jpg', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-01T09:05:00+09:00'),
+        ('로컬 verified joon', 'local-kakao-joon', '박서준', '/uploads/user-profile-images/local-joon.jpg', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-01T09:10:00+09:00'),
+        ('로컬 unverified yuri', 'local-kakao-yuri', '이유리', '/uploads/user-profile-images/local-yuri.jpg', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-01T09:15:00+09:00')
 ) AS sample(user_nickname, provider_user_id, nickname, profile_image_url, created_at, updated_at)
 JOIN users u ON u.nickname = sample.user_nickname
-ON CONFLICT (provider, provider_user_id) DO NOTHING;
+ON CONFLICT (provider, provider_user_id) DO UPDATE SET
+    user_id = EXCLUDED.user_id,
+    nickname = EXCLUDED.nickname,
+    profile_image_url = EXCLUDED.profile_image_url,
+    updated_at = EXCLUDED.updated_at,
+    deleted_at = EXCLUDED.deleted_at;
 
 INSERT INTO user_agreements (
     user_id, agreement_type, agreed, agreed_at, revoked_at, created_at, updated_at, deleted_at
@@ -91,7 +119,12 @@ FROM (
         ('방콕 송크란 여행 취소 기록', 'TH', '태국', 1, TIMESTAMPTZ '2026-03-01T12:05:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
 ) AS sample(trip_title, country_code, country_name, sort_order, created_at, updated_at, deleted_at)
 JOIN trips t ON t.title = sample.trip_title
-ON CONFLICT (trip_id, country_code) WHERE deleted_at IS NULL DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM trip_countries tc
+    WHERE tc.trip_id = t.id
+      AND tc.country_code = sample.country_code
+);
 
 INSERT INTO trip_exchange_rates (
     trip_id, base_currency, target_currency, rate, rate_date, source, created_at, updated_at, deleted_at
@@ -109,7 +142,14 @@ FROM (
         ('방콕 송크란 여행 취소 기록', 'KRW', 'THB', 38.167939::numeric, DATE '2026-04-10', 'KEB_HANA_DAILY', TIMESTAMPTZ '2026-04-10T08:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
 ) AS sample(trip_title, base_currency, target_currency, rate, rate_date, source, created_at, updated_at, deleted_at)
 JOIN trips t ON t.title = sample.trip_title
-ON CONFLICT (trip_id, base_currency, target_currency, rate_date) WHERE deleted_at IS NULL DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM trip_exchange_rates ter
+    WHERE ter.trip_id = t.id
+      AND ter.base_currency = sample.base_currency
+      AND ter.target_currency = sample.target_currency
+      AND ter.rate_date = sample.rate_date
+);
 
 INSERT INTO exchange_rates (
     base_currency, target_currency, rate, rate_date, source, created_at, updated_at, deleted_at
@@ -133,18 +173,49 @@ SELECT t.id, u.id, sample.display_name, sample.profile_image_url, sample.partici
        sample.joined_at, sample.left_at, sample.created_at, sample.updated_at, sample.deleted_at
 FROM (
     VALUES
-        ('오사카 3박4일 맛집 여행', '로컬 verified hana', '지민', 'https://images.togethertrip.local/profiles/hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-04-20T22:20:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-04-20T22:20:00+09:00', TIMESTAMPTZ '2026-05-15T21:00:00+09:00', NULL::timestamptz),
-        ('오사카 3박4일 맛집 여행', '로컬 verified minseo', '민서', 'https://images.togethertrip.local/profiles/minseo.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-04-21T09:30:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-04-21T09:30:00+09:00', TIMESTAMPTZ '2026-05-15T21:00:00+09:00', NULL::timestamptz),
-        ('오사카 3박4일 맛집 여행', '로컬 verified joon', '서준', 'https://images.togethertrip.local/profiles/joon.jpg', 'MEMBER', 'LEFT', TIMESTAMPTZ '2026-04-22T10:00:00+09:00', TIMESTAMPTZ '2026-05-13T23:20:00+09:00', TIMESTAMPTZ '2026-04-22T10:00:00+09:00', TIMESTAMPTZ '2026-05-13T23:20:00+09:00', NULL::timestamptz),
-        ('다낭 여름 휴가', '로컬 verified hana', '지민', 'https://images.togethertrip.local/profiles/hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-05-18T20:40:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-18T20:40:00+09:00', TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
-        ('다낭 여름 휴가', '로컬 verified minseo', '민서', 'https://images.togethertrip.local/profiles/minseo.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-05-18T20:45:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-18T20:45:00+09:00', TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
-        ('다낭 여름 휴가', '로컬 unverified yuri', '유리', 'https://images.togethertrip.local/profiles/yuri.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-05-19T08:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-19T08:00:00+09:00', TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
-        ('제주 렌터카 여행 준비', '로컬 verified hana', '지민', 'https://images.togethertrip.local/profiles/hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-05-25T19:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-25T19:10:00+09:00', TIMESTAMPTZ '2026-05-25T19:10:00+09:00', NULL::timestamptz),
-        ('방콕 송크란 여행 취소 기록', '로컬 verified minseo', '민서', 'https://images.togethertrip.local/profiles/minseo.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-03-01T12:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-03-01T12:10:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
+        ('오사카 3박4일 맛집 여행', '로컬 verified hana', '지민', '/uploads/user-profile-images/local-hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-04-20T22:20:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-04-20T22:20:00+09:00', TIMESTAMPTZ '2026-05-15T21:00:00+09:00', NULL::timestamptz),
+        ('오사카 3박4일 맛집 여행', '로컬 verified minseo', '민서', '/uploads/user-profile-images/local-minseo.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-04-21T09:30:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-04-21T09:30:00+09:00', TIMESTAMPTZ '2026-05-15T21:00:00+09:00', NULL::timestamptz),
+        ('오사카 3박4일 맛집 여행', '로컬 verified joon', '서준', '/uploads/user-profile-images/local-joon.jpg', 'MEMBER', 'LEFT', TIMESTAMPTZ '2026-04-22T10:00:00+09:00', TIMESTAMPTZ '2026-05-13T23:20:00+09:00', TIMESTAMPTZ '2026-04-22T10:00:00+09:00', TIMESTAMPTZ '2026-05-13T23:20:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', '로컬 verified hana', '지민', '/uploads/user-profile-images/local-hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-05-18T20:40:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-18T20:40:00+09:00', TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', '로컬 verified minseo', '민서', '/uploads/user-profile-images/local-minseo.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-05-18T20:45:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-18T20:45:00+09:00', TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', '로컬 unverified yuri', '유리', '/uploads/user-profile-images/local-yuri.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-05-19T08:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-19T08:00:00+09:00', TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
+        ('제주 렌터카 여행 준비', '로컬 verified hana', '지민', '/uploads/user-profile-images/local-hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-05-25T19:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-25T19:10:00+09:00', TIMESTAMPTZ '2026-05-25T19:10:00+09:00', NULL::timestamptz),
+        ('방콕 송크란 여행 취소 기록', '로컬 verified minseo', '민서', '/uploads/user-profile-images/local-minseo.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-03-01T12:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-03-01T12:10:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
 ) AS sample(trip_title, user_nickname, display_name, profile_image_url, participant_role, participant_status, joined_at, left_at, created_at, updated_at, deleted_at)
 JOIN trips t ON t.title = sample.trip_title
 JOIN users u ON u.nickname = sample.user_nickname
-ON CONFLICT (trip_id, user_id) WHERE user_id IS NOT NULL AND deleted_at IS NULL DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM trip_participants tp
+    WHERE tp.trip_id = t.id
+      AND tp.user_id = u.id
+);
+
+UPDATE trip_participants AS tp
+SET
+    display_name = sample.display_name,
+    profile_image_url = sample.profile_image_url,
+    participant_role = sample.participant_role,
+    participant_status = sample.participant_status,
+    joined_at = sample.joined_at,
+    left_at = sample.left_at,
+    updated_at = sample.updated_at,
+    deleted_at = sample.deleted_at
+FROM (
+    VALUES
+        ('오사카 3박4일 맛집 여행', '로컬 verified hana', '지민', '/uploads/user-profile-images/local-hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-04-20T22:20:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-15T21:00:00+09:00', NULL::timestamptz),
+        ('오사카 3박4일 맛집 여행', '로컬 verified minseo', '민서', '/uploads/user-profile-images/local-minseo.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-04-21T09:30:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-15T21:00:00+09:00', NULL::timestamptz),
+        ('오사카 3박4일 맛집 여행', '로컬 verified joon', '서준', '/uploads/user-profile-images/local-joon.jpg', 'MEMBER', 'LEFT', TIMESTAMPTZ '2026-04-22T10:00:00+09:00', TIMESTAMPTZ '2026-05-13T23:20:00+09:00', TIMESTAMPTZ '2026-05-13T23:20:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', '로컬 verified hana', '지민', '/uploads/user-profile-images/local-hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-05-18T20:40:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', '로컬 verified minseo', '민서', '/uploads/user-profile-images/local-minseo.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-05-18T20:45:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', '로컬 unverified yuri', '유리', '/uploads/user-profile-images/local-yuri.jpg', 'MEMBER', 'ACTIVE', TIMESTAMPTZ '2026-05-19T08:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-06-04T18:40:00+09:00', NULL::timestamptz),
+        ('제주 렌터카 여행 준비', '로컬 verified hana', '지민', '/uploads/user-profile-images/local-hana.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-05-25T19:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-25T19:10:00+09:00', NULL::timestamptz),
+        ('방콕 송크란 여행 취소 기록', '로컬 verified minseo', '민서', '/uploads/user-profile-images/local-minseo.jpg', 'LEADER', 'ACTIVE', TIMESTAMPTZ '2026-03-01T12:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
+) AS sample(trip_title, user_nickname, display_name, profile_image_url, participant_role, participant_status, joined_at, left_at, updated_at, deleted_at)
+JOIN trips t ON t.title = sample.trip_title
+JOIN users u ON u.nickname = sample.user_nickname
+WHERE tp.trip_id = t.id
+  AND tp.user_id = u.id;
 
 INSERT INTO trip_participants (
     trip_id, user_id, display_name, profile_image_url, participant_role, participant_status,
@@ -165,24 +236,38 @@ WHERE NOT EXISTS (
       AND tp.user_id IS NULL
 );
 
+DELETE FROM trip_invitations
+WHERE token IN (
+    'OSAKA-USED-MINSEO',
+    'DANANG-ACTIVE-2026',
+    'JEJU-EXPIRED-EUNHO',
+    'JEJU-CANCELLED-OLD',
+    'BANGKOK-DELETED'
+)
+  AND invite_url LIKE 'https://togethertrip.local/invites/%';
+
 INSERT INTO trip_invitations (
-    trip_id, token, invite_url, created_by_user_id, used_by_user_id, invitation_status,
+    trip_id, token, code, invite_url, invitation_type, created_by_user_id, used_by_user_id, invitation_status,
     expires_at, used_at, created_at, updated_at, deleted_at
 )
-SELECT t.id, sample.token, sample.invite_url, creator.id, used_by.id, sample.invitation_status,
+SELECT t.id, sample.token, sample.code, sample.invite_url, sample.invitation_type, creator.id, used_by.id, sample.invitation_status,
        sample.expires_at, sample.used_at, sample.created_at, sample.updated_at, sample.deleted_at
 FROM (
     VALUES
-        ('오사카 3박4일 맛집 여행', 'OSAKA-USED-MINSEO', 'https://togethertrip.local/invites/OSAKA-USED-MINSEO', '로컬 verified hana', '로컬 verified minseo', 'USED', TIMESTAMPTZ '2026-05-08T23:59:59+09:00', TIMESTAMPTZ '2026-04-21T09:30:00+09:00', TIMESTAMPTZ '2026-04-20T22:25:00+09:00', TIMESTAMPTZ '2026-04-21T09:30:00+09:00', NULL::timestamptz),
-        ('다낭 여름 휴가', 'DANANG-ACTIVE-2026', 'https://togethertrip.local/invites/DANANG-ACTIVE-2026', '로컬 verified hana', NULL, 'ACTIVE', TIMESTAMPTZ '2026-06-10T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-18T20:50:00+09:00', TIMESTAMPTZ '2026-05-18T20:50:00+09:00', NULL::timestamptz),
-        ('제주 렌터카 여행 준비', 'JEJU-EXPIRED-EUNHO', 'https://togethertrip.local/invites/JEJU-EXPIRED-EUNHO', '로컬 verified hana', NULL, 'EXPIRED', TIMESTAMPTZ '2026-05-31T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-25T19:20:00+09:00', TIMESTAMPTZ '2026-06-01T00:10:00+09:00', NULL::timestamptz),
-        ('제주 렌터카 여행 준비', 'JEJU-CANCELLED-OLD', 'https://togethertrip.local/invites/JEJU-CANCELLED-OLD', '로컬 verified hana', NULL, 'CANCELLED', TIMESTAMPTZ '2026-06-20T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-26T10:00:00+09:00', TIMESTAMPTZ '2026-05-27T10:00:00+09:00', NULL::timestamptz),
-        ('방콕 송크란 여행 취소 기록', 'BANGKOK-DELETED', 'https://togethertrip.local/invites/BANGKOK-DELETED', '로컬 verified minseo', NULL, 'CANCELLED', TIMESTAMPTZ '2026-04-01T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-03-01T12:20:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
-) AS sample(trip_title, token, invite_url, creator_nickname, used_by_nickname, invitation_status, expires_at, used_at, created_at, updated_at, deleted_at)
+        ('오사카 3박4일 맛집 여행', 'OSAKA-USED-MINSEO', NULL, 'https://togethertrip.local/invites?token=OSAKA-USED-MINSEO', 'LINK', '로컬 verified hana', '로컬 verified minseo', 'USED', TIMESTAMPTZ '2026-05-08T23:59:59+09:00', TIMESTAMPTZ '2026-04-21T09:30:00+09:00', TIMESTAMPTZ '2026-04-20T22:25:00+09:00', TIMESTAMPTZ '2026-04-21T09:30:00+09:00', NULL::timestamptz),
+        ('다낭 여름 휴가', 'DANANG-ACTIVE-2026', 'DN2026AB', 'https://togethertrip.local/invites?code=DN2026AB', 'CODE', '로컬 verified hana', NULL, 'ACTIVE', TIMESTAMPTZ '2026-06-10T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-18T20:50:00+09:00', TIMESTAMPTZ '2026-05-18T20:50:00+09:00', NULL::timestamptz),
+        ('제주 렌터카 여행 준비', 'JEJU-EXPIRED-EUNHO', 'JEJU2607', 'https://togethertrip.local/invites?code=JEJU2607', 'CODE', '로컬 verified hana', NULL, 'EXPIRED', TIMESTAMPTZ '2026-05-31T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-25T19:20:00+09:00', TIMESTAMPTZ '2026-06-01T00:10:00+09:00', NULL::timestamptz),
+        ('제주 렌터카 여행 준비', 'JEJU-CANCELLED-OLD', NULL, 'https://togethertrip.local/invites?token=JEJU-CANCELLED-OLD', 'LINK', '로컬 verified hana', NULL, 'CANCELLED', TIMESTAMPTZ '2026-06-20T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-26T10:00:00+09:00', TIMESTAMPTZ '2026-05-27T10:00:00+09:00', NULL::timestamptz),
+        ('방콕 송크란 여행 취소 기록', 'BANGKOK-DELETED', NULL, 'https://togethertrip.local/invites?token=BANGKOK-DELETED', 'LINK', '로컬 verified minseo', NULL, 'CANCELLED', TIMESTAMPTZ '2026-04-01T23:59:59+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-03-01T12:20:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
+) AS sample(trip_title, token, code, invite_url, invitation_type, creator_nickname, used_by_nickname, invitation_status, expires_at, used_at, created_at, updated_at, deleted_at)
 JOIN trips t ON t.title = sample.trip_title
 JOIN users creator ON creator.nickname = sample.creator_nickname
 LEFT JOIN users used_by ON used_by.nickname = sample.used_by_nickname
-ON CONFLICT (token) WHERE deleted_at IS NULL DO NOTHING;
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM trip_invitations ti
+    WHERE ti.token = sample.token
+);
 
 INSERT INTO transactions (
     trip_id, created_by_user_id, transaction_type, amount, currency, exchange_rate, base_currency,
@@ -303,6 +388,9 @@ WHERE NOT EXISTS (
     SELECT 1 FROM post_comments pc WHERE pc.post_id = p.id AND pc.content = sample.content
 );
 
+DELETE FROM post_attachments
+WHERE file_url LIKE 'https://images.togethertrip.local/%';
+
 INSERT INTO post_attachments (
     post_id, attachment_type, file_url, thumbnail_url, file_size, mime_type,
     sort_order, created_at, updated_at, deleted_at
@@ -311,10 +399,10 @@ SELECT p.id, sample.attachment_type, sample.file_url, sample.thumbnail_url, samp
        sample.sort_order, sample.created_at, sample.updated_at, sample.deleted_at
 FROM (
     VALUES
-        ('도톤보리 첫날 동선 정리', 'IMAGE', 'https://images.togethertrip.local/osaka/dotonbori-night.jpg', 'https://images.togethertrip.local/osaka/dotonbori-night-thumb.jpg', 2481200::bigint, 'image/jpeg', 1, TIMESTAMPTZ '2026-05-10T22:45:00+09:00', TIMESTAMPTZ '2026-05-10T22:45:00+09:00', NULL::timestamptz),
-        ('쿠로몬시장 점심 결제', 'IMAGE', 'https://images.togethertrip.local/osaka/kuromon-lunch-receipt.jpg', 'https://images.togethertrip.local/osaka/kuromon-lunch-receipt-thumb.jpg', 980233::bigint, 'image/jpeg', 1, TIMESTAMPTZ '2026-05-10T12:45:00+09:00', TIMESTAMPTZ '2026-05-10T12:45:00+09:00', NULL::timestamptz),
-        ('미케비치 근처 반쎄오', 'VIDEO', 'https://images.togethertrip.local/danang/beach-walk.mp4', NULL, 14200122::bigint, 'video/mp4', 1, TIMESTAMPTZ '2026-06-02T20:10:00+09:00', TIMESTAMPTZ '2026-06-02T20:10:00+09:00', NULL::timestamptz),
-        ('취소된 방콕 숙소 예약금', 'IMAGE', 'https://images.togethertrip.local/bangkok/cancelled-hotel.jpg', NULL, 728120::bigint, 'image/jpeg', 1, TIMESTAMPTZ '2026-03-05T18:35:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
+        ('도톤보리 첫날 동선 정리', 'IMAGE', '/uploads/post-attachments/local-osaka-dotonbori-night.jpg', '/uploads/post-attachments/local-osaka-dotonbori-night-thumb.jpg', 2481200::bigint, 'image/jpeg', 1, TIMESTAMPTZ '2026-05-10T22:45:00+09:00', TIMESTAMPTZ '2026-05-10T22:45:00+09:00', NULL::timestamptz),
+        ('쿠로몬시장 점심 결제', 'IMAGE', '/uploads/post-attachments/local-osaka-kuromon-lunch-receipt.jpg', '/uploads/post-attachments/local-osaka-kuromon-lunch-receipt-thumb.jpg', 980233::bigint, 'image/jpeg', 1, TIMESTAMPTZ '2026-05-10T12:45:00+09:00', TIMESTAMPTZ '2026-05-10T12:45:00+09:00', NULL::timestamptz),
+        ('미케비치 근처 반쎄오', 'VIDEO', '/uploads/post-attachments/local-danang-beach-walk.mp4', NULL, 14200122::bigint, 'video/mp4', 1, TIMESTAMPTZ '2026-06-02T20:10:00+09:00', TIMESTAMPTZ '2026-06-02T20:10:00+09:00', NULL::timestamptz),
+        ('취소된 방콕 숙소 예약금', 'IMAGE', '/uploads/post-attachments/local-bangkok-cancelled-hotel.jpg', NULL, 728120::bigint, 'image/jpeg', 1, TIMESTAMPTZ '2026-03-05T18:35:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00', TIMESTAMPTZ '2026-03-20T10:00:00+09:00')
 ) AS sample(post_title, attachment_type, file_url, thumbnail_url, file_size, mime_type, sort_order, created_at, updated_at, deleted_at)
 JOIN posts p ON p.title = sample.post_title
 WHERE NOT EXISTS (
