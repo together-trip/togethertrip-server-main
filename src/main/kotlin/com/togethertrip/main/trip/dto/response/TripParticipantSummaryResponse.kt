@@ -10,6 +10,7 @@ data class TripParticipantSummaryResponse(
     val userId: Long?,
     val displayName: String,
     val profileImageUrl: String?,
+    val participantType: TripParticipantType,
     val participantRole: TripParticipantRole,
     val participantStatus: TripParticipantStatus,
     val joinedAt: Instant?,
@@ -21,6 +22,11 @@ data class TripParticipantSummaryResponse(
                 userId = participant.user?.id,
                 displayName = TripParticipantDisplay.displayName(participant),
                 profileImageUrl = TripParticipantDisplay.profileImageUrl(participant),
+                participantType = if (participant.user == null) {
+                    TripParticipantType.TEMPORARY
+                } else {
+                    TripParticipantType.USER
+                },
                 participantRole = participant.participantRole,
                 participantStatus = participant.participantStatus,
                 joinedAt = participant.joinedAt,

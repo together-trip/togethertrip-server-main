@@ -27,6 +27,26 @@ interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
 
     fun findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(tripId: Long): List<TripParticipant>
 
+    @Query(
+        value = """
+        select *
+        from trip_participants
+        where trip_id = :tripId
+          and participant_status = :participantStatus
+        order by created_at asc, id asc
+        """,
+        nativeQuery = true,
+    )
+    fun findByTripIdAndParticipantStatusIncludingDeleted(
+        @Param("tripId") tripId: Long,
+        @Param("participantStatus") participantStatus: String,
+    ): List<TripParticipant>
+
+    fun findByIdAndTripIdAndDeletedAtIsNull(
+        id: Long,
+        tripId: Long,
+    ): TripParticipant?
+
     fun findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
         id: Long,
         tripId: Long,

@@ -68,10 +68,34 @@ enum class TripErrorCode(
         "정산이 시작된 여행에는 새로 참여할 수 없습니다.",
     ),
 
+    TRIP_PARTICIPANT_ALREADY_LINKED(
+        HttpStatus.CONFLICT,
+        "TRIP_PARTICIPANT_ALREADY_LINKED",
+        "이미 회원과 연결된 여행 참여자입니다.",
+    ),
+
+    TRIP_LEADER_REMOVE_DENIED(
+        HttpStatus.CONFLICT,
+        "TRIP_LEADER_REMOVE_DENIED",
+        "여행 방장은 참여자 제거 대상이 될 수 없습니다.",
+    ),
+
     INVALID_TRIP_STATUS(
         HttpStatus.BAD_REQUEST,
         "INVALID_TRIP_STATUS",
         "유효하지 않은 여행 상태입니다.",
+    ),
+
+    INVALID_TRIP_PARTICIPANT_STATUS(
+        HttpStatus.BAD_REQUEST,
+        "INVALID_TRIP_PARTICIPANT_STATUS",
+        "유효하지 않은 여행 참여자 상태입니다.",
+    ),
+
+    INVALID_TRIP_PARTICIPANT_TYPE(
+        HttpStatus.BAD_REQUEST,
+        "INVALID_TRIP_PARTICIPANT_TYPE",
+        "유효하지 않은 여행 참여자 유형입니다.",
     ),
 
     UNSUPPORTED_TRIP_COUNTRY_CURRENCY(
