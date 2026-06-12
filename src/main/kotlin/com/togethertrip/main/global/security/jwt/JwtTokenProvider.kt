@@ -3,10 +3,9 @@ package com.togethertrip.main.global.security.jwt
 import com.togethertrip.main.user.domain.UserRole
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.ExpiredJwtException
+import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.Jwts
-import io.jsonwebtoken.MalformedJwtException
 import io.jsonwebtoken.security.Keys
-import io.jsonwebtoken.security.SecurityException
 import org.springframework.stereotype.Component
 import java.time.Instant
 import java.util.*
@@ -47,13 +46,14 @@ class JwtTokenProvider(
 
     fun validateToken(token: String): Boolean {
         return try {
-            parseClaims(token)
+            // token claim 구조 검증
+            getClaims(token)
             true
         } catch (exception: ExpiredJwtException) {
             false
-        } catch (exception: SecurityException) {
+        } catch (exception: JwtException) {
             false
-        } catch (exception: MalformedJwtException) {
+        } catch (exception: ClassCastException) {
             false
         } catch (exception: IllegalArgumentException) {
             false
@@ -63,10 +63,12 @@ class JwtTokenProvider(
     fun getClaims(token: String): JwtClaims {
         val claims = parseClaims(token)
 
+        // JWT claim 변환
         val userId = claims.subject.toLong()
         val role = UserRole.valueOf(claims["role"] as String)
         val tokenType = TokenType.valueOf(claims["tokenType"] as String)
 
+        // JWT claim 응답
         return JwtClaims(
             userId = userId,
             role = role,
@@ -90,6 +92,7 @@ class JwtTokenProvider(
         val now = Instant.now()
         val expiration = now.plusSeconds(expirationSeconds)
 
+        // JWT 생성
         return Jwts.builder()
             .issuer(jwtProperties.issuer)
             .subject(userId.toString())
@@ -102,6 +105,7 @@ class JwtTokenProvider(
     }
 
     private fun parseClaims(token: String): Claims {
+        // JWT 파싱
         return Jwts.parser()
             .verifyWith(secretKey)
             .requireIssuer(jwtProperties.issuer)

@@ -2,6 +2,7 @@ package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripCountry
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -42,6 +43,7 @@ class TripService(
     private val tripCountryRepository: TripCountryRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val userRepository: UserRepository,
+    private val profileImageUrlPolicy: ProfileImageUrlPolicy,
 ) {
 
     @Transactional
@@ -51,6 +53,7 @@ class TripService(
     ): TripDetailResponse {
         val user = getActiveUser(userId)
         validateTripDates(request.startDate, request.endDate)
+        validateCompanionProfileImageUrls(request.participants)
 
         val trip = tripRepository.save(
             Trip(
@@ -236,7 +239,7 @@ class TripService(
                 TripParticipant(
                     trip = trip,
                     displayName = participant.displayName.trim(),
-                    profileImageUrl = participant.profileImageUrl?.trim(),
+                    profileImageUrl = resolveCompanionProfileImageUrl(participant.profileImageUrl),
                     participantRole = TripParticipantRole.MEMBER,
                     participantStatus = TripParticipantStatus.ACTIVE,
                 )
@@ -333,6 +336,25 @@ class TripService(
         ) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
+    }
+
+    private fun validateCompanionProfileImageUrls(participants: List<TripCompanionInput>) {
+        participants.forEach { participant ->
+            resolveCompanionProfileImageUrl(participant.profileImageUrl)
+        }
+    }
+
+    private fun resolveCompanionProfileImageUrl(profileImageUrl: String?): String? {
+        val trimmedProfileImageUrl = profileImageUrl
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        if (!profileImageUrlPolicy.isAllowed(trimmedProfileImageUrl)) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+
+        return trimmedProfileImageUrl
     }
 
     private fun resolveInitialTripStatus(

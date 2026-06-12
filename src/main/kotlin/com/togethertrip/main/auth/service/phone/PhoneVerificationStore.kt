@@ -30,38 +30,54 @@ class PhoneVerificationStore(
         val value = redisTemplate.opsForValue().get(getVerificationKey(temporaryToken))
             ?: throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_CODE_EXPIRED)
 
+        // Redis 인증 상태 역직렬화
         return objectMapper.readValue(value, PhoneVerificationState::class.java)
     }
 
     fun delete(temporaryToken: String) {
-        redisTemplate.delete(getVerificationKey(temporaryToken))
+        redisTemplate.delete(
+            listOf(
+                getVerificationKey(temporaryToken),
+                getAttemptKey(temporaryToken),
+            )
+        )
     }
 
-    fun saveAttemptFailure(
+    fun incrementAttemptFailure(
         temporaryToken: String,
         state: PhoneVerificationState,
         maxAttemptCount: Int,
     ) {
-        val nextState = state.copy(attemptCount = state.attemptCount + 1)
+        // 인증 실패 횟수 증가
+        val attemptCount = redisTemplate.opsForValue()
+            .increment(getAttemptKey(temporaryToken)) ?: 1L
 
-        if (nextState.attemptCount >= maxAttemptCount) {
-            delete(temporaryToken)
-            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_ATTEMPT_EXCEEDED)
-        }
-
+        // attempt key TTL 계산
         val remainingTtl = Duration
-            .between(Instant.now(), nextState.expiresAt)
+            .between(Instant.now(), state.expiresAt)
             .takeIf { !it.isNegative && !it.isZero }
             ?: Duration.ofSeconds(1)
 
-        save(
-            temporaryToken = temporaryToken,
-            state = nextState,
-            ttl = remainingTtl,
-        )
+        // 최초 실패 TTL 설정
+        if (attemptCount == 1L) {
+            redisTemplate.expire(
+                getAttemptKey(temporaryToken),
+                remainingTtl,
+            )
+        }
+
+        // 최대 실패 횟수 확인
+        if (attemptCount >= maxAttemptCount) {
+            delete(temporaryToken)
+            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_ATTEMPT_EXCEEDED)
+        }
     }
 
     private fun getVerificationKey(temporaryToken: String): String {
         return "auth:phone-verification:$temporaryToken"
+    }
+
+    private fun getAttemptKey(temporaryToken: String): String {
+        return "auth:phone-verification:attempt:$temporaryToken"
     }
 }

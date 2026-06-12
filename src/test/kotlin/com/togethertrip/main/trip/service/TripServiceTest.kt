@@ -2,6 +2,7 @@ package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripCountry
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -41,6 +42,7 @@ class TripServiceTest {
     private lateinit var tripCountryRepository: TripCountryRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var userRepository: UserRepository
+    private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
     private lateinit var tripService: TripService
 
     @BeforeEach
@@ -49,11 +51,15 @@ class TripServiceTest {
         tripCountryRepository = mock(TripCountryRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         userRepository = mock(UserRepository::class.java)
+        profileImageUrlPolicy = ProfileImageUrlPolicy(
+            userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
+        )
         tripService = TripService(
             tripRepository = tripRepository,
             tripCountryRepository = tripCountryRepository,
             tripParticipantRepository = tripParticipantRepository,
             userRepository = userRepository,
+            profileImageUrlPolicy = profileImageUrlPolicy,
         )
     }
 
@@ -129,6 +135,31 @@ class TripServiceTest {
                     defaultCurrency = "EUR",
                     startDate = LocalDate.of(2026, 6, 10),
                     endDate = LocalDate.of(2026, 6, 1),
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        verify(tripRepository, never()).save(any(Trip::class.java))
+    }
+
+    @Test
+    fun `허용되지 않는 동행자 프로필 이미지 URL이면 여행 생성에 실패한다`() {
+        val user = createUser()
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+
+        val exception = assertBusinessException {
+            tripService.createTrip(
+                userId = 1L,
+                request = CreateTripRequest(
+                    title = "오사카 여행",
+                    defaultCurrency = "JPY",
+                    participants = listOf(
+                        TripCompanionInput(
+                            displayName = "동행자1",
+                            profileImageUrl = "javascript:alert(1)",
+                        )
+                    ),
                 ),
             )
         }

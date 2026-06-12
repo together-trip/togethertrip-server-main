@@ -30,7 +30,10 @@ class UserTest {
     @Test
     fun `탈퇴 사용자를 재가입 상태로 재활성화한다`() {
         val user = User(nickname = "여행자").apply {
-            verifyPhoneNumber("+821012345678")
+            verifyPhoneNumberHash(
+                phoneNumberHash = "phone-hash",
+                phoneNumberHashVersion = "v1",
+            )
             withdraw()
         }
 
@@ -39,6 +42,11 @@ class UserTest {
         assertEquals(UserStatus.ACTIVE, user.status)
         assertNull(user.deletedAt)
         assertNull(user.phoneNumber)
+        assertNull(user.phoneNumberEncrypted)
+        assertNull(user.phoneNumberEncryptionVersion)
+        assertNull(user.phoneNumberMasked)
+        assertNull(user.phoneNumberHash)
+        assertNull(user.phoneNumberHashVersion)
         assertNull(user.phoneVerifiedAt)
     }
 }
