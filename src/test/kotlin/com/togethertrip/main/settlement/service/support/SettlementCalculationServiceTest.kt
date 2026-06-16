@@ -89,6 +89,44 @@ class SettlementCalculationServiceTest {
         assertEquals(TripParticipantStatus.LEFT, balances.single().participantStatus)
     }
 
+    @Test
+    fun `더미 참여자는 개인정보를 마스킹하지 않지만 자동 확인 대상이다`() {
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(
+            listOf(paymentRow(participantId = 100L, amount = BigDecimal("10000.00")))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(
+            listOf(shareRow(participantId = 100L, amount = BigDecimal("10000.00")))
+        )
+        val calculation = settlementCalculationService.calculate(10L)
+        `when`(
+            tripParticipantRepository.findSettlementParticipantRows(
+                tripId = 10L,
+                participantIds = calculation.balances.map { it.participantId }.toSet(),
+            )
+        ).thenReturn(
+            listOf(
+                participantRow(
+                    participantId = 100L,
+                    userId = null,
+                    displayName = "현장 추가 동행자",
+                    profileImageUrl = null,
+                    participantStatus = TripParticipantStatus.ACTIVE,
+                    userStatus = null,
+                )
+            )
+        )
+
+        val participants = settlementCalculationService.getParticipantsById(
+            tripId = 10L,
+            calculation = calculation,
+        )
+        val participant = participants.getValue(100L)
+
+        assertEquals("현장 추가 동행자", participant.displayName)
+        assertEquals(false, participant.isWithdrawnUser)
+        assertEquals(true, participant.requiresAutoConfirmation)
+    }
+
     private fun paymentRow(
         participantId: Long,
         amount: BigDecimal,

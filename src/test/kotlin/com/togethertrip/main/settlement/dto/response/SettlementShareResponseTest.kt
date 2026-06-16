@@ -59,6 +59,7 @@ class SettlementShareResponseTest {
             senderConfirmedAt = null,
             receiverConfirmedAt = null,
             completedAt = null,
+            autoConfirmed = false,
         )
 
         val response = SettlementShareResponse.from(

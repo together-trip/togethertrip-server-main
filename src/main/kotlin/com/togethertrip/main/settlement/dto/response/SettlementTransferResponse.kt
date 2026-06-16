@@ -20,6 +20,7 @@ data class SettlementTransferResponse(
     val senderConfirmedAt: Instant?,
     val receiverConfirmedAt: Instant?,
     val completedAt: Instant?,
+    val autoConfirmed: Boolean,
 ) {
     companion object {
         fun from(row: SettlementTransferRow): SettlementTransferResponse {
@@ -41,6 +42,7 @@ data class SettlementTransferResponse(
                 senderConfirmedAt = row.getSenderConfirmedAt(),
                 receiverConfirmedAt = row.getReceiverConfirmedAt(),
                 completedAt = row.getCompletedAt(),
+                autoConfirmed = row.getAutoConfirmed(),
             )
         }
 
@@ -62,6 +64,7 @@ data class SettlementTransferResponse(
                 senderConfirmedAt = null,
                 receiverConfirmedAt = null,
                 completedAt = null,
+                autoConfirmed = false,
             )
         }
 

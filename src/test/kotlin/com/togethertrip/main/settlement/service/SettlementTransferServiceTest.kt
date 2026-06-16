@@ -552,6 +552,9 @@ class SettlementTransferServiceTest {
             override fun getReceiverConfirmedAt(): Instant? = receiverConfirmedAt
 
             override fun getCompletedAt(): Instant? = completedAt
+
+            override fun getAutoConfirmed(): Boolean =
+                senderConfirmedAt != null || receiverConfirmedAt != null || completedAt != null
         }
     }
 

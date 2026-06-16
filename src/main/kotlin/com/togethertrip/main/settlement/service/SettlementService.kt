@@ -246,15 +246,15 @@ class SettlementService(
             val senderSnapshot = participants[plan.senderParticipantId]
             val receiverSnapshot = participants[plan.receiverParticipantId]
 
-            if (senderSnapshot?.isWithdrawnUser == true) {
+            if (senderSnapshot?.requiresAutoConfirmation == true) {
                 transfer.autoConfirmSender(
-                    reason = WITHDRAWN_USER_AUTO_CONFIRM_REASON,
+                    reason = PARTICIPANT_AUTO_CONFIRM_REASON,
                     confirmedAt = confirmedAt,
                 )
             }
-            if (receiverSnapshot?.isWithdrawnUser == true) {
+            if (receiverSnapshot?.requiresAutoConfirmation == true) {
                 transfer.autoConfirmReceiver(
-                    reason = WITHDRAWN_USER_AUTO_CONFIRM_REASON,
+                    reason = PARTICIPANT_AUTO_CONFIRM_REASON,
                     confirmedAt = confirmedAt,
                 )
             }
@@ -321,6 +321,6 @@ class SettlementService(
 
     private companion object {
         private const val CALCULATION_VERSION = "settlement-v1"
-        private const val WITHDRAWN_USER_AUTO_CONFIRM_REASON = "WITHDRAWN_USER_AUTO_CONFIRMED"
+        private const val PARTICIPANT_AUTO_CONFIRM_REASON = "PARTICIPANT_AUTO_CONFIRMED"
     }
 }
