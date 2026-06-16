@@ -85,7 +85,7 @@ ALTER TABLE trip_participants
 ALTER TABLE transactions
     DROP CONSTRAINT IF EXISTS transactions_transaction_type_check,
     ADD CONSTRAINT transactions_transaction_type_check
-        CHECK (transaction_type IN ('EXPENSE'));
+        CHECK (transaction_type IN ('EXPENSE', 'FUND_CHARGE', 'FUND_USE'));
 
 ALTER TABLE transactions
     DROP CONSTRAINT IF EXISTS transactions_status_check,
