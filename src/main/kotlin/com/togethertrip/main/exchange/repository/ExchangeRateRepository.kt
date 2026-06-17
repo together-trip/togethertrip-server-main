@@ -11,4 +11,17 @@ interface ExchangeRateRepository : JpaRepository<ExchangeRate, Long> {
         targetCurrency: String,
         rateDate: LocalDate,
     ): ExchangeRate?
+
+    fun findByBaseCurrencyAndTargetCurrencyInAndRateDateAndDeletedAtIsNullOrderByTargetCurrencyAsc(
+        baseCurrency: String,
+        targetCurrencies: Collection<String>,
+        rateDate: LocalDate,
+    ): List<ExchangeRate>
+
+    fun findByBaseCurrencyAndTargetCurrencyInAndRateDateBetweenAndDeletedAtIsNullOrderByTargetCurrencyAscRateDateDesc(
+        baseCurrency: String,
+        targetCurrencies: Collection<String>,
+        from: LocalDate,
+        to: LocalDate,
+    ): List<ExchangeRate>
 }
