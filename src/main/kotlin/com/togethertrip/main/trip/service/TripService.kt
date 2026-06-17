@@ -190,10 +190,11 @@ class TripService(
         getActiveUser(userId)
         val trip = getOwnedTrip(userId, tripId)
         val existingCountries = tripCountryRepository.findByTripIdAndDeletedAtIsNullOrderBySortOrderAsc(trip.id)
-
-        existingCountries.forEach { it.markDeleted() }
-
-        val countries = saveTripCountries(trip, request.countries)
+        val countries = updateTripCountryRows(
+            trip = trip,
+            existingCountries = existingCountries,
+            requestedCountries = request.countries,
+        )
             .map(TripCountryResponse::from)
 
         return TripCountriesResponse.from(
@@ -230,6 +231,55 @@ class TripService(
             )
         }
     }
+
+    private fun updateTripCountryRows(
+        trip: Trip,
+        existingCountries: List<TripCountry>,
+        requestedCountries: List<TripCountryInput>,
+    ): List<TripCountry> {
+        val normalizedCountries = requestedCountries
+            .mapIndexed { index, country ->
+                NormalizedTripCountryInput(
+                    countryCode = country.countryCode.trim().uppercase(),
+                    countryName = country.countryName.trim(),
+                    sortOrder = country.sortOrder ?: index,
+                )
+            }
+            .distinctBy { it.countryCode }
+
+        val existingByCode = existingCountries.associateBy { it.countryCode.uppercase() }
+        val requestedCodes = normalizedCountries.mapTo(mutableSetOf()) { it.countryCode }
+
+        existingCountries
+            .filter { it.countryCode.uppercase() !in requestedCodes }
+            .forEach { it.markDeleted() }
+
+        return normalizedCountries.map { country ->
+            val existingCountry = existingByCode[country.countryCode]
+            if (existingCountry != null) {
+                existingCountry.countryName = country.countryName
+                existingCountry.sortOrder = country.sortOrder
+                existingCountry.deletedAt = null
+                existingCountry.updatedAt = Instant.now()
+                existingCountry
+            } else {
+                tripCountryRepository.save(
+                    TripCountry(
+                        trip = trip,
+                        countryCode = country.countryCode,
+                        countryName = country.countryName,
+                        sortOrder = country.sortOrder,
+                    )
+                )
+            }
+        }
+    }
+
+    private data class NormalizedTripCountryInput(
+        val countryCode: String,
+        val countryName: String,
+        val sortOrder: Int,
+    )
 
     private fun saveCompanions(
         trip: Trip,

@@ -439,10 +439,12 @@ class TripServiceTest {
             ),
         )
 
-        assertNotNull(oldCountry.deletedAt)
         assertEquals(2, response.countries.size)
         assertEquals("KR", response.countries.first().countryCode)
         assertEquals("JP", response.countries.last().countryCode)
+        assertEquals(null, oldCountry.deletedAt)
+        assertEquals(1, oldCountry.sortOrder)
+        assertEquals(1, savedCountries.size)
     }
 
     @Test
