@@ -26,7 +26,8 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
                transfer.status as "status",
                transfer.sender_confirmed_at as "senderConfirmedAt",
                transfer.receiver_confirmed_at as "receiverConfirmedAt",
-               transfer.completed_at as "completedAt"
+               transfer.completed_at as "completedAt",
+               transfer.auto_confirmed as "autoConfirmed"
         from settlement_transfers transfer
         join trip_participants sender on sender.id = transfer.sender_participant_id
         join trip_participants receiver on receiver.id = transfer.receiver_participant_id
@@ -56,7 +57,8 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
                transfer.status as "status",
                transfer.sender_confirmed_at as "senderConfirmedAt",
                transfer.receiver_confirmed_at as "receiverConfirmedAt",
-               transfer.completed_at as "completedAt"
+               transfer.completed_at as "completedAt",
+               transfer.auto_confirmed as "autoConfirmed"
         from settlement_transfers transfer
         join settlements settlement on settlement.id = transfer.settlement_id
         join trip_participants sender on sender.id = transfer.sender_participant_id
@@ -101,7 +103,8 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
                transfer.status as "status",
                transfer.sender_confirmed_at as "senderConfirmedAt",
                transfer.receiver_confirmed_at as "receiverConfirmedAt",
-               transfer.completed_at as "completedAt"
+               transfer.completed_at as "completedAt",
+               transfer.auto_confirmed as "autoConfirmed"
         from settlement_transfers transfer
         join trip_participants sender on sender.id = transfer.sender_participant_id
         join trip_participants receiver on receiver.id = transfer.receiver_participant_id

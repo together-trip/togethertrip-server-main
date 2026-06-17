@@ -29,4 +29,6 @@ interface SettlementTransferRow {
     fun getReceiverConfirmedAt(): Instant?
 
     fun getCompletedAt(): Instant?
+
+    fun getAutoConfirmed(): Boolean
 }

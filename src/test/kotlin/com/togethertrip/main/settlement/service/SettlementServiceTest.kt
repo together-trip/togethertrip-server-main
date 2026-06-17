@@ -310,7 +310,7 @@ class SettlementServiceTest {
 
         val savedTransfer = savedTransfers.single()
         assertEquals(true, savedTransfer.autoConfirmed)
-        assertEquals("WITHDRAWN_USER_AUTO_CONFIRMED", savedTransfer.autoConfirmReason)
+        assertEquals("PARTICIPANT_AUTO_CONFIRMED", savedTransfer.autoConfirmReason)
         assertEquals(true, savedTransfer.senderConfirmedAt != null)
         assertEquals(null, savedTransfer.receiverConfirmedAt)
         assertEquals(SettlementTransferStatus.SENDER_CONFIRMED, savedTransfer.status)
@@ -374,7 +374,70 @@ class SettlementServiceTest {
 
         val savedTransfer = savedTransfers.single()
         assertEquals(true, savedTransfer.autoConfirmed)
-        assertEquals("WITHDRAWN_USER_AUTO_CONFIRMED", savedTransfer.autoConfirmReason)
+        assertEquals("PARTICIPANT_AUTO_CONFIRMED", savedTransfer.autoConfirmReason)
+        assertEquals(null, savedTransfer.senderConfirmedAt)
+        assertEquals(true, savedTransfer.receiverConfirmedAt != null)
+        assertEquals(SettlementTransferStatus.RECEIVER_CONFIRMED, savedTransfer.status)
+    }
+
+    @Test
+    fun `정산 확정 시 더미 수금자는 자동 동의 처리된다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val sender = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = owner,
+            displayName = "보낼 사람",
+        )
+        val receiver = createParticipant(
+            id = 200L,
+            trip = trip,
+            user = null,
+            displayName = "받을 사람",
+        )
+        val calculation = createCalculation()
+        val participants = createParticipantSnapshots(
+            receiverRequiresAutoConfirmation = true,
+        )
+        val savedTransfers = mutableListOf<SettlementTransfer>()
+
+        mockConfirmBase(
+            user = owner,
+            trip = trip,
+            calculation = calculation,
+            participants = participants,
+        )
+        `when`(tripParticipantRepository.getReferenceById(100L)).thenReturn(sender)
+        `when`(tripParticipantRepository.getReferenceById(200L)).thenReturn(receiver)
+        `when`(settlementRepository.saveAndFlush(any(Settlement::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Settlement).apply { id = 30L }
+        }
+        `when`(settlementTransferRepository.save(any(SettlementTransfer::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as SettlementTransfer).apply {
+                id = 40L
+                savedTransfers.add(this)
+            }
+        }
+        `when`(tripRepository.saveAndFlush(trip)).thenReturn(trip)
+        `when`(settlementTransferRepository.findTransferRowsBySettlementId(30L)).thenReturn(
+            listOf(
+                transferRow(
+                    id = 40L,
+                    status = SettlementTransferStatus.RECEIVER_CONFIRMED,
+                    receiverConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+                )
+            )
+        )
+
+        settlementService.confirmSettlement(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        val savedTransfer = savedTransfers.single()
+        assertEquals(true, savedTransfer.autoConfirmed)
+        assertEquals("PARTICIPANT_AUTO_CONFIRMED", savedTransfer.autoConfirmReason)
         assertEquals(null, savedTransfer.senderConfirmedAt)
         assertEquals(true, savedTransfer.receiverConfirmedAt != null)
         assertEquals(SettlementTransferStatus.RECEIVER_CONFIRMED, savedTransfer.status)
@@ -522,6 +585,8 @@ class SettlementServiceTest {
     private fun createParticipantSnapshots(
         senderWithdrawn: Boolean = false,
         receiverWithdrawn: Boolean = false,
+        senderRequiresAutoConfirmation: Boolean = senderWithdrawn,
+        receiverRequiresAutoConfirmation: Boolean = receiverWithdrawn,
     ): Map<Long, SettlementParticipantSnapshot> {
         return mapOf(
             100L to SettlementParticipantSnapshot(
@@ -531,6 +596,7 @@ class SettlementServiceTest {
                 profileImageUrl = null,
                 participantStatus = TripParticipantStatus.ACTIVE,
                 isWithdrawnUser = senderWithdrawn,
+                requiresAutoConfirmation = senderRequiresAutoConfirmation,
             ),
             200L to SettlementParticipantSnapshot(
                 participantId = 200L,
@@ -539,6 +605,7 @@ class SettlementServiceTest {
                 profileImageUrl = null,
                 participantStatus = TripParticipantStatus.ACTIVE,
                 isWithdrawnUser = receiverWithdrawn,
+                requiresAutoConfirmation = receiverRequiresAutoConfirmation,
             ),
         )
     }
@@ -631,6 +698,9 @@ class SettlementServiceTest {
             override fun getReceiverConfirmedAt(): Instant? = receiverConfirmedAt
 
             override fun getCompletedAt(): Instant? = completedAt
+
+            override fun getAutoConfirmed(): Boolean =
+                senderConfirmedAt != null || receiverConfirmedAt != null || completedAt != null
         }
     }
 
