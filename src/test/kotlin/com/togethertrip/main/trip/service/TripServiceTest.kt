@@ -123,6 +123,76 @@ class TripServiceTest {
     }
 
     @Test
+    fun `여행 생성 시 사용자 동행자를 바로 연결한다`() {
+        val owner = createUser()
+        val companionUser = createUser(
+            id = 2L,
+            nickname = "동행자",
+        )
+        val savedParticipants = mutableListOf<TripParticipant>()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(companionUser)
+        `when`(tripRepository.save(any(Trip::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Trip).apply { id = 10L }
+        }
+        `when`(tripParticipantRepository.save(any(TripParticipant::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TripParticipant).apply {
+                id = (100L + savedParticipants.size)
+                savedParticipants.add(this)
+            }
+        }
+        `when`(tripCountryRepository.findByTripIdAndDeletedAtIsNullOrderBySortOrderAsc(10L))
+            .thenReturn(emptyList())
+        `when`(tripParticipantRepository.findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(10L))
+            .thenAnswer { savedParticipants }
+
+        val response = tripService.createTrip(
+            userId = 1L,
+            request = CreateTripRequest(
+                title = "오사카 여행",
+                defaultCurrency = "JPY",
+                participants = listOf(
+                    TripCompanionInput(
+                        displayName = "동행자",
+                        userId = 2L,
+                    )
+                ),
+            ),
+        )
+
+        assertEquals(2, response.participants.size)
+        assertEquals(2L, response.participants.last().userId)
+        assertEquals("동행자", response.participants.last().displayName)
+        assertNotNull(savedParticipants.last().joinedAt)
+    }
+
+    @Test
+    fun `여행 생성 시 방장을 사용자 동행자로 추가하면 실패한다`() {
+        val user = createUser()
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+
+        val exception = assertBusinessException {
+            tripService.createTrip(
+                userId = 1L,
+                request = CreateTripRequest(
+                    title = "오사카 여행",
+                    defaultCurrency = "JPY",
+                    participants = listOf(
+                        TripCompanionInput(
+                            displayName = "재완",
+                            userId = 1L,
+                        )
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_ALREADY_JOINED, exception.errorCode)
+        verify(tripRepository, never()).save(any(Trip::class.java))
+    }
+
+    @Test
     fun `시작일이 종료일보다 늦으면 여행 생성에 실패한다`() {
         val user = createUser()
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)

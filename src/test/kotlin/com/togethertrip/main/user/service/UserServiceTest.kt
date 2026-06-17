@@ -14,6 +14,7 @@ import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.exception.UserErrorCode
@@ -459,6 +460,59 @@ class UserServiceTest {
         assertEquals(true, response.found)
         assertEquals(2L, response.user?.userId)
         assertEquals("동행자", response.user?.nickname)
+    }
+
+    @Test
+    fun `닉네임으로 활성 사용자를 검색한다`() {
+        val authUser = createUser()
+        val targetUser = createUser().apply {
+            id = 2L
+            nickname = "동행자"
+        }
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(authUser)
+        `when`(
+            userRepository.findByNicknameAndStatusAndDeletedAtIsNull(
+                nickname = "동행자",
+                status = UserStatus.ACTIVE,
+            )
+        ).thenReturn(targetUser)
+
+        val response = userService.searchByNickname(
+            authUserId = 1L,
+            request = SearchUserByNicknameRequest(
+                nickname = "동행자",
+            ),
+        )
+
+        assertEquals(true, response.found)
+        assertEquals(2L, response.user?.userId)
+        assertEquals("동행자", response.user?.nickname)
+    }
+
+    @Test
+    fun `닉네임 검색 결과가 없으면 found false를 반환한다`() {
+        val authUser = createUser()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+            .thenReturn(authUser)
+        `when`(
+            userRepository.findByNicknameAndStatusAndDeletedAtIsNull(
+                nickname = "없는사용자",
+                status = UserStatus.ACTIVE,
+            )
+        ).thenReturn(null)
+
+        val response = userService.searchByNickname(
+            authUserId = 1L,
+            request = SearchUserByNicknameRequest(
+                nickname = "없는사용자",
+            ),
+        )
+
+        assertEquals(false, response.found)
+        assertEquals(null, response.user)
     }
 
     @Test

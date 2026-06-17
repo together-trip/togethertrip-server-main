@@ -10,12 +10,14 @@ import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
 import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
 import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
 import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
 import com.togethertrip.main.user.dto.response.PhoneUserSummaryResponse
+import com.togethertrip.main.user.dto.response.UserSearchResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
@@ -148,6 +150,24 @@ class UserService(
 
         // 전화번호 검색 결과 응답
         return PhoneUserSearchResponse.found(
+            PhoneUserSummaryResponse.from(user)
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun searchByNickname(
+        authUserId: Long,
+        request: SearchUserByNicknameRequest,
+    ): UserSearchResponse {
+        getActiveUser(authUserId)
+        validateNickname(request.nickname)
+
+        val user = userRepository.findByNicknameAndStatusAndDeletedAtIsNull(
+            nickname = request.nickname,
+            status = UserStatus.ACTIVE,
+        ) ?: return UserSearchResponse.notFound()
+
+        return UserSearchResponse.found(
             PhoneUserSummaryResponse.from(user)
         )
     }

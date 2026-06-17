@@ -54,6 +54,7 @@ class TripService(
         val user = getActiveUser(userId)
         validateTripDates(request.startDate, request.endDate)
         validateCompanionProfileImageUrls(request.participants)
+        validateCompanionUserIds(user.id, request.participants)
 
         val trip = tripRepository.save(
             Trip(
@@ -235,13 +236,17 @@ class TripService(
         participants: List<TripCompanionInput>,
     ): List<TripParticipant> {
         return participants.map { participant ->
+            val user = participant.userId?.let(::getActiveUser)
             tripParticipantRepository.save(
                 TripParticipant(
                     trip = trip,
-                    displayName = participant.displayName.trim(),
-                    profileImageUrl = resolveCompanionProfileImageUrl(participant.profileImageUrl),
+                    user = user,
+                    displayName = user?.nickname ?: participant.displayName.trim(),
+                    profileImageUrl = user?.profileImageUrl
+                        ?: resolveCompanionProfileImageUrl(participant.profileImageUrl),
                     participantRole = TripParticipantRole.MEMBER,
                     participantStatus = TripParticipantStatus.ACTIVE,
+                    joinedAt = user?.let { Instant.now() },
                 )
             )
         }
@@ -341,6 +346,19 @@ class TripService(
     private fun validateCompanionProfileImageUrls(participants: List<TripCompanionInput>) {
         participants.forEach { participant ->
             resolveCompanionProfileImageUrl(participant.profileImageUrl)
+        }
+    }
+
+    private fun validateCompanionUserIds(
+        ownerUserId: Long,
+        participants: List<TripCompanionInput>,
+    ) {
+        val userIds = participants.mapNotNull { participant -> participant.userId }
+        if (userIds.any { userId -> userId == ownerUserId }) {
+            throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
+        }
+        if (userIds.toSet().size != userIds.size) {
+            throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
         }
     }
 
