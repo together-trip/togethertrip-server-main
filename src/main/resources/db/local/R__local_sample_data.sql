@@ -68,18 +68,18 @@ ON CONFLICT (provider, provider_user_id) DO UPDATE SET
     deleted_at = EXCLUDED.deleted_at;
 
 INSERT INTO user_agreements (
-    user_id, agreement_type, agreed, agreed_at, revoked_at, created_at, updated_at, deleted_at
+    user_id, agreement_type, agreed, term_version, agreed_at, revoked_at, created_at, updated_at, deleted_at
 )
-SELECT u.id, sample.agreement_type, sample.agreed, sample.agreed_at, sample.revoked_at, sample.created_at, sample.updated_at, NULL
+SELECT u.id, sample.agreement_type, sample.agreed, sample.term_version, sample.agreed_at, sample.revoked_at, sample.created_at, sample.updated_at, NULL
 FROM (
     VALUES
-        ('로컬 verified hana', 'SERVICE_TERMS', true, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
-        ('로컬 verified hana', 'PRIVACY_POLICY', true, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
-        ('로컬 verified hana', 'LOCATION_TERMS', true, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
-        ('로컬 verified hana', 'MARKETING', false, NULL::timestamptz, TIMESTAMPTZ '2026-05-15T12:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-15T12:00:00+09:00'),
-        ('로컬 verified minseo', 'SERVICE_TERMS', true, TIMESTAMPTZ '2026-05-01T09:05:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-01T09:05:00+09:00'),
-        ('로컬 verified joon', 'SERVICE_TERMS', true, TIMESTAMPTZ '2026-05-01T09:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-01T09:10:00+09:00')
-) AS sample(user_nickname, agreement_type, agreed, agreed_at, revoked_at, created_at, updated_at)
+        ('로컬 verified hana', 'SERVICE_TERMS', true, '2026-06-18', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
+        ('로컬 verified hana', 'PRIVACY_POLICY', true, '2026-06-18', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
+        ('로컬 verified hana', 'LOCATION_INFO_TERMS', true, '2026-06-18', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00'),
+        ('로컬 verified hana', 'MARKETING_CONSENT', false, '2026-06-18', NULL::timestamptz, TIMESTAMPTZ '2026-05-15T12:00:00+09:00', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-15T12:00:00+09:00'),
+        ('로컬 verified minseo', 'SERVICE_TERMS', true, '2026-06-18', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-01T09:05:00+09:00'),
+        ('로컬 verified joon', 'SERVICE_TERMS', true, '2026-06-18', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', NULL::timestamptz, TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-01T09:10:00+09:00')
+) AS sample(user_nickname, agreement_type, agreed, term_version, agreed_at, revoked_at, created_at, updated_at)
 JOIN users u ON u.nickname = sample.user_nickname
 WHERE NOT EXISTS (
     SELECT 1
