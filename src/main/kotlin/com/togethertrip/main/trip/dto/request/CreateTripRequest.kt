@@ -2,6 +2,7 @@ package com.togethertrip.main.trip.dto.request
 
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 import java.time.LocalDate
 
@@ -37,4 +38,6 @@ data class TripCompanionInput(
     val displayName: String,
     @field:Size(max = 500)
     val profileImageUrl: String? = null,
+    @field:Positive
+    val userId: Long? = null,
 )

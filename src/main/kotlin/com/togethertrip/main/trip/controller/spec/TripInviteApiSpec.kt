@@ -33,7 +33,10 @@ interface TripInviteApiSpec {
         token: String?,
     ): ApiResponse<TripInviteInfoResponse>
 
-    @Operation(summary = "초대 참여", description = "초대 코드 또는 초대 토큰으로 여행에 참여합니다.")
+    @Operation(
+        summary = "초대 참여",
+        description = "초대 코드 또는 초대 토큰으로 여행에 참여합니다. participantId를 전달하면 기존 비회원 참여자를 현재 사용자와 연결합니다.",
+    )
     fun joinTrip(
         authUser: AuthUser,
         request: JoinTripRequest,

@@ -132,21 +132,18 @@ class TripInviteService(
         }
 
         val now = Instant.now(clock)
-        val participant = try {
-            tripParticipantRepository.saveAndFlush(
-                TripParticipant(
-                    trip = lockedInvitation.trip,
-                    user = user,
-                    displayName = user.nickname,
-                    profileImageUrl = user.profileImageUrl,
-                    participantRole = TripParticipantRole.MEMBER,
-                    participantStatus = TripParticipantStatus.ACTIVE,
-                    joinedAt = now,
-                )
+        val participant = request.participantId?.let { participantId ->
+            linkTemporaryParticipant(
+                tripId = lockedInvitation.trip.id,
+                participantId = participantId,
+                user = user,
+                now = now,
             )
-        } catch (_: DataIntegrityViolationException) {
-            throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
-        }
+        } ?: createJoinedParticipant(
+            trip = lockedInvitation.trip,
+            user = user,
+            now = now,
+        )
 
         lockedInvitation.markUsed(
             user = user,
@@ -194,6 +191,57 @@ class TripInviteService(
         }
 
         throw BusinessException(CommonErrorCode.CONCURRENT_MODIFICATION)
+    }
+
+    private fun createJoinedParticipant(
+        trip: Trip,
+        user: User,
+        now: Instant,
+    ): TripParticipant {
+        return try {
+            tripParticipantRepository.saveAndFlush(
+                TripParticipant(
+                    trip = trip,
+                    user = user,
+                    displayName = user.nickname,
+                    profileImageUrl = user.profileImageUrl,
+                    participantRole = TripParticipantRole.MEMBER,
+                    participantStatus = TripParticipantStatus.ACTIVE,
+                    joinedAt = now,
+                )
+            )
+        } catch (_: DataIntegrityViolationException) {
+            throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
+        }
+    }
+
+    private fun linkTemporaryParticipant(
+        tripId: Long,
+        participantId: Long,
+        user: User,
+        now: Instant,
+    ): TripParticipant {
+        val participant = tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+            id = participantId,
+            tripId = tripId,
+            participantStatus = TripParticipantStatus.ACTIVE,
+        ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
+
+        if (participant.user != null) {
+            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_ALREADY_LINKED)
+        }
+
+        participant.user = user
+        participant.displayName = user.nickname
+        participant.profileImageUrl = user.profileImageUrl
+        participant.joinedAt = now
+        participant.updatedAt = now
+
+        return try {
+            tripParticipantRepository.saveAndFlush(participant)
+        } catch (_: DataIntegrityViolationException) {
+            throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
+        }
     }
 
     private fun findInvitation(

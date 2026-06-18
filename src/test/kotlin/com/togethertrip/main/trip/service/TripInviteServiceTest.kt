@@ -207,6 +207,146 @@ class TripInviteServiceTest {
     }
 
     @Test
+    fun `초대 참여 시 비회원 참여자를 현재 회원과 연결한다`() {
+        val owner = createUser()
+        val member = createUser(
+            id = 2L,
+            nickname = "민서",
+            profileImageUrl = "https://image.test/member.png",
+        )
+        val trip = createTrip(owner)
+        val invitation = createInvitation(trip = trip, createdBy = owner)
+        val temporaryParticipant = createParticipant(
+            trip = trip,
+            id = 300L,
+            user = null,
+            displayName = "임시 민서",
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(
+            tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(false)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                300L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(temporaryParticipant)
+        `when`(tripParticipantRepository.saveAndFlush(temporaryParticipant)).thenReturn(temporaryParticipant)
+
+        val response = tripInviteService.joinTrip(
+            userId = 2L,
+            request = JoinTripRequest(
+                code = "ABC12345",
+                participantId = 300L,
+            ),
+        )
+
+        assertEquals(10L, response.tripId)
+        assertEquals(300L, response.participant.id)
+        assertEquals(2L, response.participant.userId)
+        assertEquals("민서", response.participant.displayName)
+        assertEquals("https://image.test/member.png", response.participant.profileImageUrl)
+        assertEquals(member, temporaryParticipant.user)
+        assertEquals(Instant.parse("2026-06-11T00:00:00Z"), temporaryParticipant.joinedAt)
+        assertEquals(TripInvitationStatus.USED, invitation.invitationStatus)
+        assertEquals(member, invitation.usedBy)
+    }
+
+    @Test
+    fun `초대 참여에서 이미 회원과 연결된 참여자는 선택할 수 없다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L, nickname = "민서")
+        val linkedUser = createUser(id = 3L, nickname = "지훈")
+        val trip = createTrip(owner)
+        val invitation = createInvitation(trip = trip, createdBy = owner)
+        val linkedParticipant = createParticipant(
+            trip = trip,
+            id = 300L,
+            user = linkedUser,
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(
+            tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(false)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                300L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(linkedParticipant)
+
+        val exception = assertBusinessException {
+            tripInviteService.joinTrip(
+                userId = 2L,
+                request = JoinTripRequest(
+                    code = "ABC12345",
+                    participantId = 300L,
+                ),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_ALREADY_LINKED, exception.errorCode)
+        assertEquals(TripInvitationStatus.ACTIVE, invitation.invitationStatus)
+        verify(tripParticipantRepository, never()).saveAndFlush(linkedParticipant)
+    }
+
+    @Test
+    fun `초대 참여에서 다른 여행의 참여자 ID는 찾을 수 없다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L)
+        val trip = createTrip(owner)
+        val invitation = createInvitation(trip = trip, createdBy = owner)
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(
+            tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(false)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                999L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(null)
+
+        val exception = assertBusinessException {
+            tripInviteService.joinTrip(
+                userId = 2L,
+                request = JoinTripRequest(
+                    code = "ABC12345",
+                    participantId = 999L,
+                ),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
+        assertEquals(TripInvitationStatus.ACTIVE, invitation.invitationStatus)
+    }
+
+    @Test
     fun `이미 참여 중이면 초대 참여에 실패한다`() {
         val owner = createUser()
         val member = createUser(id = 2L)
@@ -292,11 +432,12 @@ class TripInviteServiceTest {
     private fun createUser(
         id: Long = 1L,
         nickname: String = "재완",
+        profileImageUrl: String? = null,
         status: UserStatus = UserStatus.ACTIVE,
     ): User {
         return User(
             nickname = nickname,
-            profileImageUrl = null,
+            profileImageUrl = profileImageUrl,
             status = status,
         ).apply {
             this.id = id
@@ -338,6 +479,25 @@ class TripInviteServiceTest {
             expiresAt = expiresAt,
         ).apply {
             id = 100L
+        }
+    }
+
+    private fun createParticipant(
+        trip: Trip,
+        id: Long,
+        user: User?,
+        displayName: String = user?.nickname ?: "임시 참여자",
+    ): TripParticipant {
+        return TripParticipant(
+            trip = trip,
+            user = user,
+            displayName = displayName,
+            profileImageUrl = user?.profileImageUrl,
+            participantRole = TripParticipantRole.MEMBER,
+            participantStatus = TripParticipantStatus.ACTIVE,
+            joinedAt = if (user == null) null else Instant.parse("2026-06-01T00:00:00Z"),
+        ).apply {
+            this.id = id
         }
     }
 
