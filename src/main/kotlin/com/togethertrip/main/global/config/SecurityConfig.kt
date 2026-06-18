@@ -6,6 +6,7 @@ import com.togethertrip.main.global.security.jwt.JwtAuthenticationFilter
 import com.togethertrip.main.global.logging.RequestLoggingFilter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -35,6 +36,7 @@ class SecurityConfig(
             }
             .authorizeHttpRequests {
                 it.requestMatchers("/api/admin/**").hasRole("ADMIN")
+                it.requestMatchers(HttpMethod.GET, "/api/terms").permitAll()
 
                 it.requestMatchers(
                     "/api/auth/oauth/kakao",
