@@ -26,6 +26,7 @@ import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
@@ -508,6 +509,100 @@ class PostServiceTest {
         assertEquals("오사카", response.placeName)
         assertEquals(BigDecimal("34.6937000"), response.latitude)
         assertEquals(BigDecimal("135.5023000"), response.longitude)
+    }
+
+    @Test
+    fun `정산 완료 이후에도 일반 기록 게시글은 수정할 수 있다`() {
+        val post = createPost().apply {
+            trip.settlementStatus = TripSettlementStatus.SETTLED
+        }
+
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+        `when`(postAttachmentRepository.findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(300L))
+            .thenReturn(emptyList())
+
+        val response = postService.updatePost(
+            userId = 1L,
+            tripId = 10L,
+            postId = 300L,
+            request = UpdatePostRequest(title = "정산 후 기록 수정"),
+        )
+
+        assertEquals("정산 후 기록 수정", response.title)
+    }
+
+    @Test
+    fun `정산 완료 이후에는 소비 게시글 수정에 실패한다`() {
+        val user = createUser()
+        val trip = createTrip(ownerUser = user).apply {
+            settlementStatus = TripSettlementStatus.SETTLED
+        }
+        val participant = createParticipant(
+            user = user,
+            trip = trip,
+        )
+        val transaction = createTransaction(trip = trip)
+        val post = createPost(
+            author = participant,
+            transaction = transaction,
+        )
+
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+
+        val exception = assertBusinessException {
+            postService.updatePost(
+                userId = 1L,
+                tripId = 10L,
+                postId = 300L,
+                request = UpdatePostRequest(title = "정산 후 소비 수정"),
+            )
+        }
+
+        assertEquals(PostErrorCode.POST_LOCKED_BY_SETTLEMENT, exception.errorCode)
+        verify(postAttachmentRepository, never()).findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(300L)
+    }
+
+    @Test
+    fun `정산 미시작 상태에서는 소비 게시글을 수정할 수 있다`() {
+        val user = createUser()
+        val trip = createTrip(ownerUser = user)
+        val participant = createParticipant(
+            user = user,
+            trip = trip,
+        )
+        val transaction = createTransaction(trip = trip)
+        val post = createPost(
+            author = participant,
+            transaction = transaction,
+        )
+
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+        `when`(postAttachmentRepository.findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(300L))
+            .thenReturn(emptyList())
+
+        val response = postService.updatePost(
+            userId = 1L,
+            tripId = 10L,
+            postId = 300L,
+            request = UpdatePostRequest(title = "소비 수정"),
+        )
+
+        assertEquals("소비 수정", response.title)
     }
 
     @Test
