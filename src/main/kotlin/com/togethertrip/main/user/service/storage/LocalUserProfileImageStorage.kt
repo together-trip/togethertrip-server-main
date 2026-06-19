@@ -15,9 +15,9 @@ import java.util.UUID
 
 @Component
 class LocalUserProfileImageStorage(
-    @Value("\${user.profile-images.local-storage-path:./uploads/user-profile-images}")
+    @Value("\${user.profile-images.local-storage-path}")
     private val storagePath: String,
-    @Value("\${user.profile-images.public-url-prefix:/uploads/user-profile-images}")
+    @Value("\${user.profile-images.public-url-prefix}")
     private val publicUrlPrefix: String,
     private val uploadFileTypeDetector: UploadFileTypeDetector,
 ) : UserProfileImageStorage {

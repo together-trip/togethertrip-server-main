@@ -15,7 +15,7 @@ import org.springframework.web.reactive.function.client.bodyToMono
 @Component
 class KakaoOAuthClient(
     private val webClientBuilder: WebClient.Builder,
-    @Value("\${auth.local-test.enabled:false}")
+    @Value("\${auth.local-test.enabled}")
     private val localTestEnabled: Boolean,
 ) {
 

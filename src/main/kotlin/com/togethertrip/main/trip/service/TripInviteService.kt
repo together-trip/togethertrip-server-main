@@ -41,7 +41,7 @@ class TripInviteService(
     private val userRepository: UserRepository,
     private val tripInvitationExpirationService: TripInvitationExpirationService,
     private val clock: Clock,
-    @Value("\${trip.invite.base-url:https://togethertrip.app/invites}")
+    @Value("\${trip.invite.base-url}")
     private val inviteBaseUrl: String,
 ) {
 

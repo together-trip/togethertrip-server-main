@@ -8,9 +8,9 @@ import java.nio.file.Path
 
 @Configuration
 class StaticResourceConfig(
-    @Value("\${post.attachments.local-storage-path:./uploads/post-attachments}")
+    @Value("\${post.attachments.local-storage-path}")
     private val postAttachmentStoragePath: String,
-    @Value("\${user.profile-images.local-storage-path:./uploads/user-profile-images}")
+    @Value("\${user.profile-images.local-storage-path}")
     private val userProfileImageStoragePath: String,
 ) : WebMvcConfigurer {
 

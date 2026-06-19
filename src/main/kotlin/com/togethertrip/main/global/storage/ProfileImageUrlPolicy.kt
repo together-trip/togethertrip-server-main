@@ -6,7 +6,7 @@ import java.net.URI
 
 @Component
 class ProfileImageUrlPolicy(
-    @Value("\${user.profile-images.public-url-prefix:/uploads/user-profile-images}")
+    @Value("\${user.profile-images.public-url-prefix}")
     private val userProfileImagePublicUrlPrefix: String,
 ) {
 

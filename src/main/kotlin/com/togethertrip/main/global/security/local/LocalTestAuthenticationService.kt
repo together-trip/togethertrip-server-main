@@ -16,7 +16,7 @@ class LocalTestAuthenticationService(
     private val userRepository: UserRepository,
     private val phoneNumberHasher: PhoneNumberHasher,
     private val phoneNumberCrypto: PhoneNumberCrypto,
-    @Value("\${auth.local-test.enabled:false}")
+    @Value("\${auth.local-test.enabled}")
     private val enabled: Boolean,
 ) {
 

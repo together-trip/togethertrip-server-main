@@ -15,7 +15,7 @@ import javax.crypto.spec.SecretKeySpec
 class PhoneNumberCrypto(
     @Value("\${phone.encryption.key}")
     private val key: String,
-    @Value("\${phone.encryption.version:v1}")
+    @Value("\${phone.encryption.version}")
     val version: String,
 ) {
 

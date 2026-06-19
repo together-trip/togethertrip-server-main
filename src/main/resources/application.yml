@@ -1,13 +1,117 @@
 spring:
+  config:
+    import:
+      - optional:classpath:.env[.properties]
+
   application:
     name: main
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST}
+      port: ${SPRING_REDIS_PORT}
+      password: ${SPRING_REDIS_PASSWORD}
 
   batch:
     job:
       enabled: false
 
-  profiles:
-    default: local
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED}
+    locations: ${SPRING_FLYWAY_LOCATIONS}
+    baseline-on-migrate: true
+    baseline-version: 1
+
+  sql:
+    init:
+      mode: never
+
+  servlet:
+    multipart:
+      max-file-size: ${POST_ATTACHMENT_MAX_FILE_SIZE}
+      max-request-size: ${POST_ATTACHMENT_MAX_REQUEST_SIZE}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: ${JPA_SHOW_SQL}
+
+jwt:
+  secret: ${JWT_SECRET}
+  issuer: together-trip
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION}
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION}
+
+phone:
+  hash:
+    key: ${PHONE_HASH_KEY}
+    version: ${PHONE_HASH_VERSION}
+  encryption:
+    key: ${PHONE_ENCRYPTION_KEY}
+    version: ${PHONE_ENCRYPTION_VERSION}
+
+auth:
+  local-test:
+    enabled: ${AUTH_LOCAL_TEST_ENABLED}
+
+sms:
+  solapi:
+    base-url: ${SOLAPI_BASE_URL}
+    api-key: ${SOLAPI_API_KEY}
+    api-secret: ${SOLAPI_API_SECRET}
+    from: ${SOLAPI_FROM}
+
+springdoc:
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED}
+    path: /swagger-ui.html
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED}
+    path: /v3/api-docs
+
+post:
+  attachments:
+    local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH}
+    public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX}
+
+user:
+  profile-images:
+    local-storage-path: ${USER_PROFILE_IMAGE_LOCAL_STORAGE_PATH}
+    public-url-prefix: ${USER_PROFILE_IMAGE_PUBLIC_URL_PREFIX}
+
+trip:
+  invite:
+    base-url: ${TRIP_INVITE_BASE_URL}
+
+exchange-rate:
+  korea-exim:
+    base-url: ${KOREA_EXIM_EXCHANGE_RATE_BASE_URL}
+    auth-key: ${KOREA_EXIM_EXCHANGE_RATE_AUTH_KEY}
+    data-code: ${KOREA_EXIM_EXCHANGE_RATE_DATA_CODE}
+    timeout: ${KOREA_EXIM_EXCHANGE_RATE_TIMEOUT}
+  import-validation:
+    minimum-row-count: ${EXCHANGE_RATE_IMPORT_MINIMUM_ROW_COUNT}
+    required-currencies: ${EXCHANGE_RATE_IMPORT_REQUIRED_CURRENCIES}
+    skip-weekends: ${EXCHANGE_RATE_IMPORT_SKIP_WEEKENDS}
+  scheduler:
+    enabled: ${EXCHANGE_RATE_SCHEDULER_ENABLED}
+    cron: ${EXCHANGE_RATE_SCHEDULER_CRON}
+    catch-up-days: ${EXCHANGE_RATE_SCHEDULER_CATCH_UP_DAYS}
+  backfill:
+    enabled: ${EXCHANGE_RATE_BACKFILL_ENABLED}
+    from: ${EXCHANGE_RATE_BACKFILL_FROM}
+    to: ${EXCHANGE_RATE_BACKFILL_TO}
+    pause-between-requests: ${EXCHANGE_RATE_BACKFILL_PAUSE_BETWEEN_REQUESTS}
+  lock:
+    name: ${EXCHANGE_RATE_LOCK_NAME}
+    wait-time: ${EXCHANGE_RATE_LOCK_WAIT_TIME}
+    lease-time: ${EXCHANGE_RATE_LOCK_LEASE_TIME}
 
 server:
-  port: 8081
+  port: ${SERVER_PORT}
