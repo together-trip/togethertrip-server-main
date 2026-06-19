@@ -17,7 +17,7 @@ class ExchangeRateScheduler(
     private val clock: Clock,
 ) {
 
-    @Scheduled(cron = "\${exchange-rate.scheduler.cron:0 30 11 * * *}", zone = "Asia/Seoul")
+    @Scheduled(cron = "\${exchange-rate.scheduler.cron}", zone = "Asia/Seoul")
     fun importToday() {
         if (!properties.scheduler.enabled) {
             return

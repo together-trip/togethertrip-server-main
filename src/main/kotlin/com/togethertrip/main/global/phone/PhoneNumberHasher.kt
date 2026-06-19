@@ -9,7 +9,7 @@ import javax.crypto.spec.SecretKeySpec
 class PhoneNumberHasher(
     @Value("\${phone.hash.key}")
     private val key: String,
-    @Value("\${phone.hash.version:v1}")
+    @Value("\${phone.hash.version}")
     val version: String,
 ) {
 

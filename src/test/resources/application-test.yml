@@ -9,10 +9,20 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
+      password: ""
+
+  batch:
+    job:
+      enabled: false
 
   sql:
     init:
       mode: never
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
 
   flyway:
     enabled: true
@@ -40,3 +50,63 @@ phone:
   encryption:
     key: test-phone-encryption-key-must-be-at-least-32-bytes
     version: v1
+
+auth:
+  local-test:
+    enabled: false
+
+sms:
+  solapi:
+    base-url: https://api.solapi.com
+    api-key: test-solapi-api-key
+    api-secret: test-solapi-api-secret
+    from: "01000000000"
+
+springdoc:
+  swagger-ui:
+    enabled: false
+    path: /swagger-ui.html
+  api-docs:
+    enabled: false
+    path: /v3/api-docs
+
+post:
+  attachments:
+    local-storage-path: ./build/test-uploads/post-attachments
+    public-url-prefix: /uploads/post-attachments
+
+user:
+  profile-images:
+    local-storage-path: ./build/test-uploads/user-profile-images
+    public-url-prefix: /uploads/user-profile-images
+
+trip:
+  invite:
+    base-url: https://togethertrip.test/invites
+
+exchange-rate:
+  korea-exim:
+    base-url: https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON
+    auth-key: test-korea-exim-auth-key
+    data-code: AP01
+    timeout: 10s
+  import-validation:
+    minimum-row-count: 20
+    required-currencies: USD,JPY,EUR
+    skip-weekends: true
+  scheduler:
+    enabled: false
+    cron: 0 30 11 * * *
+    catch-up-days: 7
+  backfill:
+    enabled: false
+    from: 2017-01-01
+    to: 2026-12-31
+    pause-between-requests: 300ms
+  lock:
+    name: exchange-rate:import:korea-exim
+    wait-time: 0s
+    lease-time: 10m
+
+server:
+  port: 8081

@@ -9,11 +9,11 @@ import org.springframework.context.annotation.Configuration
 
 @Configuration
 class RedisConfig(
-    @Value("\${spring.data.redis.host:127.0.0.1}")
+    @Value("\${spring.data.redis.host}")
     private val redisHost: String,
-    @Value("\${spring.data.redis.port:6379}")
+    @Value("\${spring.data.redis.port}")
     private val redisPort: Int,
-    @Value("\${spring.data.redis.password:}")
+    @Value("\${spring.data.redis.password}")
     private val redisPassword: String,
 ) {
 

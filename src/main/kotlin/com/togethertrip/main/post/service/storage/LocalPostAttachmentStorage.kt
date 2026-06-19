@@ -17,9 +17,9 @@ import java.util.UUID
 
 @Component
 class LocalPostAttachmentStorage(
-    @Value("\${post.attachments.local-storage-path:./uploads/post-attachments}")
+    @Value("\${post.attachments.local-storage-path}")
     private val storagePath: String,
-    @Value("\${post.attachments.public-url-prefix:/uploads/post-attachments}")
+    @Value("\${post.attachments.public-url-prefix}")
     private val publicUrlPrefix: String,
     private val uploadFileTypeDetector: UploadFileTypeDetector,
 ) : PostAttachmentStorage {
