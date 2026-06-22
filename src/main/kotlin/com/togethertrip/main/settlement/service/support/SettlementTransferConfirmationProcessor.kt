@@ -20,7 +20,7 @@ class SettlementTransferConfirmationProcessor(
         tripId: Long,
         transferId: Long,
         participant: TripParticipant,
-    ): SettlementTransferRow {
+    ): SettlementTransferConfirmationResult {
         validateTransferInConfirmedTrip(
             transferId = transferId,
             tripId = tripId,
@@ -39,14 +39,17 @@ class SettlementTransferConfirmationProcessor(
             updatedCount = updatedCount,
         )
 
-        return transferRow
+        return SettlementTransferConfirmationResult(
+            transferRow = transferRow,
+            confirmationChanged = updatedCount > 0,
+        )
     }
 
     fun confirmAsReceiver(
         tripId: Long,
         transferId: Long,
         participant: TripParticipant,
-    ): SettlementTransferRow {
+    ): SettlementTransferConfirmationResult {
         validateTransferInConfirmedTrip(
             transferId = transferId,
             tripId = tripId,
@@ -65,7 +68,10 @@ class SettlementTransferConfirmationProcessor(
             updatedCount = updatedCount,
         )
 
-        return transferRow
+        return SettlementTransferConfirmationResult(
+            transferRow = transferRow,
+            confirmationChanged = updatedCount > 0,
+        )
     }
 
     private fun validateTransferInConfirmedTrip(

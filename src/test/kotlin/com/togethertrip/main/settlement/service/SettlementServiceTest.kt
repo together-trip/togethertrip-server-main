@@ -1,6 +1,11 @@
 package com.togethertrip.main.settlement.service
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.outbox.domain.OutboxEvent
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementConfirmedPayload
+import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.settlement.domain.Settlement
 import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.SettlementTransfer
@@ -25,15 +30,20 @@ import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.orm.ObjectOptimisticLockingFailureException
+import tools.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.readValue
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -48,6 +58,7 @@ class SettlementServiceTest {
     private lateinit var settlementShareTokenGenerator: SettlementShareTokenGenerator
     private lateinit var tripRepository: TripRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
+    private lateinit var outboxEventRepository: OutboxEventRepository
     private lateinit var settlementService: SettlementService
 
     @BeforeEach
@@ -60,6 +71,14 @@ class SettlementServiceTest {
         settlementShareTokenGenerator = mock(SettlementShareTokenGenerator::class.java)
         tripRepository = mock(TripRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
+        outboxEventRepository = mock(OutboxEventRepository::class.java)
+        `when`(
+            tripParticipantRepository.findActiveUserIdsForNotification(
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE.name,
+                userStatus = "ACTIVE",
+            )
+        ).thenReturn(emptyList())
         settlementService = SettlementService(
             settlementRepository = settlementRepository,
             settlementTransferRepository = settlementTransferRepository,
@@ -72,6 +91,13 @@ class SettlementServiceTest {
             settlementAccessResolver = settlementAccessResolver,
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
+            outboxEventPublisher = OutboxEventPublisher(
+                outboxEventRepository = outboxEventRepository,
+                objectMapper = jacksonObjectMapper(),
+            ),
+            tripNotificationRecipientResolver = TripNotificationRecipientResolver(
+                tripParticipantRepository = tripParticipantRepository,
+            ),
         )
     }
 
@@ -119,6 +145,83 @@ class SettlementServiceTest {
         )
 
         assertEquals(40L, response.transfers.single().id)
+    }
+
+    @Test
+    fun `정산 확정 시 확정자를 제외하고 송금 요약을 포함한 알림 outbox를 발행한다`() {
+        val owner = createUser()
+        val senderUser = createUser(id = 2L, nickname = "송금자")
+        val receiverUser = createUser(id = 3L, nickname = "수금자")
+        val trip = createTrip(owner)
+        val sender = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = senderUser,
+            displayName = "보낼 사람",
+        )
+        val receiver = createParticipant(
+            id = 200L,
+            trip = trip,
+            user = receiverUser,
+            displayName = "받을 사람",
+        )
+        val calculation = createCalculation()
+        val participants = createParticipantSnapshots(senderUserId = 2L, receiverUserId = 3L)
+
+        mockConfirmBase(
+            user = owner,
+            trip = trip,
+            calculation = calculation,
+            participants = participants,
+        )
+        `when`(
+            tripParticipantRepository.findActiveUserIdsForNotification(
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE.name,
+                userStatus = "ACTIVE",
+            )
+        ).thenReturn(listOf(1L, 2L, 3L))
+        `when`(tripParticipantRepository.getReferenceById(100L)).thenReturn(sender)
+        `when`(tripParticipantRepository.getReferenceById(200L)).thenReturn(receiver)
+        `when`(settlementRepository.saveAndFlush(any(Settlement::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Settlement).apply { id = 30L }
+        }
+        `when`(settlementTransferRepository.save(any(SettlementTransfer::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as SettlementTransfer).apply { id = 40L }
+        }
+        `when`(tripRepository.saveAndFlush(trip)).thenReturn(trip)
+        `when`(settlementTransferRepository.findTransferRowsBySettlementId(30L)).thenReturn(
+            listOf(
+                transferRow(
+                    id = 40L,
+                    senderUserId = 2L,
+                    receiverUserId = 3L,
+                )
+            )
+        )
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as OutboxEvent).apply { id = 900L }
+        }
+
+        settlementService.confirmSettlement(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue<SettlementConfirmedPayload>(event.payload)
+        val senderRecipient = payload.recipients.single { it.userId == 2L }
+        val receiverRecipient = payload.recipients.single { it.userId == 3L }
+
+        assertEquals(OutboxEventType.SETTLEMENT_CONFIRMED.name, event.eventType)
+        assertEquals(30L, event.aggregateId)
+        assertEquals(listOf(2L, 3L), payload.recipients.map { it.userId })
+        assertEquals(1, senderRecipient.transferSummary?.sendCount)
+        assertEquals(BigDecimal("5000.00"), senderRecipient.transferSummary?.totalSendAmount)
+        assertEquals("받을 사람", senderRecipient.transferSummary?.items?.single()?.receiverParticipantDisplayName)
+        assertEquals(null, receiverRecipient.transferSummary)
     }
 
     @Test
@@ -587,11 +690,13 @@ class SettlementServiceTest {
         receiverWithdrawn: Boolean = false,
         senderRequiresAutoConfirmation: Boolean = senderWithdrawn,
         receiverRequiresAutoConfirmation: Boolean = receiverWithdrawn,
+        senderUserId: Long? = if (senderWithdrawn) null else 1L,
+        receiverUserId: Long? = null,
     ): Map<Long, SettlementParticipantSnapshot> {
         return mapOf(
             100L to SettlementParticipantSnapshot(
                 participantId = 100L,
-                userId = if (senderWithdrawn) null else 1L,
+                userId = senderUserId,
                 displayName = if (senderWithdrawn) "탈퇴한 사용자" else "보낼 사람",
                 profileImageUrl = null,
                 participantStatus = TripParticipantStatus.ACTIVE,
@@ -600,7 +705,7 @@ class SettlementServiceTest {
             ),
             200L to SettlementParticipantSnapshot(
                 participantId = 200L,
-                userId = null,
+                userId = receiverUserId,
                 displayName = if (receiverWithdrawn) "탈퇴한 사용자" else "받을 사람",
                 profileImageUrl = null,
                 participantStatus = TripParticipantStatus.ACTIVE,
@@ -632,9 +737,12 @@ class SettlementServiceTest {
         }
     }
 
-    private fun createUser(): User {
-        return User(nickname = "방장").apply {
-            id = 1L
+    private fun createUser(
+        id: Long = 1L,
+        nickname: String = "방장",
+    ): User {
+        return User(nickname = nickname).apply {
+            this.id = id
         }
     }
 
@@ -671,17 +779,27 @@ class SettlementServiceTest {
         senderConfirmedAt: Instant? = null,
         receiverConfirmedAt: Instant? = null,
         completedAt: Instant? = null,
+        senderUserId: Long? = 1L,
+        receiverUserId: Long? = null,
     ): SettlementTransferRow {
         return object : SettlementTransferRow {
             override fun getId(): Long = id
 
+            override fun getSettlementId(): Long = 30L
+
+            override fun getTripName(): String = "일본 여행"
+
             override fun getSenderParticipantId(): Long = 100L
+
+            override fun getSenderUserId(): Long? = senderUserId
 
             override fun getSenderDisplayName(): String = "보낼 사람"
 
             override fun getSenderUserStatus(): String = "ACTIVE"
 
             override fun getReceiverParticipantId(): Long = 200L
+
+            override fun getReceiverUserId(): Long? = receiverUserId
 
             override fun getReceiverDisplayName(): String = "받을 사람"
 

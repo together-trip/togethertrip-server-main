@@ -1,6 +1,12 @@
 package com.togethertrip.main.settlement.service
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.outbox.domain.OutboxEvent
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferCompletedPayload
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferConfirmedBySenderPayload
+import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.settlement.domain.Settlement
 import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.SettlementTransfer
@@ -18,10 +24,14 @@ import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import tools.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.readValue
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -30,17 +40,23 @@ class SettlementTransferServiceTest {
 
     private lateinit var settlementTransferRepository: SettlementTransferRepository
     private lateinit var settlementAccessResolver: SettlementAccessResolver
+    private lateinit var outboxEventRepository: OutboxEventRepository
     private lateinit var settlementTransferService: SettlementTransferService
 
     @BeforeEach
     fun setUp() {
         settlementTransferRepository = mock(SettlementTransferRepository::class.java)
         settlementAccessResolver = mock(SettlementAccessResolver::class.java)
+        outboxEventRepository = mock(OutboxEventRepository::class.java)
         settlementTransferService = SettlementTransferService(
             settlementTransferRepository = settlementTransferRepository,
             settlementAccessResolver = settlementAccessResolver,
             settlementTransferConfirmationProcessor = SettlementTransferConfirmationProcessor(
                 settlementTransferRepository = settlementTransferRepository,
+            ),
+            outboxEventPublisher = OutboxEventPublisher(
+                outboxEventRepository = outboxEventRepository,
+                objectMapper = jacksonObjectMapper(),
             ),
         )
     }
@@ -237,6 +253,58 @@ class SettlementTransferServiceTest {
     }
 
     @Test
+    fun `송금자 확인 시 수금자에게 알림 outbox를 발행한다`() {
+        val sender = createParticipant(id = 100L)
+        val receiver = createParticipant(id = 200L)
+        val transfer = createTransfer(
+            sender = sender,
+            receiver = receiver,
+        )
+        val transferRow = transferRow(
+            id = 40L,
+            senderParticipantId = 100L,
+            receiverParticipantId = 200L,
+            status = SettlementTransferStatus.SENDER_CONFIRMED,
+            senderConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+            senderUserId = 100L,
+            receiverUserId = 200L,
+        )
+
+        mockTransferConfirmation(
+            activeParticipant = sender,
+            transfer = transfer,
+            transferRow = transferRow,
+        )
+        `when`(
+            settlementTransferRepository.confirmAsSenderIfNeeded(
+                transferId = eqLong(40L),
+                tripId = eqLong(10L),
+                participantId = eqLong(100L),
+                confirmedAt = anyInstant(),
+            )
+        ).thenReturn(1)
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as OutboxEvent).apply { id = 900L }
+        }
+
+        settlementTransferService.confirmAsSender(
+            userId = 1L,
+            tripId = 10L,
+            transferId = 40L,
+        )
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue<SettlementTransferConfirmedBySenderPayload>(event.payload)
+        assertEquals(OutboxEventType.SETTLEMENT_TRANSFER_CONFIRMED_BY_SENDER.name, event.eventType)
+        assertEquals(40L, event.aggregateId)
+        assertEquals(listOf(200L), payload.recipients.map { it.userId })
+        assertEquals(100L, payload.actorUserId)
+        assertEquals(BigDecimal("5000.00"), payload.amount)
+    }
+
+    @Test
     fun `송금자가 아니면 송금 확인이 차단된다`() {
         val activeParticipant = createParticipant(id = 300L)
         val transfer = createTransfer(
@@ -340,6 +408,58 @@ class SettlementTransferServiceTest {
     }
 
     @Test
+    fun `수금자 확인으로 송금이 완료되면 송금자와 수금자에게 완료 알림 outbox를 발행한다`() {
+        val receiver = createParticipant(id = 200L)
+        val transfer = createTransfer(
+            sender = createParticipant(id = 100L),
+            receiver = receiver,
+        )
+        val transferRow = transferRow(
+            id = 40L,
+            senderParticipantId = 100L,
+            receiverParticipantId = 200L,
+            status = SettlementTransferStatus.COMPLETED,
+            senderConfirmedAt = Instant.parse("2026-06-08T00:30:00Z"),
+            receiverConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+            completedAt = Instant.parse("2026-06-08T01:00:00Z"),
+            senderUserId = 100L,
+            receiverUserId = 200L,
+        )
+
+        mockTransferConfirmation(
+            activeParticipant = receiver,
+            transfer = transfer,
+            transferRow = transferRow,
+        )
+        `when`(
+            settlementTransferRepository.confirmAsReceiverIfNeeded(
+                transferId = eqLong(40L),
+                tripId = eqLong(10L),
+                participantId = eqLong(200L),
+                confirmedAt = anyInstant(),
+            )
+        ).thenReturn(1)
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as OutboxEvent).apply { id = 901L }
+        }
+
+        settlementTransferService.confirmAsReceiver(
+            userId = 1L,
+            tripId = 10L,
+            transferId = 40L,
+        )
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue<SettlementTransferCompletedPayload>(event.payload)
+        assertEquals(OutboxEventType.SETTLEMENT_TRANSFER_COMPLETED.name, event.eventType)
+        assertEquals(40L, event.aggregateId)
+        assertEquals(listOf(100L, 200L), payload.recipients.map { it.userId })
+        assertEquals(200L, payload.actorUserId)
+    }
+
+    @Test
     fun `transfer가 다른 여행에 속하면 확인이 실패한다`() {
         val participant = createParticipant(id = 100L)
         val transfer = createTransfer(
@@ -393,6 +513,7 @@ class SettlementTransferServiceTest {
         )
 
         assertEquals(firstConfirmedAt, transfer.senderConfirmedAt)
+        verify(outboxEventRepository, never()).save(any(OutboxEvent::class.java))
     }
 
     @Test
@@ -525,17 +646,27 @@ class SettlementTransferServiceTest {
         completedAt: Instant? = null,
         senderUserStatus: String = "ACTIVE",
         receiverUserStatus: String = "ACTIVE",
+        senderUserId: Long? = senderParticipantId,
+        receiverUserId: Long? = receiverParticipantId,
     ): SettlementTransferRow {
         return object : SettlementTransferRow {
             override fun getId(): Long = id
 
+            override fun getSettlementId(): Long = 30L
+
+            override fun getTripName(): String = "일본 여행"
+
             override fun getSenderParticipantId(): Long = senderParticipantId
+
+            override fun getSenderUserId(): Long? = senderUserId
 
             override fun getSenderDisplayName(): String = "보낼 사람"
 
             override fun getSenderUserStatus(): String = senderUserStatus
 
             override fun getReceiverParticipantId(): Long = receiverParticipantId
+
+            override fun getReceiverUserId(): Long? = receiverUserId
 
             override fun getReceiverDisplayName(): String = "받을 사람"
 

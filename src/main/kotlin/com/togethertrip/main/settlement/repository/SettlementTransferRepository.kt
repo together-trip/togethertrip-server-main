@@ -15,10 +15,14 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
     @Query(
         value = """
         select transfer.id as "id",
+               settlement.id as "settlementId",
+               trip.title as "tripName",
                transfer.sender_participant_id as "senderParticipantId",
+               sender.user_id as "senderUserId",
                sender.display_name as "senderDisplayName",
                sender_user.status as "senderUserStatus",
                transfer.receiver_participant_id as "receiverParticipantId",
+               receiver.user_id as "receiverUserId",
                receiver.display_name as "receiverDisplayName",
                receiver_user.status as "receiverUserStatus",
                transfer.amount as "amount",
@@ -29,6 +33,8 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
                transfer.completed_at as "completedAt",
                transfer.auto_confirmed as "autoConfirmed"
         from settlement_transfers transfer
+        join settlements settlement on settlement.id = transfer.settlement_id
+        join trips trip on trip.id = settlement.trip_id
         join trip_participants sender on sender.id = transfer.sender_participant_id
         join trip_participants receiver on receiver.id = transfer.receiver_participant_id
         left join users sender_user on sender_user.id = sender.user_id
@@ -46,10 +52,14 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
     @Query(
         value = """
         select transfer.id as "id",
+               settlement.id as "settlementId",
+               trip.title as "tripName",
                transfer.sender_participant_id as "senderParticipantId",
+               sender.user_id as "senderUserId",
                sender.display_name as "senderDisplayName",
                sender_user.status as "senderUserStatus",
                transfer.receiver_participant_id as "receiverParticipantId",
+               receiver.user_id as "receiverUserId",
                receiver.display_name as "receiverDisplayName",
                receiver_user.status as "receiverUserStatus",
                transfer.amount as "amount",
@@ -61,6 +71,7 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
                transfer.auto_confirmed as "autoConfirmed"
         from settlement_transfers transfer
         join settlements settlement on settlement.id = transfer.settlement_id
+        join trips trip on trip.id = settlement.trip_id
         join trip_participants sender on sender.id = transfer.sender_participant_id
         join trip_participants receiver on receiver.id = transfer.receiver_participant_id
         left join users sender_user on sender_user.id = sender.user_id
@@ -92,10 +103,14 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
     @Query(
         value = """
         select transfer.id as "id",
+               settlement.id as "settlementId",
+               trip.title as "tripName",
                transfer.sender_participant_id as "senderParticipantId",
+               sender.user_id as "senderUserId",
                sender.display_name as "senderDisplayName",
                sender_user.status as "senderUserStatus",
                transfer.receiver_participant_id as "receiverParticipantId",
+               receiver.user_id as "receiverUserId",
                receiver.display_name as "receiverDisplayName",
                receiver_user.status as "receiverUserStatus",
                transfer.amount as "amount",
@@ -106,6 +121,8 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
                transfer.completed_at as "completedAt",
                transfer.auto_confirmed as "autoConfirmed"
         from settlement_transfers transfer
+        join settlements settlement on settlement.id = transfer.settlement_id
+        join trips trip on trip.id = settlement.trip_id
         join trip_participants sender on sender.id = transfer.sender_participant_id
         join trip_participants receiver on receiver.id = transfer.receiver_participant_id
         left join users sender_user on sender_user.id = sender.user_id
