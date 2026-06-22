@@ -24,6 +24,7 @@ import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import org.springframework.data.domain.PageRequest
@@ -201,6 +202,7 @@ class PostService(
             author = post.author,
             userId = userId,
         )
+        validateEditablePost(post)
 
         post.update(
             title = request.title,
@@ -354,6 +356,12 @@ class PostService(
     ) {
         if (author.user?.id != userId) {
             throw BusinessException(CommonErrorCode.ACCESS_DENIED)
+        }
+    }
+
+    private fun validateEditablePost(post: Post) {
+        if (post.transaction != null && post.trip.settlementStatus != TripSettlementStatus.NOT_STARTED) {
+            throw BusinessException(PostErrorCode.POST_LOCKED_BY_SETTLEMENT)
         }
     }
 
