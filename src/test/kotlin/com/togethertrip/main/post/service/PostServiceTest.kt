@@ -5,6 +5,8 @@ import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.outbox.domain.OutboxEvent
 import com.togethertrip.main.global.outbox.domain.OutboxEventType
 import com.togethertrip.main.global.outbox.payload.post.ExpensePostCreatedPayload
+import com.togethertrip.main.global.outbox.payload.post.PostCommentCreatedPayload
+import com.togethertrip.main.global.outbox.payload.post.PostCreatedPayload
 import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
 import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.exchange.repository.ExchangeRateRepository
@@ -121,6 +123,13 @@ class PostServiceTest {
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             userRepository = userRepository,
         )
+        `when`(
+            tripParticipantRepository.findActiveUserIdsForNotification(
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE.name,
+                userStatus = "ACTIVE",
+            )
+        ).thenReturn(emptyList())
         postService = PostService(
             postRepository = postRepository,
             postAttachmentRepository = postAttachmentRepository,
@@ -164,6 +173,52 @@ class PostServiceTest {
         assertEquals(PostType.RECORD, response.postType)
         assertEquals(null, response.transactionId)
         verify(postRepository).save(any(Post::class.java))
+    }
+
+    @Test
+    fun `일반 기록 작성 시 작성자를 제외한 여행 참여자에게 알림 outbox를 발행한다`() {
+        val participant = createParticipant()
+
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findActiveUserIdsForNotification(
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE.name,
+                userStatus = "ACTIVE",
+            )
+        ).thenReturn(listOf(1L, 2L))
+        `when`(postRepository.save(any(Post::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Post).apply { id = 300L }
+        }
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as OutboxEvent).apply { id = 900L }
+        }
+
+        postService.createPost(
+            userId = 1L,
+            tripId = 10L,
+            request = CreatePostRequest(
+                title = "첫 기록",
+                content = "여행 시작",
+            ),
+        )
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue<PostCreatedPayload>(event.payload)
+        assertEquals(OutboxEventType.POST_CREATED.name, event.eventType)
+        assertEquals(300L, event.aggregateId)
+        assertEquals(listOf(2L), payload.recipients.map { it.userId })
+        assertEquals("첫 기록", payload.title)
+        assertEquals("일본 여행", payload.tripName)
+        assertEquals("재완", payload.actorDisplayName)
     }
 
     @Test
@@ -918,6 +973,63 @@ class PostServiceTest {
         assertEquals("좋아요", response.content)
         assertEquals(1, post.commentCount)
         verify(postCommentRepository).save(any(PostComment::class.java))
+    }
+
+    @Test
+    fun `댓글 작성 시 게시글 작성자에게 알림 outbox를 발행한다`() {
+        val authorUser = createUser(id = 1L)
+        val commenterUser = createUser(id = 2L)
+        val trip = createTrip(ownerUser = authorUser)
+        val postAuthor = createParticipant(
+            user = authorUser,
+            trip = trip,
+        )
+        val commenter = createParticipant(
+            user = commenterUser,
+            trip = trip,
+        ).apply {
+            id = 101L
+            displayName = "민서"
+        }
+        val post = createPost(author = postAuthor)
+
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 2L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(commenter)
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+        `when`(postCommentRepository.save(any(PostComment::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as PostComment).apply { id = 400L }
+        }
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as OutboxEvent).apply { id = 901L }
+        }
+
+        postService.createComment(
+            userId = 2L,
+            tripId = 10L,
+            postId = 300L,
+            request = CreatePostCommentRequest(content = "좋아요"),
+        )
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue<PostCommentCreatedPayload>(event.payload)
+        assertEquals(OutboxEventType.POST_COMMENT_CREATED.name, event.eventType)
+        assertEquals(300L, event.aggregateId)
+        assertEquals(listOf(1L), payload.recipients.map { it.userId })
+        assertEquals(2L, payload.actorUserId)
+        assertEquals(400L, payload.commentId)
+        assertEquals("첫 기록", payload.postTitle)
     }
 
     @Test

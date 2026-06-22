@@ -6,6 +6,8 @@ import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
 import com.togethertrip.main.global.outbox.domain.OutboxEventType
 import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipientPayload
 import com.togethertrip.main.global.outbox.payload.post.ExpensePostCreatedPayload
+import com.togethertrip.main.global.outbox.payload.post.PostCommentCreatedPayload
+import com.togethertrip.main.global.outbox.payload.post.PostCreatedPayload
 import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.post.domain.Post
@@ -44,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile
+import java.time.Instant
 
 @Service
 class PostService(
@@ -97,6 +100,10 @@ class PostService(
             post = post,
             files = request.files,
         )
+
+        if (post.postType == PostType.RECORD) {
+            publishPostCreated(post)
+        }
 
         return PostDetailResponse.from(
             post = post,
@@ -318,6 +325,8 @@ class PostService(
         post.increaseCommentCount()
         postCommentRepository.save(comment)
 
+        publishPostCommentCreated(comment)
+
         return PostCommentResponse.from(comment)
     }
 
@@ -527,6 +536,57 @@ class PostService(
                 baseAmount = creationResult.transaction.baseAmount,
                 baseCurrency = creationResult.transaction.baseCurrency,
                 occurredAt = java.time.Instant.now(),
+            ),
+        )
+    }
+
+    private fun publishPostCreated(post: Post) {
+        val actorUserId = post.author.user?.id ?: return
+        val recipients = tripNotificationRecipientResolver.findActiveUserIds(
+            tripId = post.trip.id,
+            actorUserId = actorUserId,
+        ).map(::DefaultOutboxRecipientPayload)
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.POST,
+            aggregateId = post.id,
+            eventType = OutboxEventType.POST_CREATED,
+            payload = PostCreatedPayload(
+                recipients = recipients,
+                actorUserId = actorUserId,
+                tripId = post.trip.id,
+                postId = post.id,
+                tripName = post.trip.title,
+                actorDisplayName = post.author.user?.nickname ?: post.author.displayName,
+                postType = post.postType.name,
+                title = post.title,
+                occurredAt = Instant.now(),
+            ),
+        )
+    }
+
+    private fun publishPostCommentCreated(comment: PostComment) {
+        val actorUserId = comment.author.user?.id ?: return
+        val recipientUserId = tripNotificationRecipientResolver.resolveSingleUserId(
+            userId = comment.post.author.user?.id,
+            actorUserId = actorUserId,
+        )
+        val recipients = listOfNotNull(recipientUserId).map(::DefaultOutboxRecipientPayload)
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.POST,
+            aggregateId = comment.post.id,
+            eventType = OutboxEventType.POST_COMMENT_CREATED,
+            payload = PostCommentCreatedPayload(
+                recipients = recipients,
+                actorUserId = actorUserId,
+                tripId = comment.post.trip.id,
+                postId = comment.post.id,
+                commentId = comment.id,
+                tripName = comment.post.trip.title,
+                actorDisplayName = comment.author.user?.nickname ?: comment.author.displayName,
+                postTitle = comment.post.title,
+                occurredAt = Instant.now(),
             ),
         )
     }
