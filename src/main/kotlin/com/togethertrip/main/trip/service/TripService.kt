@@ -2,6 +2,11 @@ package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipientPayload
+import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripCountry
@@ -26,6 +31,7 @@ import com.togethertrip.main.trip.pagination.TripCursor
 import com.togethertrip.main.trip.repository.TripCountryRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.exception.UserErrorCode
@@ -44,6 +50,8 @@ class TripService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val userRepository: UserRepository,
     private val profileImageUrlPolicy: ProfileImageUrlPolicy,
+    private val outboxEventPublisher: OutboxEventPublisher,
+    private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
 ) {
 
     @Transactional
@@ -85,7 +93,12 @@ class TripService(
         )
 
         saveTripCountries(trip, request.countries)
-        saveCompanions(trip, request.participants)
+        val companions = saveCompanions(trip, request.participants)
+        publishParticipantsAdded(
+            trip = trip,
+            actor = user,
+            participants = companions,
+        )
 
         return buildTripDetailResponse(trip)
     }
@@ -300,6 +313,37 @@ class TripService(
                 )
             )
         }
+    }
+
+    private fun publishParticipantsAdded(
+        trip: Trip,
+        actor: User,
+        participants: List<TripParticipant>,
+    ) {
+        val userParticipants = participants.filter { participant -> participant.user != null }
+        val recipients = userParticipants
+            .mapNotNull { participant ->
+                tripNotificationRecipientResolver.resolveSingleUserId(
+                    userId = participant.user?.id,
+                    actorUserId = actor.id,
+                )
+            }
+            .map(::DefaultOutboxRecipientPayload)
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.TRIP,
+            aggregateId = trip.id,
+            eventType = OutboxEventType.TRIP_PARTICIPANTS_ADDED,
+            payload = TripParticipantsAddedPayload(
+                recipients = recipients,
+                actorUserId = actor.id,
+                tripId = trip.id,
+                participantIds = userParticipants.map { participant -> participant.id },
+                tripName = trip.title,
+                actorDisplayName = actor.nickname,
+                occurredAt = Instant.now(),
+            ),
+        )
     }
 
     private fun getAccessibleTrip(

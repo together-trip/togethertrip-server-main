@@ -2,6 +2,11 @@ package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipientPayload
+import com.togethertrip.main.global.outbox.payload.trip.TripParticipantJoinedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripInvitation
 import com.togethertrip.main.trip.domain.TripInvitationStatus
@@ -18,6 +23,7 @@ import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripInvitationRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.exception.UserErrorCode
@@ -40,6 +46,8 @@ class TripInviteService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val userRepository: UserRepository,
     private val tripInvitationExpirationService: TripInvitationExpirationService,
+    private val outboxEventPublisher: OutboxEventPublisher,
+    private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
     private val clock: Clock,
     @Value("\${trip.invite.base-url}")
     private val inviteBaseUrl: String,
@@ -149,6 +157,12 @@ class TripInviteService(
             user = user,
             now = now,
         )
+        publishParticipantJoined(
+            trip = lockedInvitation.trip,
+            actor = user,
+            participant = participant,
+            occurredAt = now,
+        )
 
         return JoinTripResponse.from(
             invitation = lockedInvitation,
@@ -242,6 +256,33 @@ class TripInviteService(
         } catch (_: DataIntegrityViolationException) {
             throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
         }
+    }
+
+    private fun publishParticipantJoined(
+        trip: Trip,
+        actor: User,
+        participant: TripParticipant,
+        occurredAt: Instant,
+    ) {
+        val recipients = tripNotificationRecipientResolver.findActiveUserIds(
+            tripId = trip.id,
+            actorUserId = actor.id,
+        ).map(::DefaultOutboxRecipientPayload)
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.TRIP,
+            aggregateId = trip.id,
+            eventType = OutboxEventType.TRIP_PARTICIPANT_JOINED,
+            payload = TripParticipantJoinedPayload(
+                recipients = recipients,
+                actorUserId = actor.id,
+                tripId = trip.id,
+                participantId = participant.id,
+                tripName = trip.title,
+                actorDisplayName = actor.nickname,
+                occurredAt = occurredAt,
+            ),
+        )
     }
 
     private fun findInvitation(

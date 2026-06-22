@@ -2,6 +2,12 @@ package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipientPayload
+import com.togethertrip.main.global.outbox.payload.trip.TripParticipantRemovedPayload
+import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -15,6 +21,7 @@ import com.togethertrip.main.trip.dto.response.TripParticipantType
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.exception.UserErrorCode
@@ -31,6 +38,8 @@ class TripParticipantService(
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val userRepository: UserRepository,
+    private val outboxEventPublisher: OutboxEventPublisher,
+    private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
     private val clock: Clock,
 ) {
 
@@ -139,7 +148,7 @@ class TripParticipantService(
         tripId: Long,
         participantId: Long,
     ) {
-        getActiveUser(userId)
+        val actor = getActiveUser(userId)
         val trip = getOwnedTrip(userId, tripId)
         validateParticipantWritable(trip)
 
@@ -158,6 +167,12 @@ class TripParticipantService(
         participant.participantStatus = TripParticipantStatus.REMOVED
         participant.leftAt = now
         participant.markDeleted(now)
+        publishParticipantRemoved(
+            trip = trip,
+            actor = actor,
+            participant = participant,
+            occurredAt = now,
+        )
     }
 
     @Transactional
@@ -166,7 +181,7 @@ class TripParticipantService(
         tripId: Long,
         request: LinkTripParticipantRequest,
     ): TripParticipantSummaryResponse {
-        getActiveUser(userId)
+        val actor = getActiveUser(userId)
         val trip = getOwnedTrip(userId, tripId)
         validateParticipantWritable(trip)
 
@@ -203,8 +218,74 @@ class TripParticipantService(
         } catch (_: DataIntegrityViolationException) {
             throw BusinessException(TripErrorCode.TRIP_ALREADY_JOINED)
         }
+        publishParticipantsAdded(
+            trip = trip,
+            actor = actor,
+            participant = savedParticipant,
+            occurredAt = now,
+        )
 
         return TripParticipantSummaryResponse.from(savedParticipant)
+    }
+
+    private fun publishParticipantsAdded(
+        trip: Trip,
+        actor: User,
+        participant: TripParticipant,
+        occurredAt: Instant,
+    ) {
+        val recipientUserId = tripNotificationRecipientResolver.resolveSingleUserId(
+            userId = participant.user?.id,
+            actorUserId = actor.id,
+        )
+        val recipients = recipientUserId
+            ?.let { userId -> listOf(DefaultOutboxRecipientPayload(userId)) }
+            ?: emptyList()
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.TRIP,
+            aggregateId = trip.id,
+            eventType = OutboxEventType.TRIP_PARTICIPANTS_ADDED,
+            payload = TripParticipantsAddedPayload(
+                recipients = recipients,
+                actorUserId = actor.id,
+                tripId = trip.id,
+                participantIds = listOf(participant.id),
+                tripName = trip.title,
+                actorDisplayName = actor.nickname,
+                occurredAt = occurredAt,
+            ),
+        )
+    }
+
+    private fun publishParticipantRemoved(
+        trip: Trip,
+        actor: User,
+        participant: TripParticipant,
+        occurredAt: Instant,
+    ) {
+        val recipientUserId = tripNotificationRecipientResolver.resolveSingleUserId(
+            userId = participant.user?.id,
+            actorUserId = actor.id,
+        )
+        val recipients = recipientUserId
+            ?.let { userId -> listOf(DefaultOutboxRecipientPayload(userId)) }
+            ?: emptyList()
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.TRIP,
+            aggregateId = trip.id,
+            eventType = OutboxEventType.TRIP_PARTICIPANT_REMOVED,
+            payload = TripParticipantRemovedPayload(
+                recipients = recipients,
+                actorUserId = actor.id,
+                tripId = trip.id,
+                participantId = participant.id,
+                tripName = trip.title,
+                actorDisplayName = actor.nickname,
+                occurredAt = occurredAt,
+            ),
+        )
     }
 
     private fun getAccessibleTrip(

@@ -192,7 +192,7 @@ class OutboxEventPublisherTest {
             recipients = recipients,
             actorUserId = 10L,
             tripId = 20L,
-            participantId = 30L,
+            participantIds = listOf(30L),
             tripName = "일본 여행",
             actorDisplayName = "재완",
             occurredAt = Instant.parse("2026-06-22T12:00:00Z"),

@@ -2,6 +2,11 @@ package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.outbox.domain.OutboxEvent
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPayload
+import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripCountry
@@ -18,12 +23,14 @@ import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripCountryRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
@@ -31,6 +38,7 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.springframework.data.domain.PageRequest
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.assertEquals
@@ -43,6 +51,9 @@ class TripServiceTest {
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var userRepository: UserRepository
     private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
+    private lateinit var outboxEventRepository: OutboxEventRepository
+    private lateinit var outboxEventPublisher: OutboxEventPublisher
+    private lateinit var tripNotificationRecipientResolver: TripNotificationRecipientResolver
     private lateinit var tripService: TripService
 
     @BeforeEach
@@ -51,6 +62,15 @@ class TripServiceTest {
         tripCountryRepository = mock(TripCountryRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         userRepository = mock(UserRepository::class.java)
+        outboxEventRepository = mock(OutboxEventRepository::class.java)
+        outboxEventPublisher = OutboxEventPublisher(
+            outboxEventRepository = outboxEventRepository,
+            objectMapper = jacksonObjectMapper(),
+        )
+        tripNotificationRecipientResolver = TripNotificationRecipientResolver(tripParticipantRepository)
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            invocation.arguments[0] as OutboxEvent
+        }
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
         )
@@ -60,6 +80,8 @@ class TripServiceTest {
             tripParticipantRepository = tripParticipantRepository,
             userRepository = userRepository,
             profileImageUrlPolicy = profileImageUrlPolicy,
+            outboxEventPublisher = outboxEventPublisher,
+            tripNotificationRecipientResolver = tripNotificationRecipientResolver,
         )
     }
 
@@ -89,7 +111,6 @@ class TripServiceTest {
             .thenAnswer { savedCountries.sortedBy { country -> country.sortOrder } }
         `when`(tripParticipantRepository.findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(10L))
             .thenAnswer { savedParticipants }
-
         val response = tripService.createTrip(
             userId = 1L,
             request = CreateTripRequest(
@@ -165,6 +186,19 @@ class TripServiceTest {
         assertEquals(2L, response.participants.last().userId)
         assertEquals("동행자", response.participants.last().displayName)
         assertNotNull(savedParticipants.last().joinedAt)
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue(
+            event.payload,
+            TripParticipantsAddedPayload::class.java,
+        )
+        assertEquals(OutboxEventType.TRIP_PARTICIPANTS_ADDED.name, event.eventType)
+        assertEquals(listOf(2L), payload.recipients.map { it.userId })
+        assertEquals(listOf(101L), payload.participantIds)
+        assertEquals("오사카 여행", payload.tripName)
+        assertEquals("재완", payload.actorDisplayName)
     }
 
     @Test

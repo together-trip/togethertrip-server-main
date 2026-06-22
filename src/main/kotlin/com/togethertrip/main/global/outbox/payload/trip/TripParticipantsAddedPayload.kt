@@ -8,7 +8,7 @@ data class TripParticipantsAddedPayload(
     override val recipients: List<DefaultOutboxRecipientPayload>,
     val actorUserId: Long,
     val tripId: Long,
-    val participantId: Long?,
+    val participantIds: List<Long>,
     val tripName: String,
     val actorDisplayName: String,
     override val occurredAt: Instant,
