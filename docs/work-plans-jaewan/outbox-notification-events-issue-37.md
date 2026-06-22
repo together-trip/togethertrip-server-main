@@ -621,6 +621,7 @@ SQS 도입 시 도메인 서비스 코드를 수정하지 않고, 발행 작업�
 ### 구현 단위 7. SQS 후속 확장 경계 확인
 
 목표는 이번 이슈 범위 안에서 SQS를 구현하지 않더라도, 이후 SQS 연동이 작게 붙을 수 있는 구조인지 마지막에 확인하는 것이다.
+다만 실제 notification 서버나 SQS로 전송하지 않는 선에서, `PENDING` outbox를 sender 경계로 넘겨 성공/실패 상태를 바꾸는 수동 dispatcher까지 포함한다.
 
 포함 작업은 다음과 같다.
 
@@ -628,9 +629,12 @@ SQS 도입 시 도메인 서비스 코드를 수정하지 않고, 발행 작업�
 - outbox payload가 SQS 메시지로 그대로 감쌀 수 있는 형태인지 확인
 - outbox 행이 수신자별로 쪼개지지 않는지 확인
 - 알림 서버 멱등 키 `(sourceService, sourceEventId, userId)` 계약이 문서에 남아 있는지 확인
-- 후속 SQS 연동 시 추가할 `OutboxEventSender`, `SqsOutboxEventSender`, 발행 작업자 경계 재확인
+- `OutboxEventSender` 인터페이스 추가
+- 실제 외부 전송 없이 로그만 남기는 `LoggingOutboxEventSender` 추가
+- `PENDING` 이벤트를 읽어 sender에 넘기고 성공 시 `PUBLISHED`, 실패 시 `FAILED`로 바꾸는 `OutboxEventDispatchService` 추가
+- 후속 SQS 연동 시 `LoggingOutboxEventSender`를 `SqsOutboxEventSender`로 교체하고, dispatcher를 호출하는 스케줄러 또는 배치 작업자만 추가하면 되는지 확인
 
-이 단위가 끝나면 #37은 `PENDING` outbox 저장까지 완료되고, SQS 실제 전송은 후속 이슈로 안전하게 넘길 수 있다.
+이 단위가 끝나면 #37은 `PENDING` outbox 저장과 수동 dispatch 경계까지 완료되고, SQS 실제 전송은 후속 이슈로 안전하게 넘길 수 있다.
 
 아래 세부 항목은 위 구현 단위에 포함되는 구체 작업 목록이다.
 
@@ -724,10 +728,14 @@ SQS 도입 시 도메인 서비스 코드를 수정하지 않고, 발행 작업�
 
 ### 10. SQS 후속 확장 경계 유지
 
-- 이번 이슈에서는 `PENDING` outbox 행 생성까지만 완료 기준으로 둔다.
+- 이번 이슈에서는 `PENDING` outbox 행 생성과 수동 dispatch 경계까지만 완료 기준으로 둔다.
 - 도메인 서비스는 SQS, 알림 서버, 발행 작업자를 직접 참조하지 않는다.
-- SQS를 사용할 수 있으면 후속 이슈에서 `SqsOutboxEventSender`와 발행 작업자를 추가한다.
-- 후속 SQS 연동은 `OutboxEventSender`와 발행 작업자를 추가하는 방식으로 분리한다.
+- 실제 외부 전송 대신 `LoggingOutboxEventSender`를 둔다.
+- `OutboxEventDispatchService`는 명시적으로 호출될 때만 `PENDING` 이벤트를 sender에 넘긴다.
+- 스케줄러는 이번 범위에서 추가하지 않는다.
+- 현재 `PUBLISHED`는 notification 서버 처리 성공이 아니라 `OutboxEventSender.send(event)` 호출 성공을 뜻한다.
+- SQS를 사용할 수 있으면 후속 이슈에서 `LoggingOutboxEventSender` 대신 `SqsOutboxEventSender`를 추가한다.
+- 후속 SQS 연동은 `SqsOutboxEventSender`와 dispatcher 호출 작업자를 추가하는 방식으로 분리한다.
 - outbox 행은 논리 이벤트 기준으로 1개만 만들고, 수신자는 이벤트 데이터의 `recipients`에 담는다.
 - 기본 `recipients` 항목은 `userId`만 포함하고, 정산처럼 수신자별 내용이 필요한 경우에만 요약 데이터를 함께 담는다.
 

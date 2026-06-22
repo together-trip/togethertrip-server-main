@@ -40,5 +40,17 @@ class OutboxEvent(
 
     @Column(name = "published_at")
     var publishedAt: Instant? = null,
+) : BaseEntity() {
 
-) : BaseEntity()
+    fun markPublished(now: Instant = Instant.now()) {
+        status = OutboxStatus.PUBLISHED
+        publishedAt = now
+        updatedAt = now
+    }
+
+    fun markFailed(now: Instant = Instant.now()) {
+        status = OutboxStatus.FAILED
+        retryCount += 1
+        updatedAt = now
+    }
+}
