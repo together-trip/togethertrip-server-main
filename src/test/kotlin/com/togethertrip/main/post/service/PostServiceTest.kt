@@ -2,11 +2,18 @@ package com.togethertrip.main.post.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.outbox.domain.OutboxEvent
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.post.ExpensePostCreatedPayload
+import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
+import com.togethertrip.main.exchange.repository.ExchangeRateRepository
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostAttachmentType
 import com.togethertrip.main.post.domain.PostComment
 import com.togethertrip.main.post.domain.PostType
+import com.togethertrip.main.post.dto.request.CreateExpensePostRequest
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
@@ -19,9 +26,19 @@ import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.post.service.storage.PostAttachmentStorage
 import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.domain.Transaction
+import com.togethertrip.main.transaction.domain.TransactionEvent
+import com.togethertrip.main.transaction.domain.TransactionPayment
+import com.togethertrip.main.transaction.domain.TransactionShare
 import com.togethertrip.main.transaction.domain.TransactionStatus
 import com.togethertrip.main.transaction.domain.TransactionType
+import com.togethertrip.main.transaction.dto.request.TransactionPaymentInput
+import com.togethertrip.main.transaction.dto.request.TransactionShareInput
+import com.togethertrip.main.transaction.repository.TransactionEventRepository
+import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
+import com.togethertrip.main.transaction.repository.TransactionShareRepository
+import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
+import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -29,11 +46,15 @@ import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
+import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
+import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyList
+import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.never
@@ -44,8 +65,12 @@ import org.springframework.mock.web.MockMultipartFile
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile
+import tools.jackson.module.kotlin.jacksonObjectMapper
+import tools.jackson.module.kotlin.readValue
 import java.math.BigDecimal
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
@@ -56,6 +81,12 @@ class PostServiceTest {
     private lateinit var postCommentRepository: PostCommentRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var transactionRepository: TransactionRepository
+    private lateinit var transactionShareRepository: TransactionShareRepository
+    private lateinit var transactionPaymentRepository: TransactionPaymentRepository
+    private lateinit var transactionEventRepository: TransactionEventRepository
+    private lateinit var tripRepository: TripRepository
+    private lateinit var userRepository: UserRepository
+    private lateinit var outboxEventRepository: OutboxEventRepository
     private lateinit var postAttachmentStorage: PostAttachmentStorage
     private lateinit var postService: PostService
 
@@ -66,7 +97,30 @@ class PostServiceTest {
         postCommentRepository = mock(PostCommentRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         transactionRepository = mock(TransactionRepository::class.java)
+        transactionShareRepository = mock(TransactionShareRepository::class.java)
+        transactionPaymentRepository = mock(TransactionPaymentRepository::class.java)
+        transactionEventRepository = mock(TransactionEventRepository::class.java)
+        tripRepository = mock(TripRepository::class.java)
+        userRepository = mock(UserRepository::class.java)
+        outboxEventRepository = mock(OutboxEventRepository::class.java)
         postAttachmentStorage = mock(PostAttachmentStorage::class.java)
+        val transactionExchangeRateResolver = TransactionExchangeRateResolver(
+            exchangeRateRepository = mock(ExchangeRateRepository::class.java),
+            clock = Clock.fixed(
+                Instant.parse("2026-07-02T00:30:00Z"),
+                ZoneId.of("Asia/Seoul"),
+            ),
+        )
+        val transactionCreationService = TransactionCreationService(
+            transactionRepository = transactionRepository,
+            transactionShareRepository = transactionShareRepository,
+            transactionPaymentRepository = transactionPaymentRepository,
+            transactionEventRepository = transactionEventRepository,
+            tripRepository = tripRepository,
+            tripParticipantRepository = tripParticipantRepository,
+            transactionExchangeRateResolver = transactionExchangeRateResolver,
+            userRepository = userRepository,
+        )
         postService = PostService(
             postRepository = postRepository,
             postAttachmentRepository = postAttachmentRepository,
@@ -74,6 +128,14 @@ class PostServiceTest {
             tripParticipantRepository = tripParticipantRepository,
             transactionRepository = transactionRepository,
             postAttachmentStorage = postAttachmentStorage,
+            transactionCreationService = transactionCreationService,
+            outboxEventPublisher = OutboxEventPublisher(
+                outboxEventRepository = outboxEventRepository,
+                objectMapper = jacksonObjectMapper(),
+            ),
+            tripNotificationRecipientResolver = TripNotificationRecipientResolver(
+                tripParticipantRepository = tripParticipantRepository,
+            ),
         )
     }
 
@@ -130,6 +192,98 @@ class PostServiceTest {
 
         assertEquals(PostType.EXPENSE, response.postType)
         assertEquals(200L, response.transactionId)
+    }
+
+    @Test
+    fun `소비 게시글 통합 작성은 거래와 게시글을 함께 생성하고 알림 outbox를 발행한다`() {
+        val user = createUser(id = 1L)
+        val trip = createTrip(ownerUser = user)
+        val participant = createParticipant(
+            user = user,
+            trip = trip,
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                id = 100L,
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findActiveUserIdsForNotification(
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE.name,
+                userStatus = "ACTIVE",
+            )
+        ).thenReturn(listOf(1L, 2L))
+        `when`(transactionRepository.save(any(Transaction::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Transaction).apply { id = 200L }
+        }
+        `when`(transactionPaymentRepository.save(any(TransactionPayment::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionPayment).apply { id = 210L }
+        }
+        `when`(transactionShareRepository.save(any(TransactionShare::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionShare).apply { id = 220L }
+        }
+        `when`(transactionEventRepository.save(any(TransactionEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionEvent).apply { id = 230L }
+        }
+        `when`(postRepository.save(any(Post::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Post).apply { id = 300L }
+        }
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as OutboxEvent).apply { id = 900L }
+        }
+
+        val response = postService.createExpensePost(
+            userId = 1L,
+            tripId = 10L,
+            request = CreateExpensePostRequest(
+                title = "라멘",
+                category = "식비",
+                amount = BigDecimal("12000.00"),
+                currency = "KRW",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("12000.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("12000.00"),
+                    )
+                ),
+            ),
+        )
+
+        assertEquals(PostType.EXPENSE, response.post.postType)
+        assertEquals(200L, response.post.transactionId)
+        assertEquals(BigDecimal("12000.00"), response.transaction.summary.amount)
+        assertEquals(1L, trip.expenseVersion)
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue<ExpensePostCreatedPayload>(event.payload)
+        assertEquals(OutboxEventType.EXPENSE_POST_CREATED.name, event.eventType)
+        assertEquals(300L, event.aggregateId)
+        assertEquals(listOf(2L), payload.recipients.map { it.userId })
+        assertEquals(200L, payload.transactionId)
+        assertEquals("라멘", payload.title)
+        assertEquals(BigDecimal("12000.00"), payload.amount)
+        assertEquals("KRW", payload.currency)
     }
 
     @Test

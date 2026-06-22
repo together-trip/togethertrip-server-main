@@ -22,6 +22,7 @@ import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
 import com.togethertrip.main.transaction.repository.projection.CommonFundBalanceRow
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
+import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.exchange.domain.ExchangeRate
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -80,6 +81,16 @@ class TransactionServiceTest {
                 ZoneId.of("Asia/Seoul"),
             ),
         )
+        val transactionCreationService = TransactionCreationService(
+            transactionRepository = transactionRepository,
+            transactionShareRepository = transactionShareRepository,
+            transactionPaymentRepository = transactionPaymentRepository,
+            transactionEventRepository = transactionEventRepository,
+            tripRepository = tripRepository,
+            tripParticipantRepository = tripParticipantRepository,
+            transactionExchangeRateResolver = transactionExchangeRateResolver,
+            userRepository = userRepository,
+        )
         transactionService = TransactionService(
             transactionRepository = transactionRepository,
             transactionShareRepository = transactionShareRepository,
@@ -89,6 +100,7 @@ class TransactionServiceTest {
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
+            transactionCreationService = transactionCreationService,
             userRepository = userRepository,
         )
     }

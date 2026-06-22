@@ -2,14 +2,21 @@ package com.togethertrip.main.post.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipientPayload
+import com.togethertrip.main.global.outbox.payload.post.ExpensePostCreatedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostComment
 import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
+import com.togethertrip.main.post.dto.request.CreateExpensePostRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
+import com.togethertrip.main.post.dto.response.CreateExpensePostResponse
 import com.togethertrip.main.post.dto.response.PostCommentResponse
 import com.togethertrip.main.post.dto.response.PostDetailResponse
 import com.togethertrip.main.post.dto.response.PostSummaryResponse
@@ -22,11 +29,15 @@ import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.post.service.storage.PostAttachmentStorage
 import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.repository.TransactionRepository
+import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
+import com.togethertrip.main.transaction.service.support.TransactionCreationResult
+import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -42,6 +53,9 @@ class PostService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionRepository: TransactionRepository,
     private val postAttachmentStorage: PostAttachmentStorage,
+    private val transactionCreationService: TransactionCreationService,
+    private val outboxEventPublisher: OutboxEventPublisher,
+    private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
 ) {
 
     @Transactional
@@ -87,6 +101,56 @@ class PostService(
         return PostDetailResponse.from(
             post = post,
             attachments = attachments,
+        )
+    }
+
+    @Transactional
+    fun createExpensePost(
+        userId: Long,
+        tripId: Long,
+        request: CreateExpensePostRequest,
+    ): CreateExpensePostResponse {
+        val creationResult = transactionCreationService.create(
+            userId = userId,
+            tripId = tripId,
+            request = request.toCreateTransactionRequest(),
+        )
+        val post = Post(
+            trip = creationResult.trip,
+            transaction = creationResult.transaction,
+            author = creationResult.actorParticipant,
+            postType = PostType.EXPENSE,
+            title = request.title,
+            category = request.category,
+            content = request.content,
+            occurredAt = request.occurredAt,
+            placeName = request.placeName,
+            latitude = request.latitude,
+            longitude = request.longitude,
+        )
+
+        postRepository.save(post)
+
+        val attachments = saveAttachments(
+            post = post,
+            files = request.files,
+        )
+
+        publishExpensePostCreated(
+            creationResult = creationResult,
+            post = post,
+        )
+
+        return CreateExpensePostResponse(
+            post = PostDetailResponse.from(
+                post = post,
+                attachments = attachments,
+            ),
+            transaction = TransactionDetailResponse.from(
+                transaction = creationResult.transaction,
+                payments = creationResult.payments,
+                shares = creationResult.shares,
+            ),
         )
     }
 
@@ -432,6 +496,38 @@ class PostService(
                     }
                 }
             }
+        )
+    }
+
+    private fun publishExpensePostCreated(
+        creationResult: TransactionCreationResult,
+        post: Post,
+    ) {
+        val recipients = tripNotificationRecipientResolver.findActiveUserIds(
+            tripId = creationResult.trip.id,
+            actorUserId = creationResult.actor.id,
+        ).map(::DefaultOutboxRecipientPayload)
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.POST,
+            aggregateId = post.id,
+            eventType = OutboxEventType.EXPENSE_POST_CREATED,
+            payload = ExpensePostCreatedPayload(
+                recipients = recipients,
+                actorUserId = creationResult.actor.id,
+                tripId = creationResult.trip.id,
+                postId = post.id,
+                transactionId = creationResult.transaction.id,
+                tripName = creationResult.trip.title,
+                actorDisplayName = creationResult.actor.nickname,
+                postType = post.postType.name,
+                title = post.title,
+                amount = creationResult.transaction.amount,
+                currency = creationResult.transaction.currency,
+                baseAmount = creationResult.transaction.baseAmount,
+                baseCurrency = creationResult.transaction.baseCurrency,
+                occurredAt = java.time.Instant.now(),
+            ),
         )
     }
 
