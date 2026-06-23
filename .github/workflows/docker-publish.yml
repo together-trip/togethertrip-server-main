@@ -34,3 +34,12 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/togethertrip-server-main:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/togethertrip-server-main:${{ github.event.workflow_run.head_sha }}
+
+      - name: Trigger infra service deploy
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.INFRA_DEPLOY_TOKEN }}
+          repository: together-trip/togethertrip-infra
+          event-type: deploy-service
+          client-payload: >-
+            {"service":"main","image_tag":"${{ github.event.workflow_run.head_sha }}","container_registry":"${{ secrets.DOCKERHUB_USERNAME }}"}
