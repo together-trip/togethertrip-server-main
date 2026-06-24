@@ -1,7 +1,15 @@
 package com.togethertrip.main.settlement.service
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementConfirmedPayload
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementConfirmedRecipientPayload
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferSummaryItemPayload
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferSummaryPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.settlement.domain.Settlement
+import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.SettlementTransfer
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
@@ -25,12 +33,14 @@ import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import jakarta.persistence.OptimisticLockException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.orm.ObjectOptimisticLockingFailureException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 
@@ -44,6 +54,8 @@ class SettlementService(
     private val settlementAccessResolver: SettlementAccessResolver,
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
+    private val outboxEventPublisher: OutboxEventPublisher,
+    private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
 ) {
 
     private val clock = Clock.systemDefaultZone()
@@ -130,7 +142,13 @@ class SettlementService(
             snapshotPayload = snapshotPayload,
             participants = participants,
         )
-        val transfers = readTransferResponses(settlement)
+        val transferRows = settlementTransferRepository.findTransferRowsBySettlementId(settlement.id)
+        val transfers = transferRows.map(SettlementTransferResponse::from)
+        publishSettlementConfirmed(
+            actor = user,
+            settlement = settlement,
+            transferRows = transferRows,
+        )
 
         return SettlementResponse.from(
             settlement = settlement,
@@ -274,6 +292,59 @@ class SettlementService(
             .read(settlement)
             .balances
             .map(SettlementParticipantBalanceResponse::from)
+    }
+
+    private fun publishSettlementConfirmed(
+        actor: User,
+        settlement: Settlement,
+        transferRows: List<SettlementTransferRow>,
+    ) {
+        val transferRowsBySenderUserId = transferRows
+            .filter { row -> row.getSenderUserId() != null }
+            .groupBy { row -> row.getSenderUserId()!! }
+        val recipients = tripNotificationRecipientResolver.findActiveUserIds(
+            tripId = settlement.trip.id,
+            actorUserId = actor.id,
+        ).map { userId ->
+            SettlementConfirmedRecipientPayload(
+                userId = userId,
+                transferSummary = transferRowsBySenderUserId[userId]?.let(::createTransferSummary),
+            )
+        }
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.SETTLEMENT,
+            aggregateId = settlement.id,
+            eventType = OutboxEventType.SETTLEMENT_CONFIRMED,
+            payload = SettlementConfirmedPayload(
+                recipients = recipients,
+                actorUserId = actor.id,
+                tripId = settlement.trip.id,
+                settlementId = settlement.id,
+                tripName = settlement.trip.title,
+                occurredAt = Instant.now(clock),
+            ),
+        )
+    }
+
+    private fun createTransferSummary(
+        transferRows: List<SettlementTransferRow>,
+    ): SettlementTransferSummaryPayload {
+        val currency = transferRows.first().getCurrency()
+
+        return SettlementTransferSummaryPayload(
+            sendCount = transferRows.size,
+            totalSendAmount = transferRows.fold(BigDecimal.ZERO) { total, row -> total + row.getAmount() },
+            currency = currency,
+            items = transferRows.map { row ->
+                SettlementTransferSummaryItemPayload(
+                    settlementTransferId = row.getId(),
+                    receiverParticipantId = row.getReceiverParticipantId(),
+                    receiverParticipantDisplayName = row.getReceiverDisplayName(),
+                    amount = row.getAmount(),
+                )
+            },
+        )
     }
 
     private fun validateNoConfirmedSettlement(tripId: Long) {

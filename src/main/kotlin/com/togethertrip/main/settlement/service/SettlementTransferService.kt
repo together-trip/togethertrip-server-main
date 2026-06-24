@@ -1,6 +1,12 @@
 package com.togethertrip.main.settlement.service
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipientPayload
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferCompletedPayload
+import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferConfirmedBySenderPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.settlement.domain.SettlementTransferDirection
 import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
@@ -8,16 +14,20 @@ import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
 import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
+import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationResult
 import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationProcessor
 import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.user.domain.UserStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 
 @Service
 class SettlementTransferService(
     private val settlementTransferRepository: SettlementTransferRepository,
     private val settlementAccessResolver: SettlementAccessResolver,
     private val settlementTransferConfirmationProcessor: SettlementTransferConfirmationProcessor,
+    private val outboxEventPublisher: OutboxEventPublisher,
 ) {
     @Transactional(readOnly = true)
     fun getTransfers(
@@ -59,13 +69,22 @@ class SettlementTransferService(
             userId = userId,
             tripId = tripId,
         )
-        val transferRow = settlementTransferConfirmationProcessor.confirmAsSender(
+        val result = settlementTransferConfirmationProcessor.confirmAsSender(
             tripId = tripId,
             transferId = transferId,
             participant = participant,
         )
 
-        return SettlementTransferResponse.from(transferRow)
+        publishSenderConfirmationIfNeeded(
+            actor = participant,
+            result = result,
+        )
+        publishCompletedIfNeeded(
+            actor = participant,
+            result = result,
+        )
+
+        return SettlementTransferResponse.from(result.transferRow)
     }
 
     @Transactional
@@ -78,13 +97,18 @@ class SettlementTransferService(
             userId = userId,
             tripId = tripId,
         )
-        val transferRow = settlementTransferConfirmationProcessor.confirmAsReceiver(
+        val result = settlementTransferConfirmationProcessor.confirmAsReceiver(
             tripId = tripId,
             transferId = transferId,
             participant = participant,
         )
 
-        return SettlementTransferResponse.from(transferRow)
+        publishCompletedIfNeeded(
+            actor = participant,
+            result = result,
+        )
+
+        return SettlementTransferResponse.from(result.transferRow)
     }
 
     private fun matchesDirection(
@@ -105,6 +129,76 @@ class SettlementTransferService(
         } catch (_: IllegalArgumentException) {
             throw BusinessException(SettlementErrorCode.INVALID_SETTLEMENT_TRANSFER_STATUS)
         }
+    }
+
+    private fun publishSenderConfirmationIfNeeded(
+        actor: TripParticipant,
+        result: SettlementTransferConfirmationResult,
+    ) {
+        if (!result.confirmationChanged) {
+            return
+        }
+
+        val transfer = result.transferRow
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.SETTLEMENT_TRANSFER,
+            aggregateId = transfer.getId(),
+            eventType = OutboxEventType.SETTLEMENT_TRANSFER_CONFIRMED_BY_SENDER,
+            payload = SettlementTransferConfirmedBySenderPayload(
+                recipients = listOfNotNull(activeUserIdOrNull(transfer.getReceiverUserId(), transfer.getReceiverUserStatus()))
+                    .map(::DefaultOutboxRecipientPayload),
+                actorUserId = actor.user?.id ?: return,
+                tripId = actor.trip.id,
+                settlementId = transfer.getSettlementId(),
+                settlementTransferId = transfer.getId(),
+                tripName = transfer.getTripName(),
+                actorDisplayName = actor.user?.nickname ?: actor.displayName,
+                amount = transfer.getAmount(),
+                currency = transfer.getCurrency(),
+                occurredAt = Instant.now(),
+            ),
+        )
+    }
+
+    private fun publishCompletedIfNeeded(
+        actor: TripParticipant,
+        result: SettlementTransferConfirmationResult,
+    ) {
+        if (!result.completedChanged) {
+            return
+        }
+
+        val actorUserId = actor.user?.id ?: return
+        val transfer = result.transferRow
+        val recipients = listOfNotNull(
+            activeUserIdOrNull(transfer.getSenderUserId(), transfer.getSenderUserStatus()),
+            activeUserIdOrNull(transfer.getReceiverUserId(), transfer.getReceiverUserStatus()),
+        ).distinct().map(::DefaultOutboxRecipientPayload)
+
+        outboxEventPublisher.publish(
+            aggregateType = OutboxAggregateType.SETTLEMENT_TRANSFER,
+            aggregateId = transfer.getId(),
+            eventType = OutboxEventType.SETTLEMENT_TRANSFER_COMPLETED,
+            payload = SettlementTransferCompletedPayload(
+                recipients = recipients,
+                actorUserId = actorUserId,
+                tripId = actor.trip.id,
+                settlementId = transfer.getSettlementId(),
+                settlementTransferId = transfer.getId(),
+                tripName = transfer.getTripName(),
+                actorDisplayName = actor.user?.nickname ?: actor.displayName,
+                amount = transfer.getAmount(),
+                currency = transfer.getCurrency(),
+                occurredAt = Instant.now(),
+            ),
+        )
+    }
+
+    private fun activeUserIdOrNull(
+        userId: Long?,
+        userStatus: String?,
+    ): Long? {
+        return userId?.takeIf { userStatus == UserStatus.ACTIVE.name }
     }
 
     private companion object {

@@ -1,6 +1,11 @@
 package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.outbox.domain.OutboxEvent
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.trip.TripParticipantJoinedPayload
+import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripInvitation
 import com.togethertrip.main.trip.domain.TripInvitationStatus
@@ -14,17 +19,20 @@ import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripInvitationRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -40,6 +48,9 @@ class TripInviteServiceTest {
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var userRepository: UserRepository
     private lateinit var tripInvitationExpirationService: TripInvitationExpirationService
+    private lateinit var outboxEventRepository: OutboxEventRepository
+    private lateinit var outboxEventPublisher: OutboxEventPublisher
+    private lateinit var tripNotificationRecipientResolver: TripNotificationRecipientResolver
     private lateinit var tripInviteService: TripInviteService
 
     private val clock = Clock.fixed(
@@ -54,12 +65,23 @@ class TripInviteServiceTest {
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         userRepository = mock(UserRepository::class.java)
         tripInvitationExpirationService = mock(TripInvitationExpirationService::class.java)
+        outboxEventRepository = mock(OutboxEventRepository::class.java)
+        outboxEventPublisher = OutboxEventPublisher(
+            outboxEventRepository = outboxEventRepository,
+            objectMapper = jacksonObjectMapper(),
+        )
+        tripNotificationRecipientResolver = TripNotificationRecipientResolver(tripParticipantRepository)
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            invocation.arguments[0] as OutboxEvent
+        }
         tripInviteService = TripInviteService(
             tripRepository = tripRepository,
             tripInvitationRepository = tripInvitationRepository,
             tripParticipantRepository = tripParticipantRepository,
             userRepository = userRepository,
             tripInvitationExpirationService = tripInvitationExpirationService,
+            outboxEventPublisher = outboxEventPublisher,
+            tripNotificationRecipientResolver = tripNotificationRecipientResolver,
             clock = clock,
             inviteBaseUrl = "https://app.test/invites",
         )
@@ -192,6 +214,13 @@ class TripInviteServiceTest {
         `when`(tripParticipantRepository.saveAndFlush(any(TripParticipant::class.java))).thenAnswer { invocation ->
             (invocation.arguments[0] as TripParticipant).apply { id = 200L }
         }
+        `when`(
+            tripParticipantRepository.findActiveUserIdsForNotification(
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE.name,
+                userStatus = UserStatus.ACTIVE.name,
+            )
+        ).thenReturn(listOf(1L, 2L))
 
         val response = tripInviteService.joinTrip(
             userId = 2L,
@@ -204,6 +233,18 @@ class TripInviteServiceTest {
         assertEquals(TripInvitationStatus.USED, invitation.invitationStatus)
         assertEquals(member, invitation.usedBy)
         assertEquals(Instant.parse("2026-06-11T00:00:00Z"), invitation.usedAt)
+
+        val eventCaptor = ArgumentCaptor.forClass(OutboxEvent::class.java)
+        verify(outboxEventRepository).save(eventCaptor.capture())
+        val event = eventCaptor.value
+        val payload = jacksonObjectMapper().readValue(
+            event.payload,
+            TripParticipantJoinedPayload::class.java,
+        )
+        assertEquals(OutboxEventType.TRIP_PARTICIPANT_JOINED.name, event.eventType)
+        assertEquals(listOf(1L), payload.recipients.map { it.userId })
+        assertEquals(200L, payload.participantId)
+        assertEquals("민서", payload.actorDisplayName)
     }
 
     @Test

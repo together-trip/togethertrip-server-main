@@ -39,6 +39,7 @@ import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRe
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsGroupBy
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsPeriod
+import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -66,6 +67,7 @@ class TransactionService(
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
+    private val transactionCreationService: TransactionCreationService,
     private val userRepository: UserRepository,
 ) {
 
@@ -75,59 +77,16 @@ class TransactionService(
         tripId: Long,
         request: CreateTransactionRequest,
     ): TransactionDetailResponse {
-        val user = getActiveUser(userId)
-        val trip = getAccessibleTrip(
+        val result = transactionCreationService.create(
             userId = userId,
             tripId = tripId,
-        )
-        validateWritableTrip(trip)
-        getActiveParticipant(
-            tripId = tripId,
-            participantId = null,
-            userId = userId,
-        )
-
-        val ledgerEntry = request.toLedgerEntry()
-        val currencySnapshot = resolveCurrencySnapshot(
-            currency = ledgerEntry.currency,
-        )
-
-        val transaction = transactionRepository.save(
-            Transaction(
-                trip = trip,
-                createdBy = user,
-                transactionType = ledgerEntry.transactionType,
-                amount = ledgerEntry.amount,
-                currency = currencySnapshot.currency,
-                exchangeRate = currencySnapshot.exchangeRate,
-                baseCurrency = currencySnapshot.baseCurrency,
-                baseAmount = currencySnapshot.convert(ledgerEntry.amount),
-            )
-        )
-        val payments = savePayments(
-            transaction = transaction,
-            tripId = tripId,
-            allocations = ledgerEntry.payments,
-            snapshot = currencySnapshot,
-        )
-        val shares = saveShares(
-            transaction = transaction,
-            tripId = tripId,
-            allocations = ledgerEntry.shares,
-            snapshot = currencySnapshot,
-        )
-
-        recordEvent(
-            trip = trip,
-            transaction = transaction,
-            eventType = TransactionEventType.CREATED,
-            createdBy = user,
+            request = request,
         )
 
         return TransactionDetailResponse.from(
-            transaction = transaction,
-            payments = payments,
-            shares = shares,
+            transaction = result.transaction,
+            payments = result.payments,
+            shares = result.shares,
         )
     }
 

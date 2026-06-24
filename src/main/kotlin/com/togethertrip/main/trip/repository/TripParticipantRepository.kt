@@ -55,6 +55,27 @@ interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
 
     @Query(
         value = """
+        select participant.user_id
+        from trip_participants participant
+        join users user_account on user_account.id = participant.user_id
+        where participant.trip_id = :tripId
+          and participant.participant_status = :participantStatus
+          and participant.deleted_at is null
+          and participant.user_id is not null
+          and user_account.status = :userStatus
+          and user_account.deleted_at is null
+        order by participant.created_at asc, participant.id asc
+        """,
+        nativeQuery = true,
+    )
+    fun findActiveUserIdsForNotification(
+        @Param("tripId") tripId: Long,
+        @Param("participantStatus") participantStatus: String,
+        @Param("userStatus") userStatus: String,
+    ): List<Long>
+
+    @Query(
+        value = """
         select participant.id as "participantId",
                participant.user_id as "userId",
                participant.display_name as "displayName",
