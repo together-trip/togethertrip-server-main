@@ -16,6 +16,7 @@ data class TripDetailResponse(
     val endDate: LocalDate?,
     val tripStatus: TripStatus,
     val settlementStatus: TripSettlementStatus,
+    val settlementDisplayStatus: TripSettlementDisplayStatus,
     val settledAt: Instant?,
     val countries: List<TripCountryResponse>,
     val participants: List<TripParticipantSummaryResponse>,
@@ -25,6 +26,8 @@ data class TripDetailResponse(
             trip: Trip,
             countries: List<TripCountryResponse>,
             participants: List<TripParticipantSummaryResponse>,
+            settlementDisplayStatus: TripSettlementDisplayStatus =
+                TripSettlementDisplayStatus.fromTripStatus(trip.settlementStatus),
         ): TripDetailResponse {
             return TripDetailResponse(
                 id = trip.id,
@@ -36,6 +39,7 @@ data class TripDetailResponse(
                 endDate = trip.endDate,
                 tripStatus = trip.tripStatus,
                 settlementStatus = trip.settlementStatus,
+                settlementDisplayStatus = settlementDisplayStatus,
                 settledAt = trip.settledAt,
                 countries = countries,
                 participants = participants,

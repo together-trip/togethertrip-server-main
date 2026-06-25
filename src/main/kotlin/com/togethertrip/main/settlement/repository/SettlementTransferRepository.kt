@@ -2,6 +2,7 @@ package com.togethertrip.main.settlement.repository
 
 import com.togethertrip.main.settlement.domain.SettlementTransfer
 import com.togethertrip.main.settlement.domain.SettlementTransferRow
+import com.togethertrip.main.settlement.repository.projection.SettlementTransferCompletionSummary
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -11,6 +12,44 @@ import java.time.Instant
 interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long> {
 
     fun findByIdAndDeletedAtIsNull(id: Long): SettlementTransfer?
+
+    @Query(
+        value = """
+        select settlement.trip_id as "tripId",
+               count(transfer.id) as "totalCount",
+               sum(case when transfer.status = 'COMPLETED' then 0 else 1 end) as "incompleteCount"
+        from settlements settlement
+        join settlement_transfers transfer on transfer.settlement_id = settlement.id
+        where settlement.deleted_at is null
+          and transfer.deleted_at is null
+          and settlement.status = 'CONFIRMED'
+          and settlement.trip_id in (:tripIds)
+        group by settlement.trip_id
+        """,
+        nativeQuery = true
+    )
+    fun findCompletionSummariesByTripIds(
+        @Param("tripIds") tripIds: Collection<Long>,
+    ): List<SettlementTransferCompletionSummary>
+
+    @Query(
+        value = """
+        select settlement.trip_id as "tripId",
+               count(transfer.id) as "totalCount",
+               sum(case when transfer.status = 'COMPLETED' then 0 else 1 end) as "incompleteCount"
+        from settlements settlement
+        join settlement_transfers transfer on transfer.settlement_id = settlement.id
+        where settlement.deleted_at is null
+          and transfer.deleted_at is null
+          and settlement.status = 'CONFIRMED'
+          and settlement.trip_id = :tripId
+        group by settlement.trip_id
+        """,
+        nativeQuery = true
+    )
+    fun findCompletionSummaryByTripId(
+        @Param("tripId") tripId: Long,
+    ): SettlementTransferCompletionSummary?
 
     @Query(
         value = """

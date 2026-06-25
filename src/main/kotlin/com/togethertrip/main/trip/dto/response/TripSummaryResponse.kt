@@ -13,10 +13,15 @@ data class TripSummaryResponse(
     val endDate: LocalDate?,
     val tripStatus: TripStatus,
     val settlementStatus: TripSettlementStatus,
+    val settlementDisplayStatus: TripSettlementDisplayStatus,
     val ownerUserId: Long,
 ) {
     companion object {
-        fun from(trip: Trip): TripSummaryResponse {
+        fun from(
+            trip: Trip,
+            settlementDisplayStatus: TripSettlementDisplayStatus =
+                TripSettlementDisplayStatus.fromTripStatus(trip.settlementStatus),
+        ): TripSummaryResponse {
             return TripSummaryResponse(
                 id = trip.id,
                 title = trip.title,
@@ -25,6 +30,7 @@ data class TripSummaryResponse(
                 endDate = trip.endDate,
                 tripStatus = trip.tripStatus,
                 settlementStatus = trip.settlementStatus,
+                settlementDisplayStatus = settlementDisplayStatus,
                 ownerUserId = trip.ownerUser.id,
             )
         }

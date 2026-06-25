@@ -8,6 +8,8 @@ import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipient
 import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPayload
 import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
+import com.togethertrip.main.settlement.repository.SettlementTransferRepository
+import com.togethertrip.main.settlement.repository.projection.SettlementTransferCompletionSummary
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripCountry
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -25,6 +27,7 @@ import com.togethertrip.main.trip.dto.response.TripCountryResponse
 import com.togethertrip.main.trip.dto.response.TripDetailResponse
 import com.togethertrip.main.trip.dto.response.TripListResponse
 import com.togethertrip.main.trip.dto.response.TripParticipantSummaryResponse
+import com.togethertrip.main.trip.dto.response.TripSettlementDisplayStatus
 import com.togethertrip.main.trip.dto.response.TripSummaryResponse
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.pagination.TripCursor
@@ -48,6 +51,7 @@ class TripService(
     private val tripRepository: TripRepository,
     private val tripCountryRepository: TripCountryRepository,
     private val tripParticipantRepository: TripParticipantRepository,
+    private val settlementTransferRepository: SettlementTransferRepository,
     private val userRepository: UserRepository,
     private val profileImageUrlPolicy: ProfileImageUrlPolicy,
     private val outboxEventPublisher: OutboxEventPublisher,
@@ -133,7 +137,14 @@ class TripService(
         val hasNext = trips.size > requestedSize
         val visibleTrips = if (hasNext) trips.take(requestedSize) else trips
 
-        val items = visibleTrips.map(TripSummaryResponse::from)
+        val displayStatusByTripId = findSettlementDisplayStatusByTripId(visibleTrips)
+        val items = visibleTrips.map { trip ->
+            TripSummaryResponse.from(
+                trip = trip,
+                settlementDisplayStatus = displayStatusByTripId[trip.id]
+                    ?: resolveSettlementDisplayStatus(trip, null),
+            )
+        }
         val nextCursor = visibleTrips
             .lastOrNull()
             ?.takeIf { hasNext }
@@ -226,7 +237,52 @@ class TripService(
             trip = trip,
             countries = countries,
             participants = participants,
+            settlementDisplayStatus = resolveSettlementDisplayStatus(
+                trip = trip,
+                completionSummary = settlementTransferRepository.findCompletionSummaryByTripId(trip.id),
+            ),
         )
+    }
+
+    private fun findSettlementDisplayStatusByTripId(
+        trips: List<Trip>,
+    ): Map<Long, TripSettlementDisplayStatus> {
+        if (trips.isEmpty()) {
+            return emptyMap()
+        }
+
+        val completionSummaryByTripId = settlementTransferRepository
+            .findCompletionSummariesByTripIds(trips.map { it.id })
+            .associateBy { it.tripId }
+
+        return trips.associate { trip ->
+            trip.id to resolveSettlementDisplayStatus(
+                trip = trip,
+                completionSummary = completionSummaryByTripId[trip.id],
+            )
+        }
+    }
+
+    private fun resolveSettlementDisplayStatus(
+        trip: Trip,
+        completionSummary: SettlementTransferCompletionSummary?,
+    ): TripSettlementDisplayStatus {
+        if (trip.settlementStatus == TripSettlementStatus.NOT_STARTED) {
+            return TripSettlementDisplayStatus.NOT_STARTED
+        }
+        if (completionSummary != null && completionSummary.totalCount > 0) {
+            return if (completionSummary.incompleteCount > 0) {
+                TripSettlementDisplayStatus.IN_PROGRESS
+            } else {
+                TripSettlementDisplayStatus.COMPLETED
+            }
+        }
+
+        return when (trip.settlementStatus) {
+            TripSettlementStatus.NOT_STARTED -> TripSettlementDisplayStatus.NOT_STARTED
+            TripSettlementStatus.IN_PROGRESS -> TripSettlementDisplayStatus.IN_PROGRESS
+            TripSettlementStatus.SETTLED -> TripSettlementDisplayStatus.COMPLETED
+        }
     }
 
     private fun saveTripCountries(

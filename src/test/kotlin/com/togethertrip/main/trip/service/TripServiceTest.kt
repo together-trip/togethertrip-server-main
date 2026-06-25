@@ -8,17 +8,21 @@ import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPay
 import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
 import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
+import com.togethertrip.main.settlement.repository.SettlementTransferRepository
+import com.togethertrip.main.settlement.repository.projection.SettlementTransferCompletionSummary
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripCountry
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.domain.TripStatus
 import com.togethertrip.main.trip.dto.request.CreateTripRequest
 import com.togethertrip.main.trip.dto.request.TripCompanionInput
 import com.togethertrip.main.trip.dto.request.TripCountryInput
 import com.togethertrip.main.trip.dto.request.UpdateTripCountriesRequest
 import com.togethertrip.main.trip.dto.request.UpdateTripRequest
+import com.togethertrip.main.trip.dto.response.TripSettlementDisplayStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripCountryRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
@@ -49,6 +53,7 @@ class TripServiceTest {
     private lateinit var tripRepository: TripRepository
     private lateinit var tripCountryRepository: TripCountryRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
+    private lateinit var settlementTransferRepository: SettlementTransferRepository
     private lateinit var userRepository: UserRepository
     private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
     private lateinit var outboxEventRepository: OutboxEventRepository
@@ -61,6 +66,7 @@ class TripServiceTest {
         tripRepository = mock(TripRepository::class.java)
         tripCountryRepository = mock(TripCountryRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
+        settlementTransferRepository = mock(SettlementTransferRepository::class.java)
         userRepository = mock(UserRepository::class.java)
         outboxEventRepository = mock(OutboxEventRepository::class.java)
         outboxEventPublisher = OutboxEventPublisher(
@@ -78,6 +84,7 @@ class TripServiceTest {
             tripRepository = tripRepository,
             tripCountryRepository = tripCountryRepository,
             tripParticipantRepository = tripParticipantRepository,
+            settlementTransferRepository = settlementTransferRepository,
             userRepository = userRepository,
             profileImageUrlPolicy = profileImageUrlPolicy,
             outboxEventPublisher = outboxEventPublisher,
@@ -287,6 +294,7 @@ class TripServiceTest {
                 PageRequest.of(0, 21),
             )
         ).thenReturn(listOf(trip))
+        `when`(settlementTransferRepository.findCompletionSummariesByTripIds(listOf(10L))).thenReturn(emptyList())
 
         val response = tripService.getTrips(
             userId = 1L,
@@ -298,8 +306,108 @@ class TripServiceTest {
         assertEquals(1, response.items.size)
         assertEquals(10L, response.items.first().id)
         assertEquals(TripStatus.ONGOING, response.items.first().tripStatus)
+        assertEquals(TripSettlementDisplayStatus.NOT_STARTED, response.items.first().settlementDisplayStatus)
         assertEquals(false, response.hasNext)
         assertEquals(null, response.nextCursor)
+    }
+
+    @Test
+    fun `여행 목록은 정산 시작 전 표시 상태를 내려준다`() {
+        val user = createUser()
+        val trip = createTrip(ownerUser = user).apply {
+            settlementStatus = TripSettlementStatus.NOT_STARTED
+        }
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(
+            tripRepository.findAccessibleTrips(
+                1L,
+                null,
+                PageRequest.of(0, 21),
+            )
+        ).thenReturn(listOf(trip))
+        `when`(settlementTransferRepository.findCompletionSummariesByTripIds(listOf(10L))).thenReturn(emptyList())
+
+        val response = tripService.getTrips(
+            userId = 1L,
+            status = null,
+            cursor = null,
+            size = 20,
+        )
+
+        assertEquals(TripSettlementDisplayStatus.NOT_STARTED, response.items.first().settlementDisplayStatus)
+    }
+
+    @Test
+    fun `여행 목록은 미완료 송금이 남으면 정산 진행중 표시 상태를 내려준다`() {
+        val user = createUser()
+        val trip = createTrip(ownerUser = user).apply {
+            settlementStatus = TripSettlementStatus.SETTLED
+        }
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(
+            tripRepository.findAccessibleTrips(
+                1L,
+                null,
+                PageRequest.of(0, 21),
+            )
+        ).thenReturn(listOf(trip))
+        `when`(settlementTransferRepository.findCompletionSummariesByTripIds(listOf(10L)))
+            .thenReturn(
+                listOf(
+                    settlementTransferCompletionSummary(
+                        tripId = 10L,
+                        totalCount = 2L,
+                        incompleteCount = 1L,
+                    )
+                )
+            )
+
+        val response = tripService.getTrips(
+            userId = 1L,
+            status = null,
+            cursor = null,
+            size = 20,
+        )
+
+        assertEquals(TripSettlementDisplayStatus.IN_PROGRESS, response.items.first().settlementDisplayStatus)
+    }
+
+    @Test
+    fun `여행 상세는 모든 송금이 완료되면 정산 완료 표시 상태를 내려준다`() {
+        val owner = createUser(id = 2L, nickname = "방장")
+        val requester = createUser(id = 1L)
+        val trip = createTrip(ownerUser = owner).apply {
+            settlementStatus = TripSettlementStatus.IN_PROGRESS
+        }
+        val participant = createParticipant(
+            id = 101L,
+            trip = trip,
+            user = requester,
+            role = TripParticipantRole.MEMBER,
+        )
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(requester)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(10L, 1L)).thenReturn(participant)
+        `when`(tripCountryRepository.findByTripIdAndDeletedAtIsNullOrderBySortOrderAsc(10L)).thenReturn(emptyList())
+        `when`(tripParticipantRepository.findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(10L)).thenReturn(listOf(participant))
+        `when`(settlementTransferRepository.findCompletionSummaryByTripId(10L))
+            .thenReturn(
+                settlementTransferCompletionSummary(
+                    tripId = 10L,
+                    totalCount = 2L,
+                    incompleteCount = 0L,
+                )
+            )
+
+        val response = tripService.getTrip(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        assertEquals(TripSettlementDisplayStatus.COMPLETED, response.settlementDisplayStatus)
     }
 
     @Test
@@ -345,6 +453,7 @@ class TripServiceTest {
                 PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(firstTrip, secondTrip, extraTrip))
+        `when`(settlementTransferRepository.findCompletionSummariesByTripIds(listOf(10L, 9L))).thenReturn(emptyList())
 
         val response = tripService.getTrips(
             userId = 1L,
@@ -550,6 +659,18 @@ class TripServiceTest {
             sortOrder = 0,
         ).apply {
             id = 200L
+        }
+    }
+
+    private fun settlementTransferCompletionSummary(
+        tripId: Long,
+        totalCount: Long,
+        incompleteCount: Long,
+    ): SettlementTransferCompletionSummary {
+        return object : SettlementTransferCompletionSummary {
+            override val tripId = tripId
+            override val totalCount = totalCount
+            override val incompleteCount = incompleteCount
         }
     }
 
