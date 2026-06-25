@@ -17,6 +17,8 @@ import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
 import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationResult
 import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationProcessor
 import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.trip.domain.TripSettlementStatus
+import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.user.domain.UserStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -25,6 +27,7 @@ import java.time.Instant
 @Service
 class SettlementTransferService(
     private val settlementTransferRepository: SettlementTransferRepository,
+    private val tripRepository: TripRepository,
     private val settlementAccessResolver: SettlementAccessResolver,
     private val settlementTransferConfirmationProcessor: SettlementTransferConfirmationProcessor,
     private val outboxEventPublisher: OutboxEventPublisher,
@@ -83,6 +86,7 @@ class SettlementTransferService(
             actor = participant,
             result = result,
         )
+        markTripSettledIfAllTransfersCompleted(participant, result)
 
         return SettlementTransferResponse.from(result.transferRow)
     }
@@ -107,8 +111,30 @@ class SettlementTransferService(
             actor = participant,
             result = result,
         )
+        markTripSettledIfAllTransfersCompleted(participant, result)
 
         return SettlementTransferResponse.from(result.transferRow)
+    }
+
+    private fun markTripSettledIfAllTransfersCompleted(
+        participant: TripParticipant,
+        result: SettlementTransferConfirmationResult,
+    ) {
+        if (!result.completedChanged) {
+            return
+        }
+
+        val trip = participant.trip
+        if (trip.settlementStatus == TripSettlementStatus.SETTLED) {
+            return
+        }
+
+        val completionSummary = settlementTransferRepository.findCompletionSummaryByTripId(trip.id)
+            ?: return
+        if (completionSummary.totalCount > 0 && completionSummary.incompleteCount == 0L) {
+            trip.markSettled()
+            tripRepository.save(trip)
+        }
     }
 
     private fun matchesDirection(

@@ -226,12 +226,16 @@ class SettlementService(
 
         try {
             val savedSettlement = settlementRepository.saveAndFlush(settlement)
-            saveTransfers(
+            val savedTransfers = saveTransfers(
                 settlement = savedSettlement,
                 calculation = calculation,
                 participants = participants,
             )
-            trip.markSettled(Instant.now(clock))
+            if (savedTransfers.all { it.status == SettlementTransferStatus.COMPLETED }) {
+                trip.markSettled(Instant.now(clock))
+            } else {
+                trip.markSettlementInProgress(Instant.now(clock))
+            }
             tripRepository.saveAndFlush(trip)
 
             return savedSettlement

@@ -2,6 +2,8 @@ package com.togethertrip.main.settlement.dto.response
 
 import com.togethertrip.main.settlement.domain.Settlement
 import com.togethertrip.main.settlement.domain.SettlementStatus
+import com.togethertrip.main.settlement.domain.SettlementTransferStatus
+import com.togethertrip.main.trip.dto.response.TripSettlementDisplayStatus
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -9,6 +11,7 @@ data class SettlementResponse(
     val id: Long,
     val tripId: Long,
     val status: SettlementStatus,
+    val settlementDisplayStatus: TripSettlementDisplayStatus,
     val tripExpenseVersion: Long,
     val calculationVersion: String,
     val baseCurrency: String,
@@ -29,6 +32,7 @@ data class SettlementResponse(
                 id = settlement.id,
                 tripId = settlement.trip.id,
                 status = settlement.status,
+                settlementDisplayStatus = resolveDisplayStatus(transfers),
                 tripExpenseVersion = settlement.tripExpenseVersion,
                 calculationVersion = settlement.calculationVersion,
                 baseCurrency = settlement.baseCurrency,
@@ -39,6 +43,16 @@ data class SettlementResponse(
                 balances = balances,
                 transfers = transfers,
             )
+        }
+
+        private fun resolveDisplayStatus(
+            transfers: List<SettlementTransferResponse>,
+        ): TripSettlementDisplayStatus {
+            return if (transfers.any { it.status != SettlementTransferStatus.COMPLETED }) {
+                TripSettlementDisplayStatus.IN_PROGRESS
+            } else {
+                TripSettlementDisplayStatus.COMPLETED
+            }
         }
     }
 }

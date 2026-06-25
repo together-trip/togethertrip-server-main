@@ -14,12 +14,15 @@ import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
+import com.togethertrip.main.settlement.repository.projection.SettlementTransferCompletionSummary
 import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
 import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationProcessor
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
+import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -39,6 +42,7 @@ import kotlin.test.assertEquals
 class SettlementTransferServiceTest {
 
     private lateinit var settlementTransferRepository: SettlementTransferRepository
+    private lateinit var tripRepository: TripRepository
     private lateinit var settlementAccessResolver: SettlementAccessResolver
     private lateinit var outboxEventRepository: OutboxEventRepository
     private lateinit var settlementTransferService: SettlementTransferService
@@ -46,10 +50,12 @@ class SettlementTransferServiceTest {
     @BeforeEach
     fun setUp() {
         settlementTransferRepository = mock(SettlementTransferRepository::class.java)
+        tripRepository = mock(TripRepository::class.java)
         settlementAccessResolver = mock(SettlementAccessResolver::class.java)
         outboxEventRepository = mock(OutboxEventRepository::class.java)
         settlementTransferService = SettlementTransferService(
             settlementTransferRepository = settlementTransferRepository,
+            tripRepository = tripRepository,
             settlementAccessResolver = settlementAccessResolver,
             settlementTransferConfirmationProcessor = SettlementTransferConfirmationProcessor(
                 settlementTransferRepository = settlementTransferRepository,
@@ -460,6 +466,61 @@ class SettlementTransferServiceTest {
     }
 
     @Test
+    fun `마지막 송금이 완료되면 여행 정산 상태를 완료로 변경한다`() {
+        val trip = createTrip().apply {
+            settlementStatus = TripSettlementStatus.IN_PROGRESS
+        }
+        val receiver = createParticipant(
+            id = 200L,
+            trip = trip,
+        )
+        val transfer = createTransfer(
+            trip = trip,
+            sender = createParticipant(id = 100L, trip = trip),
+            receiver = receiver,
+        )
+        val transferRow = transferRow(
+            id = 40L,
+            senderParticipantId = 100L,
+            receiverParticipantId = 200L,
+            status = SettlementTransferStatus.COMPLETED,
+            senderConfirmedAt = Instant.parse("2026-06-08T00:30:00Z"),
+            receiverConfirmedAt = Instant.parse("2026-06-08T01:00:00Z"),
+            completedAt = Instant.parse("2026-06-08T01:00:00Z"),
+        )
+
+        mockTransferConfirmation(
+            activeParticipant = receiver,
+            transfer = transfer,
+            transferRow = transferRow,
+        )
+        `when`(
+            settlementTransferRepository.confirmAsReceiverIfNeeded(
+                transferId = eqLong(40L),
+                tripId = eqLong(10L),
+                participantId = eqLong(200L),
+                confirmedAt = anyInstant(),
+            )
+        ).thenReturn(1)
+        `when`(settlementTransferRepository.findCompletionSummaryByTripId(10L))
+            .thenReturn(
+                settlementTransferCompletionSummary(
+                    totalCount = 2L,
+                    incompleteCount = 0L,
+                )
+            )
+
+        settlementTransferService.confirmAsReceiver(
+            userId = 1L,
+            tripId = 10L,
+            transferId = 40L,
+        )
+
+        assertEquals(TripSettlementStatus.SETTLED, trip.settlementStatus)
+        verify(tripRepository).save(trip)
+    }
+
+    @Test
     fun `transfer가 다른 여행에 속하면 확인이 실패한다`() {
         val participant = createParticipant(id = 100L)
         val transfer = createTransfer(
@@ -607,10 +668,11 @@ class SettlementTransferServiceTest {
 
     private fun createParticipant(
         id: Long,
+        trip: Trip = createTrip(),
         role: TripParticipantRole = TripParticipantRole.MEMBER,
     ): TripParticipant {
         return TripParticipant(
-            trip = createTrip(),
+            trip = trip,
             user = createUser(id),
             displayName = "참여자$id",
             participantRole = role,
@@ -686,6 +748,19 @@ class SettlementTransferServiceTest {
 
             override fun getAutoConfirmed(): Boolean =
                 senderConfirmedAt != null || receiverConfirmedAt != null || completedAt != null
+        }
+    }
+
+    private fun settlementTransferCompletionSummary(
+        totalCount: Long,
+        incompleteCount: Long,
+    ): SettlementTransferCompletionSummary {
+        return object : SettlementTransferCompletionSummary {
+            override val tripId = 10L
+
+            override val totalCount = totalCount
+
+            override val incompleteCount = incompleteCount
         }
     }
 
