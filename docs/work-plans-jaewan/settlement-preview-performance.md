@@ -71,5 +71,5 @@ settlement-preview 대량 정산 데이터 응답 지연 개선
 - `20260626-160032` k6 결과에서 전체 threshold는 통과했지만, endpoint별 지표상 `transaction-statistics`가 p95 `405.02ms`로 가장 큰 잔여 병목이었다.
 - 부하 테스트 호출은 `groupBy=category`이며 기간 필터가 없다. seed 데이터는 `transactions=100,000`을 생성하지만 posts는 생성하지 않아 모든 거래가 `UNCATEGORIZED`로 집계된다.
 - 기존 category 통계 쿼리는 각 거래마다 연결된 첫 게시글을 correlated subquery로 찾았다. posts가 없거나 적은 데이터에서도 거래 100,000건 기준 반복 탐색 비용이 발생한다.
-- category 통계를 `first_posts` CTE로 변경해 여행의 연결 게시글 후보를 먼저 `trip_id`로 좁힌 뒤 transactions에 조인하도록 바꿨다. 대표 게시글은 기존과 동일하게 가장 작은 post id를 사용한다.
-- `V17__add_transaction_statistics_query_indexes.sql`에 `posts(trip_id, transaction_id, id) INCLUDE (occurred_at, category)` partial index를 추가해 CTE가 여행 단위 post 후보를 효율적으로 읽도록 했다.
+- category 통계를 first-post derived subquery로 변경해 여행의 연결 게시글 후보를 먼저 `trip_id`로 좁힌 뒤 transactions에 조인하도록 바꿨다. 대표 게시글은 기존과 동일하게 가장 작은 post id를 사용한다.
+- `V17__add_transaction_statistics_query_indexes.sql`에 `posts(trip_id, transaction_id, id) INCLUDE (occurred_at, category)` partial index를 추가해 subquery가 여행 단위 post 후보를 효율적으로 읽도록 했다.

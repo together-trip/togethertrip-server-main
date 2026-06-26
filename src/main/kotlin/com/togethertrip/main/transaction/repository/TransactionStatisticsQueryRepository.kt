@@ -104,23 +104,22 @@ class TransactionStatisticsQueryRepository(
         // 카테고리와 발생일은 연결된 거래 게시글 정보를 우선 사용한다.
         return entityManager.createNativeQuery(
             """
-            with first_posts as (
-                select distinct on (post.transaction_id)
-                       post.transaction_id,
-                       post.category,
-                       post.occurred_at
-                from posts post
-                where post.deleted_at is null
-                  and post.trip_id = :tripId
-                  and post.transaction_id is not null
-                order by post.transaction_id, post.id
-            )
             select coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_key,
                    coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_label,
                    count(tx.id) as transaction_count,
                    coalesce(sum(tx.base_amount), 0) as total_base_amount
             from transactions tx
-            left join first_posts post on post.transaction_id = tx.id
+            left join (
+                select distinct on (candidate.transaction_id)
+                       candidate.transaction_id,
+                       candidate.category,
+                       candidate.occurred_at
+                from posts candidate
+                where candidate.deleted_at is null
+                  and candidate.trip_id = :tripId
+                  and candidate.transaction_id is not null
+                order by candidate.transaction_id, candidate.id
+            ) post on post.transaction_id = tx.id
             where tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
@@ -246,22 +245,21 @@ class TransactionStatisticsQueryRepository(
     ): List<TransactionStatisticsRow> {
         return entityManager.createNativeQuery(
             """
-            with first_posts as (
-                select distinct on (post.transaction_id)
-                       post.transaction_id,
-                       post.category
-                from posts post
-                where post.deleted_at is null
-                  and post.trip_id = :tripId
-                  and post.transaction_id is not null
-                order by post.transaction_id, post.id
-            )
             select coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_key,
                    coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_label,
                    count(tx.id) as transaction_count,
                    coalesce(sum(tx.base_amount), 0) as total_base_amount
             from transactions tx
-            left join first_posts post on post.transaction_id = tx.id
+            left join (
+                select distinct on (candidate.transaction_id)
+                       candidate.transaction_id,
+                       candidate.category
+                from posts candidate
+                where candidate.deleted_at is null
+                  and candidate.trip_id = :tripId
+                  and candidate.transaction_id is not null
+                order by candidate.transaction_id, candidate.id
+            ) post on post.transaction_id = tx.id
             where tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
