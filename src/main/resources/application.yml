@@ -75,6 +75,10 @@ springdoc:
     enabled: ${SPRINGDOC_API_DOCS_ENABLED}
     path: /v3/api-docs
 
+openapi:
+  server:
+    url: ${OPENAPI_SERVER_URL:http://localhost:8080}
+
 post:
   attachments:
     local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH}

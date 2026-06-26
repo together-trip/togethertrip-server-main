@@ -5,6 +5,7 @@ import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.dto.response.TripSettlementDisplayStatus
 import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
@@ -69,6 +70,7 @@ class SettlementShareResponseTest {
         )
 
         assertEquals(SettlementStatus.CONFIRMED, response.status)
+        assertEquals(TripSettlementDisplayStatus.IN_PROGRESS, response.settlementDisplayStatus)
         assertEquals("가나다", response.balances.single().displayName)
         assertEquals(BigDecimal("10000.00"), response.balances.single().paidAmount)
         assertEquals("보낼 사람", response.transfers.single().senderDisplayName)

@@ -28,6 +28,8 @@ import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripSettlementStatus
+import com.togethertrip.main.trip.dto.response.TripSettlementDisplayStatus
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
@@ -145,6 +147,8 @@ class SettlementServiceTest {
         )
 
         assertEquals(40L, response.transfers.single().id)
+        assertEquals(TripSettlementStatus.IN_PROGRESS, trip.settlementStatus)
+        assertEquals(TripSettlementDisplayStatus.IN_PROGRESS, response.settlementDisplayStatus)
     }
 
     @Test
@@ -612,6 +616,8 @@ class SettlementServiceTest {
         assertEquals(SettlementTransferStatus.COMPLETED, savedTransfer.status)
         assertEquals(40L, response.transfers.single().id)
         assertEquals(SettlementTransferStatus.COMPLETED, response.transfers.single().status)
+        assertEquals(TripSettlementDisplayStatus.COMPLETED, response.settlementDisplayStatus)
+        assertEquals(TripSettlementStatus.SETTLED, trip.settlementStatus)
     }
 
     private fun mockConfirmBase(

@@ -85,4 +85,10 @@ class Trip(
         this.settledAt = settledAt
         updatedAt = settledAt
     }
+
+    fun markSettlementInProgress(startedAt: Instant = Instant.now()) {
+        settlementStatus = TripSettlementStatus.IN_PROGRESS
+        settledAt = null
+        updatedAt = startedAt
+    }
 }

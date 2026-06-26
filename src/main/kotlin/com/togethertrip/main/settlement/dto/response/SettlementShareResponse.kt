@@ -3,11 +3,13 @@ package com.togethertrip.main.settlement.dto.response
 import com.togethertrip.main.settlement.domain.Settlement
 import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
+import com.togethertrip.main.trip.dto.response.TripSettlementDisplayStatus
 import java.math.BigDecimal
 import java.time.Instant
 
 data class SettlementShareResponse(
     val status: SettlementStatus,
+    val settlementDisplayStatus: TripSettlementDisplayStatus,
     val baseCurrency: String,
     val totalExpenseAmount: BigDecimal,
     val totalShareAmount: BigDecimal,
@@ -23,6 +25,7 @@ data class SettlementShareResponse(
         ): SettlementShareResponse {
             return SettlementShareResponse(
                 status = settlement.status,
+                settlementDisplayStatus = resolveDisplayStatus(transfers),
                 baseCurrency = settlement.baseCurrency,
                 totalExpenseAmount = settlement.totalExpenseAmount,
                 totalShareAmount = settlement.totalShareAmount,
@@ -30,6 +33,16 @@ data class SettlementShareResponse(
                 balances = balances.map(SettlementShareBalanceResponse::from),
                 transfers = transfers.map(SettlementShareTransferResponse::from),
             )
+        }
+
+        private fun resolveDisplayStatus(
+            transfers: List<SettlementTransferResponse>,
+        ): TripSettlementDisplayStatus {
+            return if (transfers.any { it.status != SettlementTransferStatus.COMPLETED }) {
+                TripSettlementDisplayStatus.IN_PROGRESS
+            } else {
+                TripSettlementDisplayStatus.COMPLETED
+            }
         }
     }
 }

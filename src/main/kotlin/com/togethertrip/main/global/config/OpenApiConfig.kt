@@ -5,11 +5,16 @@ import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.security.SecurityRequirement
 import io.swagger.v3.oas.models.security.SecurityScheme
+import io.swagger.v3.oas.models.servers.Server
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 @Configuration
-class OpenApiConfig {
+class OpenApiConfig(
+    @Value("\${openapi.server.url:http://localhost:8080}")
+    private val openApiServerUrl: String,
+) {
 
     @Bean
     fun openApi(): OpenAPI {
@@ -38,5 +43,12 @@ class OpenApiConfig {
                 Components().addSecuritySchemes("bearerAuth", bearerScheme)
             )
             .addSecurityItem(SecurityRequirement().addList("bearerAuth"))
+            .servers(
+                listOf(
+                    Server()
+                        .url(openApiServerUrl)
+                        .description("Gateway")
+                )
+            )
     }
 }
