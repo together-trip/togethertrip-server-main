@@ -117,11 +117,15 @@ class AuthService(
         // 인증번호 확인
         val confirmedPhoneVerification = phoneVerificationService.confirmCode(request)
         // 인증된 전화번호로 회원가입 완료
-        val user = completeSignup(
-            session = session,
-            temporaryToken = request.temporaryToken,
-            confirmedPhoneVerification = confirmedPhoneVerification,
-        )
+        val user = try {
+            completeSignup(
+                session = session,
+                temporaryToken = request.temporaryToken,
+                confirmedPhoneVerification = confirmedPhoneVerification,
+            )
+        } catch (_: DataIntegrityViolationException) {
+            rejectPhoneNumberAlreadyUsed(request.temporaryToken)
+        }
 
         // 가입 상태 저장 및 인증 세션 삭제
         flushSignupState(request.temporaryToken)
@@ -365,9 +369,13 @@ class AuthService(
             // 가입 상태 DB 반영
             userRepository.flush()
         } catch (_: DataIntegrityViolationException) {
-            phoneVerificationService.deleteTemporarySession(temporaryToken)
-            throw BusinessException(AuthErrorCode.PHONE_NUMBER_ALREADY_USED)
+            rejectPhoneNumberAlreadyUsed(temporaryToken)
         }
+    }
+
+    private fun rejectPhoneNumberAlreadyUsed(temporaryToken: String): Nothing {
+        phoneVerificationService.deleteTemporarySession(temporaryToken)
+        throw BusinessException(AuthErrorCode.PHONE_NUMBER_ALREADY_USED)
     }
 
     private fun issueTokens(user: User): TokenResponse {

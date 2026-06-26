@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import org.springframework.dao.DataIntegrityViolationException
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -424,6 +425,56 @@ class AuthServiceTest {
         }
 
         assertEquals(AuthErrorCode.PHONE_VERIFICATION_TOKEN_EXPIRED, exception.errorCode)
+        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
+    }
+
+    @Test
+    fun `신규 가입 저장 단계의 전화번호 unique 충돌은 전화번호 중복으로 변환한다`() {
+        val session = OAuthTemporarySession(
+            provider = OAuthProvider.KAKAO,
+            providerUserId = "kakao-123",
+            nickname = "여행자",
+            profileImageUrl = null,
+            existingUserId = null,
+        )
+
+        `when`(temporarySessionService.get("temporary-token"))
+            .thenReturn(session)
+        `when`(
+            oauthAccountRepository.findByProviderAndProviderUserId(
+                provider = OAuthProvider.KAKAO,
+                providerUserId = "kakao-123",
+            )
+        ).thenReturn(null)
+        `when`(phoneVerificationService.confirmCode(
+            ConfirmPhoneVerificationRequest(
+                temporaryToken = "temporary-token",
+                phoneNumber = "010-3333-4444",
+                code = "123456",
+            )
+        )).thenReturn(
+            ConfirmedPhoneVerification(
+                session = session,
+                phoneNumberHash = "phone-hash-3333",
+                phoneNumberHashVersion = "v1",
+            )
+        )
+        `when`(userRepository.existsByPhoneNumberHashAndDeletedAtIsNull("phone-hash-3333"))
+            .thenReturn(false)
+        `when`(userRepository.save(org.mockito.Mockito.any(User::class.java)))
+            .thenThrow(DataIntegrityViolationException("duplicate phone hash"))
+
+        val exception = assertFailsWith<BusinessException> {
+            authService.confirmPhoneVerification(
+                ConfirmPhoneVerificationRequest(
+                    temporaryToken = "temporary-token",
+                    phoneNumber = "010-3333-4444",
+                    code = "123456",
+                )
+            )
+        }
+
+        assertEquals(AuthErrorCode.PHONE_NUMBER_ALREADY_USED, exception.errorCode)
         verify(phoneVerificationService).deleteTemporarySession("temporary-token")
     }
 }
