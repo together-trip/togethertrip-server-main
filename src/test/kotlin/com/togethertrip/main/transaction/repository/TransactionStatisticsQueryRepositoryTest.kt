@@ -72,6 +72,73 @@ class TransactionStatisticsQueryRepositoryTest @Autowired constructor(
     }
 
     @Test
+    fun `공동경비 거래가 없으면 기본 집계값은 0과 null이다`() {
+        val fixture = createFixture()
+        createTransaction(
+            trip = fixture.trip,
+            user = fixture.owner,
+            transactionType = TransactionType.EXPENSE,
+            amount = BigDecimal("7000.00"),
+            createdAt = Instant.parse("2026-07-01T03:00:00Z"),
+        )
+        entityManager.flush()
+
+        val row = queryRepository.findCommonFundBalance(fixture.trip.id)
+
+        assertEquals(null, row.baseCurrency)
+        assertEquals(BigDecimal("0"), row.chargedBaseAmount)
+        assertEquals(BigDecimal("0"), row.usedBaseAmount)
+    }
+
+    @Test
+    fun `유형 통계는 기간 필터가 없으면 거래 원장만 집계한다`() {
+        val fixture = createFixture()
+        createTransaction(
+            trip = fixture.trip,
+            user = fixture.owner,
+            transactionType = TransactionType.EXPENSE,
+            amount = BigDecimal("30000.00"),
+            createdAt = Instant.parse("2026-07-01T01:00:00Z"),
+        )
+        createTransaction(
+            trip = fixture.trip,
+            user = fixture.owner,
+            transactionType = TransactionType.EXPENSE,
+            amount = BigDecimal("50000.00"),
+            createdAt = Instant.parse("2026-07-01T02:00:00Z"),
+        )
+        createTransaction(
+            trip = fixture.trip,
+            user = fixture.owner,
+            transactionType = TransactionType.FUND_USE,
+            amount = BigDecimal("10000.00"),
+            createdAt = Instant.parse("2026-07-01T03:00:00Z"),
+        )
+        createTransaction(
+            trip = fixture.trip,
+            user = fixture.owner,
+            transactionType = TransactionType.FUND_USE,
+            amount = BigDecimal("9000.00"),
+            status = TransactionStatus.VOIDED,
+            createdAt = Instant.parse("2026-07-01T04:00:00Z"),
+        )
+        entityManager.flush()
+
+        val rows = queryRepository.findTypeStatistics(
+            tripId = fixture.trip.id,
+            from = null,
+            toExclusive = null,
+        )
+
+        assertEquals(2, rows.size)
+        assertEquals("EXPENSE", rows.first().key)
+        assertEquals(2L, rows.first().transactionCount)
+        assertEquals(BigDecimal("80000.00"), rows.first().totalBaseAmount)
+        assertEquals("FUND_USE", rows[1].key)
+        assertEquals(BigDecimal("10000.00"), rows[1].totalBaseAmount)
+    }
+
+    @Test
     fun `카테고리 통계는 연결 게시글 발생일과 카테고리를 기준으로 집계한다`() {
         val fixture = createFixture()
         val foodTransaction = createTransaction(
@@ -114,6 +181,54 @@ class TransactionStatisticsQueryRepositoryTest @Autowired constructor(
         assertEquals("FOOD", rows.first().key)
         assertEquals(1L, rows.first().transactionCount)
         assertEquals(BigDecimal("30000.00"), rows.first().totalBaseAmount)
+    }
+
+    @Test
+    fun `카테고리 통계는 기간 필터가 없으면 첫 게시글 카테고리와 미분류 거래를 집계한다`() {
+        val fixture = createFixture()
+        val categorizedTransaction = createTransaction(
+            trip = fixture.trip,
+            user = fixture.owner,
+            transactionType = TransactionType.EXPENSE,
+            amount = BigDecimal("30000.00"),
+            createdAt = Instant.parse("2026-07-01T01:00:00Z"),
+        )
+        createPost(
+            trip = fixture.trip,
+            transaction = categorizedTransaction,
+            author = fixture.ownerParticipant,
+            category = "FOOD",
+            occurredAt = Instant.parse("2026-07-02T03:00:00Z"),
+        )
+        createPost(
+            trip = fixture.trip,
+            transaction = categorizedTransaction,
+            author = fixture.ownerParticipant,
+            category = "SHOPPING",
+            occurredAt = Instant.parse("2026-07-03T03:00:00Z"),
+        )
+        createTransaction(
+            trip = fixture.trip,
+            user = fixture.owner,
+            transactionType = TransactionType.EXPENSE,
+            amount = BigDecimal("50000.00"),
+            createdAt = Instant.parse("2026-07-01T02:00:00Z"),
+        )
+        entityManager.flush()
+
+        val rows = queryRepository.findCategoryStatistics(
+            tripId = fixture.trip.id,
+            from = null,
+            toExclusive = null,
+        )
+
+        val food = rows.first { it.key == "FOOD" }
+        val uncategorized = rows.first { it.key == "UNCATEGORIZED" }
+        assertEquals(2, rows.size)
+        assertEquals(1L, food.transactionCount)
+        assertEquals(BigDecimal("30000.00"), food.totalBaseAmount)
+        assertEquals(1L, uncategorized.transactionCount)
+        assertEquals(BigDecimal("50000.00"), uncategorized.totalBaseAmount)
     }
 
     @Test

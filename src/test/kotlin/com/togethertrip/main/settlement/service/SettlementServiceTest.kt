@@ -40,6 +40,7 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.dao.DataIntegrityViolationException
@@ -49,6 +50,7 @@ import tools.jackson.module.kotlin.readValue
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class SettlementServiceTest {
 
@@ -253,6 +255,70 @@ class SettlementServiceTest {
         }
 
         assertEquals(SettlementErrorCode.SETTLEMENT_ALREADY_CONFIRMED, exception.errorCode)
+    }
+
+    @Test
+    fun `잔액 요약은 송금 응답을 만들지 않고 참여자별 잔액만 반환한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val calculation = createCalculation()
+        val participants = createParticipantSnapshots()
+        val balances = listOf(
+            SettlementParticipantBalanceResponse(
+                participantId = 100L,
+                userId = 1L,
+                displayName = "보낼 사람",
+                profileImageUrl = null,
+                participantStatus = TripParticipantStatus.ACTIVE,
+                paidAmount = BigDecimal("0.00"),
+                shareAmount = BigDecimal("5000.00"),
+                netAmount = BigDecimal("-5000.00"),
+            ),
+            SettlementParticipantBalanceResponse(
+                participantId = 200L,
+                userId = null,
+                displayName = "받을 사람",
+                profileImageUrl = null,
+                participantStatus = TripParticipantStatus.ACTIVE,
+                paidAmount = BigDecimal("10000.00"),
+                shareAmount = BigDecimal("5000.00"),
+                netAmount = BigDecimal("5000.00"),
+            ),
+        )
+
+        `when`(settlementAccessResolver.getAccessibleTrip(1L, 10L)).thenReturn(trip)
+        `when`(
+            settlementCalculationService.calculate(
+                tripId = 10L,
+                expectedProjectionVersion = trip.expenseVersion,
+            )
+        ).thenReturn(calculation)
+        `when`(
+            settlementCalculationService.getParticipantsById(
+                tripId = 10L,
+                calculation = calculation,
+            )
+        ).thenReturn(participants)
+        `when`(
+            settlementCalculationService.createBalanceResponses(
+                balances = calculation.balances,
+                participants = participants,
+            )
+        ).thenReturn(balances)
+
+        val response = settlementService.getBalanceSummary(
+            userId = 1L,
+            tripId = 10L,
+        )
+
+        assertEquals(10L, response.tripId)
+        assertEquals("KRW", response.baseCurrency)
+        assertEquals(balances, response.balances)
+        assertFalse(
+            mockingDetails(settlementCalculationService).invocations.any { invocation ->
+                invocation.method.name == "createTransferResponses"
+            }
+        )
     }
 
     @Test
@@ -634,7 +700,12 @@ class SettlementServiceTest {
                 status = SettlementStatus.CONFIRMED,
             )
         ).thenReturn(null)
-        `when`(settlementCalculationService.calculate(10L)).thenReturn(calculation)
+        `when`(
+            settlementCalculationService.calculate(
+                tripId = 10L,
+                expectedProjectionVersion = trip.expenseVersion,
+            )
+        ).thenReturn(calculation)
         `when`(
             settlementCalculationService.getParticipantsById(
                 tripId = 10L,

@@ -28,6 +28,7 @@ class TransactionStatisticsQueryRepository(
             where tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
+              and tx.transaction_type in ('FUND_CHARGE', 'FUND_USE')
             """.trimIndent()
         )
             .setParameter("tripId", tripId)
@@ -47,6 +48,13 @@ class TransactionStatisticsQueryRepository(
         toExclusive: Instant?,
         status: TransactionStatus = TransactionStatus.ACTIVE,
     ): List<TransactionStatisticsRow> {
+        if (from == null && toExclusive == null) {
+            return findTypeStatisticsWithoutPeriod(
+                tripId = tripId,
+                status = status,
+            )
+        }
+
         // 거래 유형별 통계는 거래 원장의 기준 통화 금액을 합산한다.
         return entityManager.createNativeQuery(
             """
@@ -86,20 +94,33 @@ class TransactionStatisticsQueryRepository(
         toExclusive: Instant?,
         status: TransactionStatus = TransactionStatus.ACTIVE,
     ): List<TransactionStatisticsRow> {
+        if (from == null && toExclusive == null) {
+            return findCategoryStatisticsWithoutPeriod(
+                tripId = tripId,
+                status = status,
+            )
+        }
+
         // 카테고리와 발생일은 연결된 거래 게시글 정보를 우선 사용한다.
         return entityManager.createNativeQuery(
             """
+            with first_posts as (
+                select distinct on (post.transaction_id)
+                       post.transaction_id,
+                       post.category,
+                       post.occurred_at
+                from posts post
+                where post.deleted_at is null
+                  and post.trip_id = :tripId
+                  and post.transaction_id is not null
+                order by post.transaction_id, post.id
+            )
             select coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_key,
                    coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_label,
                    count(tx.id) as transaction_count,
                    coalesce(sum(tx.base_amount), 0) as total_base_amount
             from transactions tx
-            left join posts post on post.id = (
-                select min(candidate.id)
-                from posts candidate
-                where candidate.transaction_id = tx.id
-                  and candidate.deleted_at is null
-            )
+            left join first_posts post on post.transaction_id = tx.id
             where tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
@@ -125,6 +146,13 @@ class TransactionStatisticsQueryRepository(
         toExclusive: Instant?,
         status: TransactionStatus = TransactionStatus.ACTIVE,
     ): List<TransactionStatisticsRow> {
+        if (from == null && toExclusive == null) {
+            return findParticipantShareStatisticsWithoutPeriod(
+                tripId = tripId,
+                status = status,
+            )
+        }
+
         // 참여자 통계는 정산 관점에 맞춰 부담자 share 기준으로 집계한다.
         return entityManager.createNativeQuery(
             """
@@ -157,6 +185,92 @@ class TransactionStatisticsQueryRepository(
                 from = from,
                 toExclusive = toExclusive,
             )
+            .resultList
+            .map(::toStatisticsRow)
+    }
+
+    private fun findTypeStatisticsWithoutPeriod(
+        tripId: Long,
+        status: TransactionStatus,
+    ): List<TransactionStatisticsRow> {
+        return entityManager.createNativeQuery(
+            """
+            select tx.transaction_type as item_key,
+                   tx.transaction_type as item_label,
+                   count(tx.id) as transaction_count,
+                   coalesce(sum(tx.base_amount), 0) as total_base_amount
+            from transactions tx
+            where tx.deleted_at is null
+              and tx.trip_id = :tripId
+              and tx.status = :status
+            group by tx.transaction_type
+            order by total_base_amount desc, item_key asc
+            """.trimIndent()
+        )
+            .setParameter("tripId", tripId)
+            .setParameter("status", status.name)
+            .resultList
+            .map(::toStatisticsRow)
+    }
+
+    private fun findParticipantShareStatisticsWithoutPeriod(
+        tripId: Long,
+        status: TransactionStatus,
+    ): List<TransactionStatisticsRow> {
+        return entityManager.createNativeQuery(
+            """
+            select cast(participant.id as varchar) as item_key,
+                   participant.display_name as item_label,
+                   count(distinct tx.id) as transaction_count,
+                   coalesce(sum(share.base_share_amount), 0) as total_base_amount
+            from transaction_shares share
+            join transactions tx on tx.id = share.transaction_id
+            join trip_participants participant on participant.id = share.trip_participant_id
+            where share.deleted_at is null
+              and tx.deleted_at is null
+              and tx.trip_id = :tripId
+              and tx.status = :status
+            group by participant.id, participant.display_name
+            order by total_base_amount desc, participant.id asc
+            """.trimIndent()
+        )
+            .setParameter("tripId", tripId)
+            .setParameter("status", status.name)
+            .resultList
+            .map(::toStatisticsRow)
+    }
+
+    private fun findCategoryStatisticsWithoutPeriod(
+        tripId: Long,
+        status: TransactionStatus,
+    ): List<TransactionStatisticsRow> {
+        return entityManager.createNativeQuery(
+            """
+            with first_posts as (
+                select distinct on (post.transaction_id)
+                       post.transaction_id,
+                       post.category
+                from posts post
+                where post.deleted_at is null
+                  and post.trip_id = :tripId
+                  and post.transaction_id is not null
+                order by post.transaction_id, post.id
+            )
+            select coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_key,
+                   coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_label,
+                   count(tx.id) as transaction_count,
+                   coalesce(sum(tx.base_amount), 0) as total_base_amount
+            from transactions tx
+            left join first_posts post on post.transaction_id = tx.id
+            where tx.deleted_at is null
+              and tx.trip_id = :tripId
+              and tx.status = :status
+            group by coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED')
+            order by total_base_amount desc, item_key asc
+            """.trimIndent()
+        )
+            .setParameter("tripId", tripId)
+            .setParameter("status", status.name)
             .resultList
             .map(::toStatisticsRow)
     }

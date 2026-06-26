@@ -69,7 +69,7 @@ class SettlementService(
             userId = userId,
             tripId = tripId,
         )
-        val calculation = calculateValidSettlement(tripId)
+        val calculation = calculateValidSettlement(trip)
         val participants = settlementCalculationService.getParticipantsById(
             tripId = tripId,
             calculation = calculation,
@@ -99,16 +99,25 @@ class SettlementService(
         userId: Long,
         tripId: Long,
     ): BalanceSummaryResponse {
-        val preview = previewSettlement(
+        val trip = settlementAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
+        val calculation = calculateValidSettlement(trip)
+        val participants = settlementCalculationService.getParticipantsById(
+            tripId = tripId,
+            calculation = calculation,
+        )
+        val balances = settlementCalculationService.createBalanceResponses(
+            balances = calculation.balances,
+            participants = participants,
+        )
 
         return BalanceSummaryResponse(
-            tripId = preview.tripId,
-            tripExpenseVersion = preview.tripExpenseVersion,
-            baseCurrency = preview.baseCurrency,
-            balances = preview.balances,
+            tripId = trip.id,
+            tripExpenseVersion = trip.expenseVersion,
+            baseCurrency = calculation.baseCurrency,
+            balances = balances,
         )
     }
 
@@ -125,7 +134,7 @@ class SettlementService(
         validateConfirmableTrip(trip)
         validateNoConfirmedSettlement(tripId)
 
-        val calculation = calculateValidSettlement(tripId)
+        val calculation = calculateValidSettlement(trip)
         val participants = settlementCalculationService.getParticipantsById(
             tripId = tripId,
             calculation = calculation,
@@ -197,8 +206,11 @@ class SettlementService(
         )
     }
 
-    private fun calculateValidSettlement(tripId: Long): SettlementCalculationResult {
-        val calculation = settlementCalculationService.calculate(tripId)
+    private fun calculateValidSettlement(trip: Trip): SettlementCalculationResult {
+        val calculation = settlementCalculationService.calculate(
+            tripId = trip.id,
+            expectedProjectionVersion = trip.expenseVersion,
+        )
         validateCalculationTotal(calculation)
 
         return calculation

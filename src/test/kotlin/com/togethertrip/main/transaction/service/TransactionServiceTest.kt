@@ -23,6 +23,7 @@ import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRe
 import com.togethertrip.main.transaction.repository.projection.CommonFundBalanceRow
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
+import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.exchange.domain.ExchangeRate
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -61,6 +62,7 @@ class TransactionServiceTest {
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var exchangeRateRepository: ExchangeRateRepository
     private lateinit var userRepository: UserRepository
+    private lateinit var balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService
     private lateinit var transactionService: TransactionService
 
     @BeforeEach
@@ -74,6 +76,7 @@ class TransactionServiceTest {
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         exchangeRateRepository = mock(ExchangeRateRepository::class.java)
         userRepository = mock(UserRepository::class.java)
+        balanceSummaryProjectionService = mock(TripParticipantBalanceSummaryProjectionService::class.java)
         val transactionExchangeRateResolver = TransactionExchangeRateResolver(
             exchangeRateRepository = exchangeRateRepository,
             clock = Clock.fixed(
@@ -90,6 +93,7 @@ class TransactionServiceTest {
             tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             userRepository = userRepository,
+            balanceSummaryProjectionService = balanceSummaryProjectionService,
         )
         transactionService = TransactionService(
             transactionRepository = transactionRepository,
@@ -102,6 +106,7 @@ class TransactionServiceTest {
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             transactionCreationService = transactionCreationService,
             userRepository = userRepository,
+            balanceSummaryProjectionService = balanceSummaryProjectionService,
         )
     }
 

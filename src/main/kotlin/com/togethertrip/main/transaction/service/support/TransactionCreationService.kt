@@ -17,6 +17,7 @@ import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
+import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -42,6 +43,7 @@ class TransactionCreationService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
     private val userRepository: UserRepository,
+    private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
 ) {
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -96,6 +98,11 @@ class TransactionCreationService(
             transaction = transaction,
             eventType = TransactionEventType.CREATED,
             createdBy = user,
+        )
+        balanceSummaryProjectionService.applyTransactionCreated(
+            trip = trip,
+            payments = payments,
+            shares = shares,
         )
 
         return TransactionCreationResult(

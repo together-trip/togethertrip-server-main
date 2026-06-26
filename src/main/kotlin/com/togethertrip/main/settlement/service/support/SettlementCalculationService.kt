@@ -11,6 +11,7 @@ import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantSna
 import com.togethertrip.main.settlement.dto.response.SettlementParticipantBalanceResponse
 import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
 import com.togethertrip.main.settlement.repository.SettlementTransactionQueryRepository
+import com.togethertrip.main.settlement.repository.TripParticipantBalanceSummaryRepository
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import org.springframework.stereotype.Service
@@ -20,13 +21,27 @@ import java.math.BigDecimal
 @Service
 class SettlementCalculationService(
     private val settlementTransactionQueryRepository: SettlementTransactionQueryRepository,
+    private val balanceSummaryRepository: TripParticipantBalanceSummaryRepository,
     private val tripParticipantRepository: TripParticipantRepository,
 ) {
 
     private val settlementCalculator = SettlementCalculator()
 
     @Transactional(readOnly = true)
-    fun calculate(tripId: Long): SettlementCalculationResult {
+    fun calculate(
+        tripId: Long,
+        expectedProjectionVersion: Long? = null,
+    ): SettlementCalculationResult {
+        if (expectedProjectionVersion != null) {
+            val projectionCalculation = calculateFromLatestProjection(
+                tripId = tripId,
+                expectedProjectionVersion = expectedProjectionVersion,
+            )
+            if (projectionCalculation != null) {
+                return projectionCalculation
+            }
+        }
+
         val payments = settlementTransactionQueryRepository.findSettlementPaymentRows(tripId)
         val shares = settlementTransactionQueryRepository.findSettlementShareRows(tripId)
 
@@ -43,6 +58,37 @@ class SettlementCalculationService(
                     SettlementShareInput(
                         participantId = share.participantId,
                         amount = share.amount,
+                    )
+                },
+            )
+        )
+    }
+
+    private fun calculateFromLatestProjection(
+        tripId: Long,
+        expectedProjectionVersion: Long,
+    ): SettlementCalculationResult? {
+        val summaries = balanceSummaryRepository.findByTripIdAndDeletedAtIsNull(tripId)
+        if (summaries.isEmpty()) {
+            return null
+        }
+        if (summaries.any { summary -> summary.projectionVersion != expectedProjectionVersion }) {
+            return null
+        }
+
+        return settlementCalculator.calculate(
+            SettlementCalculationInput(
+                baseCurrency = BASE_CURRENCY,
+                payments = summaries.map { summary ->
+                    SettlementPaymentInput(
+                        participantId = summary.tripParticipant.id,
+                        amount = summary.paidBaseAmount,
+                    )
+                },
+                shares = summaries.map { summary ->
+                    SettlementShareInput(
+                        participantId = summary.tripParticipant.id,
+                        amount = summary.shareBaseAmount,
                     )
                 },
             )
