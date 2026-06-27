@@ -2,6 +2,7 @@
 --
 -- This script deletes only trips created by performance/k6/main-dml-flow.js:
 --   trip title prefix: DML_LOADTEST_
+--   concurrent projection trip title prefix: DML_CONCURRENT_
 
 \set ON_ERROR_STOP on
 
@@ -46,6 +47,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 ),
 dml_transactions AS (
     SELECT tx.id
@@ -65,6 +67,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 ),
 dml_posts AS (
     SELECT post.id
@@ -79,6 +82,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM settlement_transfers transfer
 USING settlements settlement, dml_trips trip
@@ -89,6 +93,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM settlements settlement
 USING dml_trips trip
@@ -98,6 +103,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM trip_participant_balance_summaries summary
 USING dml_trips trip
@@ -107,6 +113,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 ),
 dml_transactions AS (
     SELECT tx.id
@@ -121,6 +128,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 ),
 dml_transactions AS (
     SELECT tx.id
@@ -135,6 +143,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 ),
 dml_transactions AS (
     SELECT tx.id
@@ -149,6 +158,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM posts post
 USING dml_trips trip
@@ -158,6 +168,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM transactions tx
 USING dml_trips trip
@@ -167,6 +178,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM trip_exchange_rates rate
 USING dml_trips trip
@@ -176,6 +188,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM trip_countries country
 USING dml_trips trip
@@ -185,6 +198,7 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM trip_invitations invitation
 USING dml_trips trip
@@ -194,13 +208,15 @@ WITH dml_trips AS (
     SELECT id
     FROM trips
     WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%'
 )
 DELETE FROM trip_participants participant
 USING dml_trips trip
 WHERE participant.trip_id = trip.id;
 
 DELETE FROM trips
-WHERE title LIKE 'DML_LOADTEST_%';
+WHERE title LIKE 'DML_LOADTEST_%'
+       OR title LIKE 'DML_CONCURRENT_%';
 
 COMMIT;
 
