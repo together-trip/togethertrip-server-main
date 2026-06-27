@@ -19,13 +19,14 @@
 
 ## 산출물 위치
 
-이슈 본문은 `docs/verifications/k6/`를 지정하지만, repo `AGENTS.md`는 공용 `docs/verifications/` 직접 사용을 금지하고 작업자별 네임스페이스를 요구한다.
+이슈 본문은 `docs/verifications/k6/`를 지정하지만, 재사용 가능한 부하 테스트 자산은 repo의 기존 성능 테스트 구조와 맞춰 `performance/` 아래에 둔다.
 
 따라서 산출물은 다음 위치에 둔다.
 
-- k6 스크립트: `docs/verifications-jaewan/k6/concurrent-signup.js`
-- 실행 리포트: root `docs/verifications-jaewan/k6/issue-45-concurrent-signup-report.md`
-- 실행 로그 원문: root `docs/verifications-jaewan/k6/results/`
+- k6 스크립트: `performance/k6/concurrent-signup.js`
+- 실행 스크립트: `performance/k6/run-concurrent-signup.sh`
+- DB 검증 SQL: `performance/seed/validate-concurrent-signup.sql`
+- 실행 로그 원문: root `docs/k6-results/concurrent-signup/`
 
 ## 범위
 
@@ -136,8 +137,8 @@ k6만으로는 “갑자기 꺼짐”을 결정적인 지점에 맞춰 재현하
 
 - `./gradlew test`
 - 로컬 서버 실행 후 k6:
-  - `k6 run docs/verifications-jaewan/k6/concurrent-signup.js -e SCENARIO=same-session`
-  - `k6 run docs/verifications-jaewan/k6/concurrent-signup.js -e SCENARIO=same-phone`
+  - `k6 run performance/k6/concurrent-signup.js -e SCENARIO=same-session`
+  - `k6 run performance/k6/concurrent-signup.js -e SCENARIO=same-phone`
 - DB 사후 검증 SQL:
   - 동일 OAuth provider/providerUserId의 `oauth_accounts` count.
   - 동일 `phone_number_hash`의 active `users` count.

@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
+import java.time.Instant
 
 data class UpdateTransactionRequest(
     @field:NotNull
@@ -19,6 +20,8 @@ data class UpdateTransactionRequest(
     @field:NotBlank
     @field:Size(min = 3, max = 3)
     val currency: String,
+    val category: String? = null,
+    val occurredAt: Instant? = null,
     @field:Valid
     @field:NotEmpty
     val payments: List<TransactionPaymentInput>,

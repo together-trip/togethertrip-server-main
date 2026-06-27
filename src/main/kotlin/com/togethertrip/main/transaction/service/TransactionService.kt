@@ -2,6 +2,7 @@ package com.togethertrip.main.transaction.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionEvent
@@ -40,6 +41,7 @@ import com.togethertrip.main.transaction.repository.projection.TransactionStatis
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsGroupBy
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsPeriod
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
+import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -64,11 +66,13 @@ class TransactionService(
     private val transactionPaymentRepository: TransactionPaymentRepository,
     private val transactionEventRepository: TransactionEventRepository,
     private val transactionStatisticsQueryRepository: TransactionStatisticsQueryRepository,
+    private val postRepository: PostRepository,
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
     private val transactionCreationService: TransactionCreationService,
     private val userRepository: UserRepository,
+    private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
 ) {
 
     @Transactional
@@ -214,22 +218,29 @@ class TransactionService(
         val currencySnapshot = resolveCurrencySnapshot(
             currency = ledgerEntry.currency,
         )
+        val previousPayments = transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
+        val previousShares = transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
 
         transaction.updateSnapshot(
             ledgerEntry = ledgerEntry,
             currencySnapshot = currencySnapshot,
+            category = request.category,
+            occurredAt = request.occurredAt,
         )
-        replacePayments(
+        syncLinkedExpensePostsMetadata(transaction)
+        val currentPayments = replacePayments(
             transaction = transaction,
             tripId = tripId,
             allocations = ledgerEntry.payments,
             snapshot = currencySnapshot,
+            previousPayments = previousPayments,
         )
-        replaceShares(
+        val currentShares = replaceShares(
             transaction = transaction,
             tripId = tripId,
             allocations = ledgerEntry.shares,
             snapshot = currencySnapshot,
+            previousShares = previousShares,
         )
 
         recordEvent(
@@ -237,6 +248,13 @@ class TransactionService(
             transaction = transaction,
             eventType = TransactionEventType.UPDATED,
             createdBy = user,
+        )
+        balanceSummaryProjectionService.applyTransactionUpdated(
+            trip = trip,
+            previousPayments = previousPayments,
+            previousShares = previousShares,
+            currentPayments = currentPayments,
+            currentShares = currentShares,
         )
 
         return getTransaction(
@@ -263,14 +281,22 @@ class TransactionService(
             transactionId = transactionId,
         )
         validateActiveTransaction(transaction)
+        val payments = transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
+        val shares = transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
 
         transaction.void()
+        markLinkedExpensePostsDeleted(transaction)
 
         recordEvent(
             trip = trip,
             transaction = transaction,
             eventType = TransactionEventType.VOIDED,
             createdBy = user,
+        )
+        balanceSummaryProjectionService.applyTransactionVoided(
+            trip = trip,
+            payments = payments,
+            shares = shares,
         )
     }
 
@@ -430,6 +456,8 @@ class TransactionService(
             transactionType = transaction.summary.transactionType,
             amount = transaction.summary.amount,
             currency = transaction.summary.currency,
+            category = transaction.summary.category,
+            occurredAt = transaction.summary.occurredAt,
             payments = payments,
             shares = transaction.shares.map(::toShareInput),
         )
@@ -443,6 +471,8 @@ class TransactionService(
             transactionType = transaction.summary.transactionType,
             amount = transaction.summary.amount,
             currency = transaction.summary.currency,
+            category = transaction.summary.category,
+            occurredAt = transaction.summary.occurredAt,
             payments = transaction.payments.map(::toPaymentInput),
             shares = shares,
         )
@@ -468,10 +498,10 @@ class TransactionService(
         tripId: Long,
         allocations: List<PaymentAllocation>,
         snapshot: TransactionCurrencySnapshot,
-    ) {
-        transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
-            .forEach { it.markDeleted() }
-        savePayments(
+        previousPayments: List<TransactionPayment>,
+    ): List<TransactionPayment> {
+        previousPayments.forEach { it.markDeleted() }
+        return savePayments(
             transaction = transaction,
             tripId = tripId,
             allocations = allocations,
@@ -484,10 +514,10 @@ class TransactionService(
         tripId: Long,
         allocations: List<ShareAllocation>,
         snapshot: TransactionCurrencySnapshot,
-    ) {
-        transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
-            .forEach { it.markDeleted() }
-        saveShares(
+        previousShares: List<TransactionShare>,
+    ): List<TransactionShare> {
+        previousShares.forEach { it.markDeleted() }
+        return saveShares(
             transaction = transaction,
             tripId = tripId,
             allocations = allocations,
@@ -501,7 +531,12 @@ class TransactionService(
         allocations: List<PaymentAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionPayment> {
-        return allocations.map { allocation ->
+        val baseAmounts = snapshot.convertAllocations(
+            amounts = allocations.map { it.amount },
+            expectedTotal = transaction.baseAmount,
+        )
+
+        return allocations.mapIndexed { index, allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
                 participantId = allocation.participantId,
@@ -514,7 +549,7 @@ class TransactionService(
                 currency = snapshot.currency,
                 exchangeRate = snapshot.exchangeRate,
                 baseCurrency = snapshot.baseCurrency,
-                baseAmount = snapshot.convert(allocation.amount),
+                baseAmount = baseAmounts[index],
             )
 
             transactionPaymentRepository.save(payment)
@@ -527,7 +562,12 @@ class TransactionService(
         allocations: List<ShareAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionShare> {
-        return allocations.map { allocation ->
+        val baseShareAmounts = snapshot.convertAllocations(
+            amounts = allocations.map { it.shareAmount },
+            expectedTotal = transaction.baseAmount,
+        )
+
+        return allocations.mapIndexed { index, allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
                 participantId = allocation.participantId,
@@ -540,7 +580,7 @@ class TransactionService(
                 currency = snapshot.currency,
                 exchangeRate = snapshot.exchangeRate,
                 baseCurrency = snapshot.baseCurrency,
-                baseShareAmount = snapshot.convert(allocation.shareAmount),
+                baseShareAmount = baseShareAmounts[index],
                 shareRatio = allocation.shareRatio,
             )
 
@@ -570,6 +610,26 @@ class TransactionService(
         )
 
         transactionEventRepository.save(event)
+    }
+
+    private fun syncLinkedExpensePostsMetadata(transaction: Transaction) {
+        postRepository.findByTransactionIdAndDeletedAtIsNull(transaction.id)
+            .forEach { post ->
+                post.update(
+                    title = post.title,
+                    category = transaction.category,
+                    content = post.content,
+                    occurredAt = transaction.occurredAt,
+                    placeName = post.placeName,
+                    latitude = post.latitude,
+                    longitude = post.longitude,
+                )
+            }
+    }
+
+    private fun markLinkedExpensePostsDeleted(transaction: Transaction) {
+        postRepository.findByTransactionIdAndDeletedAtIsNull(transaction.id)
+            .forEach { it.markDeleted() }
     }
 
     private fun resolveCurrencySnapshot(

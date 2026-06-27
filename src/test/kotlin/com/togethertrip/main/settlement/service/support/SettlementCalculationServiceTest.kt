@@ -1,14 +1,21 @@
 package com.togethertrip.main.settlement.service.support
 
+import com.togethertrip.main.settlement.domain.TripParticipantBalanceSummary
 import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantRow
 import com.togethertrip.main.settlement.repository.SettlementTransactionQueryRepository
+import com.togethertrip.main.settlement.repository.TripParticipantBalanceSummaryRepository
 import com.togethertrip.main.settlement.repository.projection.SettlementPaymentRow
 import com.togethertrip.main.settlement.repository.projection.SettlementShareRow
+import com.togethertrip.main.trip.domain.Trip
+import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.repository.TripParticipantRepository
+import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import java.math.BigDecimal
 import kotlin.test.assertEquals
@@ -16,15 +23,18 @@ import kotlin.test.assertEquals
 class SettlementCalculationServiceTest {
 
     private lateinit var settlementTransactionQueryRepository: SettlementTransactionQueryRepository
+    private lateinit var balanceSummaryRepository: TripParticipantBalanceSummaryRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var settlementCalculationService: SettlementCalculationService
 
     @BeforeEach
     fun setUp() {
         settlementTransactionQueryRepository = mock(SettlementTransactionQueryRepository::class.java)
+        balanceSummaryRepository = mock(TripParticipantBalanceSummaryRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         settlementCalculationService = SettlementCalculationService(
             settlementTransactionQueryRepository = settlementTransactionQueryRepository,
+            balanceSummaryRepository = balanceSummaryRepository,
             tripParticipantRepository = tripParticipantRepository,
         )
     }
@@ -45,6 +55,60 @@ class SettlementCalculationServiceTest {
 
         assertEquals(setOf(100L, 200L), calculation.balances.map { it.participantId }.toSet())
         assertEquals(BigDecimal("-5000.00"), calculation.balances.first { it.participantId == 200L }.netAmount)
+    }
+
+    @Test
+    fun `최신 balance summary projection이 있으면 원본 거래 row를 읽지 않는다`() {
+        val owner = User(nickname = "재완").apply { id = 1L }
+        val trip = Trip(
+            ownerUser = owner,
+            title = "정산 projection 테스트",
+            defaultCurrency = "KRW",
+        ).apply {
+            id = 10L
+            expenseVersion = 7L
+        }
+        val payer = participant(
+            id = 100L,
+            trip = trip,
+            user = owner,
+            displayName = "결제자",
+        )
+        val debtor = participant(
+            id = 200L,
+            trip = trip,
+            user = null,
+            displayName = "부담자",
+        )
+        `when`(balanceSummaryRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(
+            listOf(
+                summary(
+                    trip = trip,
+                    participant = payer,
+                    paidAmount = BigDecimal("10000.00"),
+                    shareAmount = BigDecimal("3000.00"),
+                    projectionVersion = 7L,
+                ),
+                summary(
+                    trip = trip,
+                    participant = debtor,
+                    paidAmount = BigDecimal("0.00"),
+                    shareAmount = BigDecimal("7000.00"),
+                    projectionVersion = 7L,
+                ),
+            )
+        )
+
+        val calculation = settlementCalculationService.calculate(
+            tripId = 10L,
+            expectedProjectionVersion = 7L,
+        )
+
+        assertEquals(BigDecimal("10000.00"), calculation.totalExpenseAmount)
+        assertEquals(BigDecimal("10000.00"), calculation.totalShareAmount)
+        assertEquals(BigDecimal("7000.00"), calculation.balances.first { it.participantId == 100L }.netAmount)
+        assertEquals(BigDecimal("-7000.00"), calculation.balances.first { it.participantId == 200L }.netAmount)
+        verifyNoInteractions(settlementTransactionQueryRepository)
     }
 
     @Test
@@ -168,5 +232,39 @@ class SettlementCalculationServiceTest {
 
             override fun getUserStatus(): String? = userStatus
         }
+    }
+
+    private fun participant(
+        id: Long,
+        trip: Trip,
+        user: User?,
+        displayName: String,
+    ): TripParticipant {
+        return TripParticipant(
+            trip = trip,
+            user = user,
+            displayName = displayName,
+            participantRole = TripParticipantRole.MEMBER,
+            participantStatus = TripParticipantStatus.ACTIVE,
+        ).apply {
+            this.id = id
+        }
+    }
+
+    private fun summary(
+        trip: Trip,
+        participant: TripParticipant,
+        paidAmount: BigDecimal,
+        shareAmount: BigDecimal,
+        projectionVersion: Long,
+    ): TripParticipantBalanceSummary {
+        return TripParticipantBalanceSummary(
+            trip = trip,
+            tripParticipant = participant,
+            paidBaseAmount = paidAmount,
+            shareBaseAmount = shareAmount,
+            netBaseAmount = paidAmount.subtract(shareAmount),
+            projectionVersion = projectionVersion,
+        )
     }
 }

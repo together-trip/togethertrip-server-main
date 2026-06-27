@@ -31,6 +31,8 @@ import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.post.service.storage.PostAttachmentStorage
 import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.repository.TransactionRepository
+import com.togethertrip.main.transaction.domain.Transaction
+import com.togethertrip.main.transaction.domain.TransactionStatus
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
 import com.togethertrip.main.transaction.service.support.TransactionCreationResult
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
@@ -79,6 +81,9 @@ class PostService(
         if (transaction != null && transaction.trip.id != tripId) {
             throw BusinessException(PostErrorCode.TRANSACTION_TRIP_MISMATCH)
         }
+        if (transaction != null) {
+            validateLinkableExpenseTransaction(transaction)
+        }
 
         val post = Post(
             trip = author.trip,
@@ -92,6 +97,10 @@ class PostService(
             placeName = request.placeName,
             latitude = request.latitude,
             longitude = request.longitude,
+        )
+        transaction?.updateMetadata(
+            category = request.category,
+            occurredAt = request.occurredAt,
         )
 
         postRepository.save(post)
@@ -284,6 +293,10 @@ class PostService(
             latitude = request.latitude,
             longitude = request.longitude,
         )
+        post.transaction?.updateMetadata(
+            category = request.category,
+            occurredAt = request.occurredAt,
+        )
 
         val attachments = if (request.replaceAttachments) {
             replaceAttachments(
@@ -438,6 +451,18 @@ class PostService(
         }
     }
 
+    private fun validateLinkableExpenseTransaction(transaction: Transaction) {
+        if (transaction.trip.settlementStatus != TripSettlementStatus.NOT_STARTED) {
+            throw BusinessException(PostErrorCode.POST_LOCKED_BY_SETTLEMENT)
+        }
+        if (transaction.status != TransactionStatus.ACTIVE) {
+            throw BusinessException(PostErrorCode.TRANSACTION_NOT_ACTIVE)
+        }
+        if (postRepository.existsByTransactionIdAndDeletedAtIsNull(transaction.id)) {
+            throw BusinessException(PostErrorCode.EXPENSE_POST_ALREADY_EXISTS)
+        }
+    }
+
     private fun findAttachmentsByPostId(posts: List<Post>): Map<Long, List<PostAttachment>> {
         if (posts.isEmpty()) {
             return emptyMap()
@@ -466,11 +491,13 @@ class PostService(
         post: Post,
         files: List<MultipartFile>,
     ): List<PostAttachment> {
-        if (files.size > MAX_ATTACHMENT_COUNT) {
+        val uploadFiles = files.filterNot { it.isEmpty }
+
+        if (uploadFiles.size > MAX_ATTACHMENT_COUNT) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
 
-        val postAttachments = files.mapIndexed { index, file ->
+        val postAttachments = uploadFiles.mapIndexed { index, file ->
             val storedAttachment = postAttachmentStorage.store(file)
             registerRollbackCleanup(storedAttachment)
 

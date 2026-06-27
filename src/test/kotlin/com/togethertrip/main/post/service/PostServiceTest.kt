@@ -41,6 +41,7 @@ import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
+import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -88,6 +89,7 @@ class PostServiceTest {
     private lateinit var transactionEventRepository: TransactionEventRepository
     private lateinit var tripRepository: TripRepository
     private lateinit var userRepository: UserRepository
+    private lateinit var balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService
     private lateinit var outboxEventRepository: OutboxEventRepository
     private lateinit var postAttachmentStorage: PostAttachmentStorage
     private lateinit var postService: PostService
@@ -104,6 +106,7 @@ class PostServiceTest {
         transactionEventRepository = mock(TransactionEventRepository::class.java)
         tripRepository = mock(TripRepository::class.java)
         userRepository = mock(UserRepository::class.java)
+        balanceSummaryProjectionService = mock(TripParticipantBalanceSummaryProjectionService::class.java)
         outboxEventRepository = mock(OutboxEventRepository::class.java)
         postAttachmentStorage = mock(PostAttachmentStorage::class.java)
         val transactionExchangeRateResolver = TransactionExchangeRateResolver(
@@ -122,6 +125,7 @@ class PostServiceTest {
             tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             userRepository = userRepository,
+            balanceSummaryProjectionService = balanceSummaryProjectionService,
         )
         `when`(
             tripParticipantRepository.findActiveUserIdsForNotification(

@@ -19,14 +19,15 @@ class SettlementTransactionQueryRepository(
         return entityManager.createNativeQuery(
             """
             select payment.trip_participant_id,
-                   payment.base_amount
+                   sum(payment.base_amount) as amount
             from transaction_payments payment
             join transactions transaction on transaction.id = payment.transaction_id
             where payment.deleted_at is null
               and transaction.deleted_at is null
               and transaction.trip_id = :tripId
               and transaction.status = :status
-            order by payment.id asc
+            group by payment.trip_participant_id
+            order by payment.trip_participant_id asc
             """.trimIndent()
         )
             .setParameter("tripId", tripId)
@@ -48,14 +49,15 @@ class SettlementTransactionQueryRepository(
         return entityManager.createNativeQuery(
             """
             select share.trip_participant_id,
-                   share.base_share_amount
+                   sum(share.base_share_amount) as amount
             from transaction_shares share
             join transactions transaction on transaction.id = share.transaction_id
             where share.deleted_at is null
               and transaction.deleted_at is null
               and transaction.trip_id = :tripId
               and transaction.status = :status
-            order by share.id asc
+            group by share.trip_participant_id
+            order by share.trip_participant_id asc
             """.trimIndent()
         )
             .setParameter("tripId", tripId)

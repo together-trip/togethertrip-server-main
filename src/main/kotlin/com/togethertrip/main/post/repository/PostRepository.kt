@@ -87,4 +87,6 @@ interface PostRepository : JpaRepository<Post, Long> {
     ): Post?
 
     fun findByTransactionIdAndDeletedAtIsNull(transactionId: Long): List<Post>
+
+    fun existsByTransactionIdAndDeletedAtIsNull(transactionId: Long): Boolean
 }

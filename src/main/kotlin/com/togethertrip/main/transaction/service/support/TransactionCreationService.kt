@@ -17,6 +17,7 @@ import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
+import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
@@ -42,6 +43,7 @@ class TransactionCreationService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
     private val userRepository: UserRepository,
+    private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
 ) {
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -76,6 +78,8 @@ class TransactionCreationService(
                 exchangeRate = currencySnapshot.exchangeRate,
                 baseCurrency = currencySnapshot.baseCurrency,
                 baseAmount = currencySnapshot.convert(ledgerEntry.amount),
+                category = request.category,
+                occurredAt = request.occurredAt,
             )
         )
         val payments = savePayments(
@@ -97,6 +101,11 @@ class TransactionCreationService(
             eventType = TransactionEventType.CREATED,
             createdBy = user,
         )
+        balanceSummaryProjectionService.applyTransactionCreated(
+            trip = trip,
+            payments = payments,
+            shares = shares,
+        )
 
         return TransactionCreationResult(
             trip = trip,
@@ -114,7 +123,12 @@ class TransactionCreationService(
         allocations: List<PaymentAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionPayment> {
-        return allocations.map { allocation ->
+        val baseAmounts = snapshot.convertAllocations(
+            amounts = allocations.map { it.amount },
+            expectedTotal = transaction.baseAmount,
+        )
+
+        return allocations.mapIndexed { index, allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
                 participantId = allocation.participantId,
@@ -127,7 +141,7 @@ class TransactionCreationService(
                 currency = snapshot.currency,
                 exchangeRate = snapshot.exchangeRate,
                 baseCurrency = snapshot.baseCurrency,
-                baseAmount = snapshot.convert(allocation.amount),
+                baseAmount = baseAmounts[index],
             )
 
             transactionPaymentRepository.save(payment)
@@ -140,7 +154,12 @@ class TransactionCreationService(
         allocations: List<ShareAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionShare> {
-        return allocations.map { allocation ->
+        val baseShareAmounts = snapshot.convertAllocations(
+            amounts = allocations.map { it.shareAmount },
+            expectedTotal = transaction.baseAmount,
+        )
+
+        return allocations.mapIndexed { index, allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
                 participantId = allocation.participantId,
@@ -153,7 +172,7 @@ class TransactionCreationService(
                 currency = snapshot.currency,
                 exchangeRate = snapshot.exchangeRate,
                 baseCurrency = snapshot.baseCurrency,
-                baseShareAmount = snapshot.convert(allocation.shareAmount),
+                baseShareAmount = baseShareAmounts[index],
                 shareRatio = allocation.shareRatio,
             )
 
