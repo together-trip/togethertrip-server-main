@@ -19,6 +19,13 @@ RAMP_DOWN="${RAMP_DOWN:-30s}"
 SLEEP="${SLEEP:-1}"
 SLOW_REQUEST_MS="${SLOW_REQUEST_MS:-200}"
 STOP_EXISTING="${STOP_EXISTING:-true}"
+MONITOR_INTERVAL_SECONDS="${MONITOR_INTERVAL_SECONDS:-1}"
+ACTUATOR_BASE_URL="${ACTUATOR_BASE_URL:-http://localhost:8081}"
+
+DOCKER_STATS_LOG="${RESULT_DIR}/${K6_RUN_ID}-docker-stats.log"
+HOST_STATS_LOG="${RESULT_DIR}/${K6_RUN_ID}-host-stats.log"
+ACTUATOR_METRICS_LOG="${RESULT_DIR}/${K6_RUN_ID}-actuator-metrics.log"
+MONITOR_PIDS=()
 
 stop_existing_processes() {
   local pattern="$1"
@@ -103,6 +110,82 @@ stop_existing_pid_file_process() {
   rm -f "${PID_FILE}"
 }
 
+stop_monitors() {
+  local pid
+
+  for pid in "${MONITOR_PIDS[@]:-}"; do
+    if kill -0 "${pid}" 2>/dev/null; then
+      kill -TERM "${pid}" 2>/dev/null || true
+    fi
+  done
+
+  wait "${MONITOR_PIDS[@]:-}" 2>/dev/null || true
+  MONITOR_PIDS=()
+}
+
+collect_docker_stats() {
+  while true; do
+    echo "timestamp=$(date '+%Y-%m-%dT%H:%M:%S%z')"
+    docker stats --no-stream --format \
+      'name={{.Name}} cpu={{.CPUPerc}} mem={{.MemUsage}} net={{.NetIO}} block={{.BlockIO}} pids={{.PIDs}}' \
+      2>&1 || true
+    echo
+    sleep "${MONITOR_INTERVAL_SECONDS}"
+  done
+}
+
+collect_host_stats() {
+  while true; do
+    echo "timestamp=$(date '+%Y-%m-%dT%H:%M:%S%z')"
+    ps -axo pid,pcpu,pmem,comm | sort -nrk 2 | head -n 15 2>&1 || true
+    echo
+    sleep "${MONITOR_INTERVAL_SECONDS}"
+  done
+}
+
+collect_actuator_metrics() {
+  local metrics=(
+    "hikaricp.connections.active"
+    "hikaricp.connections.pending"
+    "hikaricp.connections.idle"
+    "hikaricp.connections.max"
+    "hikaricp.connections.min"
+    "hikaricp.connections.acquire"
+    "jvm.gc.pause"
+    "jvm.memory.used"
+    "system.cpu.usage"
+    "process.cpu.usage"
+  )
+  local metric
+
+  while true; do
+    echo "timestamp=$(date '+%Y-%m-%dT%H:%M:%S%z')"
+    for metric in "${metrics[@]}"; do
+      printf 'metric=%s ' "${metric}"
+      curl -fsS --max-time 1 "${ACTUATOR_BASE_URL}/actuator/metrics/${metric}" 2>&1 || true
+      echo
+    done
+    echo
+    sleep "${MONITOR_INTERVAL_SECONDS}"
+  done
+}
+
+start_monitors() {
+  echo "monitor interval: ${MONITOR_INTERVAL_SECONDS}s"
+  echo "docker stats: ${DOCKER_STATS_LOG}"
+  echo "host stats: ${HOST_STATS_LOG}"
+  echo "actuator metrics: ${ACTUATOR_METRICS_LOG}"
+
+  collect_docker_stats > "${DOCKER_STATS_LOG}" 2>&1 &
+  MONITOR_PIDS+=("$!")
+
+  collect_host_stats > "${HOST_STATS_LOG}" 2>&1 &
+  MONITOR_PIDS+=("$!")
+
+  collect_actuator_metrics > "${ACTUATOR_METRICS_LOG}" 2>&1 &
+  MONITOR_PIDS+=("$!")
+}
+
 mkdir -p "${RESULT_DIR}"
 cd "${MAIN_DIR}"
 
@@ -122,6 +205,8 @@ echo "RAMP_DOWN: ${RAMP_DOWN}"
 echo "SLEEP: ${SLEEP}"
 echo "SLOW_REQUEST_MS: ${SLOW_REQUEST_MS}"
 echo "STOP_EXISTING: ${STOP_EXISTING}"
+echo "MONITOR_INTERVAL_SECONDS: ${MONITOR_INTERVAL_SECONDS}"
+echo "ACTUATOR_BASE_URL: ${ACTUATOR_BASE_URL}"
 echo "started at: $(date '+%Y-%m-%d %H:%M:%S')"
 echo
 
@@ -134,7 +219,7 @@ else
 fi
 
 echo "$$" > "${PID_FILE}"
-trap 'rm -f "${PID_FILE}"' EXIT
+trap 'stop_monitors; rm -f "${PID_FILE}"' EXIT
 
 echo
 echo "[2/6] Copy SQL files into postgres container"
@@ -165,6 +250,9 @@ echo "[5/6] Run k6. This step stays running until the load test is finished."
 echo "k6 output: ${RESULT_DIR}/${K6_RUN_ID}-terminal.log"
 echo "k6 summary: ${RESULT_DIR}/${K6_RUN_ID}-summary.json"
 echo
+echo "Starting resource monitors."
+start_monitors
+echo
 
 set +e
 BASE_URL="${BASE_URL}" \
@@ -181,6 +269,10 @@ k6 run \
   2>&1 | tee "${RESULT_DIR}/${K6_RUN_ID}-terminal.log"
 K6_EXIT_CODE="${PIPESTATUS[0]}"
 set -e
+
+echo
+echo "Stopping resource monitors."
+stop_monitors
 
 echo
 echo "[6/6] Validate data after k6"
@@ -202,6 +294,9 @@ echo "${RESULT_DIR}/${K6_RUN_ID}-terminal.log"
 echo "${RESULT_DIR}/${K6_RUN_ID}-summary.json"
 echo "${RESULT_DIR}/${K6_RUN_ID}-validate-before.log"
 echo "${RESULT_DIR}/${K6_RUN_ID}-validate-after.log"
+echo "${DOCKER_STATS_LOG}"
+echo "${HOST_STATS_LOG}"
+echo "${ACTUATOR_METRICS_LOG}"
 echo
 
 if [[ "${K6_EXIT_CODE}" -ne 0 ]]; then

@@ -2,6 +2,7 @@ package com.togethertrip.main.transaction.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionEvent
@@ -65,6 +66,7 @@ class TransactionService(
     private val transactionPaymentRepository: TransactionPaymentRepository,
     private val transactionEventRepository: TransactionEventRepository,
     private val transactionStatisticsQueryRepository: TransactionStatisticsQueryRepository,
+    private val postRepository: PostRepository,
     private val tripRepository: TripRepository,
     private val tripParticipantRepository: TripParticipantRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
@@ -222,7 +224,10 @@ class TransactionService(
         transaction.updateSnapshot(
             ledgerEntry = ledgerEntry,
             currencySnapshot = currencySnapshot,
+            category = request.category,
+            occurredAt = request.occurredAt,
         )
+        syncLinkedExpensePostsMetadata(transaction)
         val currentPayments = replacePayments(
             transaction = transaction,
             tripId = tripId,
@@ -280,6 +285,7 @@ class TransactionService(
         val shares = transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
 
         transaction.void()
+        markLinkedExpensePostsDeleted(transaction)
 
         recordEvent(
             trip = trip,
@@ -450,6 +456,8 @@ class TransactionService(
             transactionType = transaction.summary.transactionType,
             amount = transaction.summary.amount,
             currency = transaction.summary.currency,
+            category = transaction.summary.category,
+            occurredAt = transaction.summary.occurredAt,
             payments = payments,
             shares = transaction.shares.map(::toShareInput),
         )
@@ -463,6 +471,8 @@ class TransactionService(
             transactionType = transaction.summary.transactionType,
             amount = transaction.summary.amount,
             currency = transaction.summary.currency,
+            category = transaction.summary.category,
+            occurredAt = transaction.summary.occurredAt,
             payments = transaction.payments.map(::toPaymentInput),
             shares = shares,
         )
@@ -590,6 +600,26 @@ class TransactionService(
         )
 
         transactionEventRepository.save(event)
+    }
+
+    private fun syncLinkedExpensePostsMetadata(transaction: Transaction) {
+        postRepository.findByTransactionIdAndDeletedAtIsNull(transaction.id)
+            .forEach { post ->
+                post.update(
+                    title = post.title,
+                    category = transaction.category,
+                    content = post.content,
+                    occurredAt = transaction.occurredAt,
+                    placeName = post.placeName,
+                    latitude = post.latitude,
+                    longitude = post.longitude,
+                )
+            }
+    }
+
+    private fun markLinkedExpensePostsDeleted(transaction: Transaction) {
+        postRepository.findByTransactionIdAndDeletedAtIsNull(transaction.id)
+            .forEach { it.markDeleted() }
     }
 
     private fun resolveCurrencySnapshot(

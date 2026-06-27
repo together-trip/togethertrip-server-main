@@ -2,6 +2,7 @@ package com.togethertrip.main.transaction.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionEvent
 import com.togethertrip.main.transaction.domain.TransactionEventType
@@ -58,6 +59,7 @@ class TransactionServiceTest {
     private lateinit var transactionPaymentRepository: TransactionPaymentRepository
     private lateinit var transactionEventRepository: TransactionEventRepository
     private lateinit var transactionStatisticsQueryRepository: TransactionStatisticsQueryRepository
+    private lateinit var postRepository: PostRepository
     private lateinit var tripRepository: TripRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var exchangeRateRepository: ExchangeRateRepository
@@ -72,6 +74,7 @@ class TransactionServiceTest {
         transactionPaymentRepository = mock(TransactionPaymentRepository::class.java)
         transactionEventRepository = mock(TransactionEventRepository::class.java)
         transactionStatisticsQueryRepository = mock(TransactionStatisticsQueryRepository::class.java)
+        postRepository = mock(PostRepository::class.java)
         tripRepository = mock(TripRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         exchangeRateRepository = mock(ExchangeRateRepository::class.java)
@@ -101,6 +104,7 @@ class TransactionServiceTest {
             transactionPaymentRepository = transactionPaymentRepository,
             transactionEventRepository = transactionEventRepository,
             transactionStatisticsQueryRepository = transactionStatisticsQueryRepository,
+            postRepository = postRepository,
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,

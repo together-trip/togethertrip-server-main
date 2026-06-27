@@ -10,6 +10,7 @@
 - 왜 단순 인덱스 추가만으로 충분하지 않다고 판단했는가?
 - 왜 `trip_participant_balance_summaries` projection을 preview 계산에 사용했는가?
 - 왜 `transaction-statistics(groupBy=category)` 쿼리를 first-post derived subquery와 posts 인덱스로 바꿨는가?
+- 왜 이후 `transaction-statistics(groupBy=category)` 모델링을 `transactions.category/occurred_at` 스냅샷과 `group by tx.category`로 다시 단순화했는가?
 - 실행계획 기준으로 어떤 병목이 있었고 어떤 효과가 있었는가?
 
 ## 2. 테스트 데이터와 부하 조건
@@ -778,6 +779,128 @@ derived subquery 방식은 posts 후보를 여행 단위로 한 번 구성한 �
 
 이 개선 후 전체 p95와 transaction-statistics p95 모두 안정권으로 내려왔습니다.
 
+### 10.6 추가 모델링 개선: transaction 통계 스냅샷
+
+`210635` 이후 게시글-기록/소비-거래 모델링을 다시 검토했습니다. first-post derived subquery는 transaction별 posts 반복 탐색을 줄이는 데 효과가 있었지만, 거래 통계가 여전히 게시글 대표값 규칙에 의존한다는 모델링 문제가 남았습니다.
+
+정리한 방향은 아래와 같습니다.
+
+- 일반 기록 Post와 소비 기록 ExpensePost는 별도 테이블을 늘리지 않고 `posts.post_type`으로 구분합니다.
+- 일반 기록 Post는 `transaction_id`가 없어도 됩니다.
+- ExpensePost는 active transaction과 1:1로 연결합니다.
+- 거래 통계의 기준값인 `category`, `occurred_at`은 조회 시점에 posts에서 다시 찾지 않고 `transactions`에 스냅샷으로 둡니다.
+
+이렇게 바꾼 이유는 거래 통계의 주 데이터 소스가 거래 원장이어야 하기 때문입니다. 게시글은 거래를 설명하는 화면/기록 모델이고, 통계 조회가 게시글 대표값 선정 규칙에 끌려가면 조회 쿼리와 도메인 의미가 함께 복잡해집니다.
+
+마이그레이션은 이미 실행한 `V18`을 수정하지 않고 아래처럼 나눴습니다.
+
+| migration | 역할 |
+|-----------|------|
+| `V18__add_transaction_statistics_snapshot.sql` | `transactions.category`, `transactions.occurred_at` 추가, 기존 데이터 backfill, 통계 인덱스 추가 |
+| `V19__normalize_transaction_category_snapshot.sql` | 이미 실행된 V18 이후 category 공백값을 null로 정규화 |
+
+### 10.7 추가 Group By 단순화
+
+기존 category 집계는 조회 시점마다 문자열을 보정한 표현식으로 그룹화했습니다.
+
+```sql
+select coalesce(nullif(trim(tx.category), ''), 'UNCATEGORIZED') as category,
+       count(tx.id) as transaction_count,
+       coalesce(sum(tx.base_amount), 0) as total_amount
+from transactions tx
+where tx.trip_id = 4853
+  and tx.status = 'ACTIVE'
+  and tx.deleted_at is null
+group by coalesce(nullif(trim(tx.category), ''), 'UNCATEGORIZED')
+order by coalesce(sum(tx.base_amount), 0) desc,
+         coalesce(nullif(trim(tx.category), ''), 'UNCATEGORIZED')
+```
+
+개선 후에는 저장/마이그레이션 단계에서 blank category를 null로 정규화하고, 조회 쿼리는 원 컬럼 기준으로 묶습니다.
+
+```sql
+select coalesce(tx.category, 'UNCATEGORIZED') as category,
+       count(*) as transaction_count,
+       coalesce(sum(tx.base_amount), 0) as total_amount
+from transactions tx
+where tx.trip_id = 4853
+  and tx.status = 'ACTIVE'
+  and tx.deleted_at is null
+group by tx.category
+order by coalesce(sum(tx.base_amount), 0) desc,
+         tx.category
+```
+
+즉 “조회 쿼리에서 매번 데이터 보정”하던 책임을 줄이고, 도메인/마이그레이션에서 정규화된 상태를 만든 뒤 쿼리는 단순 집계만 하도록 바꿨습니다.
+
+실행계획 비교 전에 데이터 분포를 확인했습니다.
+
+```sql
+select count(*) as total,
+       count(*) filter (
+           where trip_id = 4853
+             and status = 'ACTIVE'
+             and deleted_at is null
+       ) as target
+from transactions;
+```
+
+```text
+total  = 100057
+target = 100000
+```
+
+대상 trip의 ACTIVE 거래가 전체 transactions의 대부분입니다. 따라서 이 로컬 seed에서는 인덱스를 타는 것보다 `Parallel Seq Scan`으로 대부분의 row를 읽는 계획이 합리적으로 나옵니다.
+
+| 쿼리 | 주요 계획 | Execution Time | 해석 |
+|------|-----------|---------------:|------|
+| 기존 표현식 Group By | `Parallel Seq Scan` + `Partial HashAggregate` + `Finalize GroupAggregate` | 77.446ms | `trim/nullif/coalesce` 표현식 기준으로 그룹화 |
+| 개선 Group By | `Parallel Seq Scan` + `Partial HashAggregate` + `Finalize GroupAggregate` | 72.031ms | `tx.category` 원 컬럼 기준으로 그룹화 |
+
+개선 쿼리의 핵심 실행계획은 아래와 같습니다.
+
+```text
+Finalize GroupAggregate
+  Group Key: tx.category
+  -> Gather Merge
+     Workers Planned: 2
+     Workers Launched: 2
+     -> Partial HashAggregate
+        Group Key: tx.category
+        -> Parallel Seq Scan on public.transactions tx
+           Filter: deleted_at is null
+                   and trip_id = 4853
+                   and status = 'ACTIVE'
+           Rows: 약 100000
+Execution Time: 72.031ms
+```
+
+중요한 점은 “인덱스를 못 타서 실패”가 아니라는 것입니다. 테스트 데이터가 특정 trip에 극단적으로 몰려 있어 전체 테이블 대부분을 읽는 편이 더 싸게 나옵니다. 이번 추가 튜닝의 목적은 이 skew 조건에서 강제로 인덱스를 태우는 것이 아니라, 조회 쿼리의 책임을 줄이고 실제 서비스 데이터처럼 여러 trip에 분산된 조건에서 인덱스가 선택될 수 있는 형태로 단순화하는 것입니다.
+
+### 10.8 추가 모델링 개선 후 재검증 결과
+
+모델링과 Group By 개선 후 `20260627-170634`에서 같은 read-settlement 시나리오를 다시 실행했습니다.
+
+| 지표 | `20260627-152606` | `20260627-170634` | 변화 |
+|------|------------------:|------------------:|------|
+| 전체 p95 | 58.21ms | 32.41ms | -25.80ms |
+| scenario p95 | 58.10ms | 32.33ms | -25.77ms |
+| scenario p99 | 124.94ms | 50.02ms | tail 축소 |
+| settlement-preview p95 | 37.17ms | 22.61ms | 안정 유지 |
+| transaction-statistics p95 | 127.69ms | 50.01ms | -77.68ms |
+| transaction-statistics p99 | 206.72ms | 73.31ms | 200ms 미만 |
+| scenario slow request >= 200ms | 14건 | 0건 | 해소 |
+
+추가로 같은 실행에서 CPU/RAM 사용량도 확인했습니다.
+
+| 관찰 항목 | 결과 |
+|----------|------|
+| Docker stats | gateway/main/postgres CPU 사용량은 순간 상승했지만 응답 지연으로 번지지 않음 |
+| main container | 순간 CPU 약 189%, 메모리 약 800MiB |
+| postgres container | 순간 CPU 약 89%, 메모리 약 217MiB |
+| host stats | Docker VM 프로세스 CPU 사용량이 순간 상승 |
+| Actuator metrics | 인증 401로 수집 제외, 본 문서 판단에는 반영하지 않음 |
+
 ## 11. tail latency 관측
 
 쿼리 개선 후에도 max spike를 확인하기 위해 k6에 아래를 추가했습니다.
@@ -826,25 +949,44 @@ derived subquery 방식은 posts 후보를 여행 단위로 한 번 구성한 �
 | DB 집계로 바꿔야 합니다 | 필요한 값은 participant별 합계이며, 반환 row를 600,000개에서 20개로 줄일 수 있습니다. |
 | projection을 사용하되 fallback이 필요합니다 | 최신 summary row 10개로 계산 가능하지만, stale projection은 정합성 위험이 있으므로 version 검증 후 fallback합니다. |
 | category 통계는 transaction별 posts 탐색을 줄여야 합니다 | posts가 없는 데이터에서도 transaction 100,000건 기준 반복 탐색 구조가 tail을 만들었습니다. |
+| category 통계 모델링은 transaction 스냅샷으로 단순화해야 합니다 | 거래 통계가 posts 대표값 선정 규칙에 의존하지 않도록 `transactions.category/occurred_at`을 기준으로 집계합니다. |
 | p99는 hard threshold가 아니라 관찰 지표입니다 | 로컬 Docker에서는 순간 spike가 재현되지 않을 수 있고 p99는 샘플 상위 일부에 민감합니다. |
 
 ## 13. 최신 결과
 
 최초 실행과 최신 실행 비교는 아래와 같습니다.
 
-| 지표 | 최초 `135224` | 최신 `181106` | 변화 |
+| 지표 | 최초 `135224` | 최신 `170634` | 변화 |
 |------|--------------:|--------------:|-----:|
-| 전체 p95 | 3.10s | 45.39ms | -98.54% |
-| settlement-preview p95 | 3.75s | 16.11ms | -99.57% |
-| iteration p95 | 9.58s | 1.22s | -87.22% |
-| iterations | 134 | 822 | +513.43% |
-| http_reqs | 1,074 | 6,578 | +512.48% |
+| 전체 p95 | 3.10s | 32.41ms | -98.95% |
+| settlement-preview p95 | 3.75s | 22.61ms | -99.40% |
+| iteration p95 | 9.58s | 1.18s | -87.68% |
+| iterations | 134 | 830 | +519.40% |
+| http_reqs | 1,074 | 6,642 | +518.44% |
+
+최신 실행 파일은 아래 위치에 있습니다.
+
+```text
+docs/k6-results/read-settlement/20260627-170634-*
+```
+
+최신 상태의 endpoint별 핵심 값은 아래와 같습니다.
+
+| endpoint/metric | 값 |
+|-----------------|---:|
+| scenario p95 | 32.33ms |
+| scenario p99 | 50.02ms |
+| settlement-preview p95 | 22.61ms |
+| settlement-preview p99 | 42.38ms |
+| transaction-statistics p95 | 50.01ms |
+| transaction-statistics p99 | 73.31ms |
+| scenario slow request >= 200ms | 0건 |
 
 최신 상태에서는 추가 코드 최적화보다 아래 작업이 우선입니다.
 
 1. 동일 조건 반복 실행으로 tail 재현성 확인
 2. spike 시각의 gateway/main/DB 로그 매칭
-3. 실제 데이터에 가까운 posts 포함 seed 추가 검토
+3. category 분포가 다양한 seed와 실제 데이터에 가까운 posts 포함 seed 추가 검토
 4. p99는 관찰 지표로 유지하고, p95 threshold 중심으로 회귀 방지
 
 ## 14. 결론
@@ -855,8 +997,9 @@ derived subquery 방식은 posts 후보를 여행 단위로 한 번 구성한 �
 600,000 원본 row 반환
 -> DB participant별 집계 20 row 반환
 -> 최신 projection 10 row 우선 사용
+-> transaction 통계 스냅샷 기준 category 집계
 ```
 
 이 판단은 실행계획에서 확인된 대량 row 반환, external merge sort, 애플리케이션 집계 비용을 근거로 합니다.
 
-그 결과 최초 `settlement-preview p95 3.75s`는 최신 `16.11ms`까지 줄었고, 전체 p95도 `3.10s`에서 `45.39ms`로 개선됐습니다.
+그 결과 최초 `settlement-preview p95 3.75s`는 최신 `22.61ms`까지 줄었고, 전체 p95도 `3.10s`에서 `32.41ms`로 개선됐습니다. 추가로 `transaction-statistics p95`는 follow-up 직후 `405.02ms`에서 최신 `50.01ms`까지 내려왔고, 최신 실행의 실제 부하 구간에서는 200ms 이상 slow request가 발생하지 않았습니다.

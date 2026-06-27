@@ -85,6 +85,40 @@ BEGIN
         RAISE EXCEPTION 'Found % DML trips with invalid payment totals.', mismatch_count;
     END IF;
 
+    WITH post_totals AS (
+        SELECT
+            trip.id AS trip_id,
+            count(post.id) AS post_count,
+            count(*) FILTER (WHERE post.post_type = 'EXPENSE') AS expense_post_count,
+            count(DISTINCT post.transaction_id) AS linked_transaction_count,
+            count(*) FILTER (
+                WHERE post.transaction_id IS NOT NULL
+                  AND post.category = tx.category
+                  AND post.occurred_at = tx.occurred_at
+            ) AS synced_metadata_count
+        FROM trips trip
+        JOIN transactions tx
+          ON tx.trip_id = trip.id
+         AND tx.deleted_at IS NULL
+        LEFT JOIN posts post
+          ON post.transaction_id = tx.id
+         AND post.deleted_at IS NULL
+        WHERE trip.title LIKE 'DML_LOADTEST_%'
+          AND trip.deleted_at IS NULL
+        GROUP BY trip.id
+    )
+    SELECT count(*)
+    INTO mismatch_count
+    FROM post_totals
+    WHERE post_count <> 1
+       OR expense_post_count <> 1
+       OR linked_transaction_count <> 1
+       OR synced_metadata_count <> 1;
+
+    IF mismatch_count <> 0 THEN
+        RAISE EXCEPTION 'Found % DML trips with invalid expense post linkage.', mismatch_count;
+    END IF;
+
     WITH share_totals AS (
         SELECT
             trip.id AS trip_id,
@@ -193,6 +227,11 @@ SELECT 'dml_transactions', count(*)
 FROM transactions tx
 JOIN dml_trips trip ON trip.id = tx.trip_id
 WHERE tx.deleted_at IS NULL
+UNION ALL
+SELECT 'dml_posts', count(*)
+FROM posts post
+JOIN dml_trips trip ON trip.id = post.trip_id
+WHERE post.deleted_at IS NULL
 UNION ALL
 SELECT 'dml_payments', count(*)
 FROM transaction_payments payment

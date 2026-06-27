@@ -63,17 +63,11 @@ class TransactionStatisticsQueryRepository(
                    count(tx.id) as transaction_count,
                    coalesce(sum(tx.base_amount), 0) as total_base_amount
             from transactions tx
-            left join posts post on post.id = (
-                select min(candidate.id)
-                from posts candidate
-                where candidate.transaction_id = tx.id
-                  and candidate.deleted_at is null
-            )
             where tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
-              and (:fromFilterEnabled = false or coalesce(post.occurred_at, tx.created_at) >= :from)
-              and (:toFilterEnabled = false or coalesce(post.occurred_at, tx.created_at) < :toExclusive)
+              and (:fromFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) >= :from)
+              and (:toFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) < :toExclusive)
             group by tx.transaction_type
             order by total_base_amount desc, item_key asc
             """.trimIndent()
@@ -101,31 +95,20 @@ class TransactionStatisticsQueryRepository(
             )
         }
 
-        // 카테고리와 발생일은 연결된 거래 게시글 정보를 우선 사용한다.
+        // 카테고리와 발생일은 거래 원장에 저장된 통계 스냅샷을 사용한다.
         return entityManager.createNativeQuery(
             """
-            select coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_key,
-                   coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_label,
-                   count(tx.id) as transaction_count,
+            select coalesce(tx.category, 'UNCATEGORIZED') as item_key,
+                   coalesce(tx.category, 'UNCATEGORIZED') as item_label,
+                   count(*) as transaction_count,
                    coalesce(sum(tx.base_amount), 0) as total_base_amount
             from transactions tx
-            left join (
-                select distinct on (candidate.transaction_id)
-                       candidate.transaction_id,
-                       candidate.category,
-                       candidate.occurred_at
-                from posts candidate
-                where candidate.deleted_at is null
-                  and candidate.trip_id = :tripId
-                  and candidate.transaction_id is not null
-                order by candidate.transaction_id, candidate.id
-            ) post on post.transaction_id = tx.id
             where tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
-              and (:fromFilterEnabled = false or coalesce(post.occurred_at, tx.created_at) >= :from)
-              and (:toFilterEnabled = false or coalesce(post.occurred_at, tx.created_at) < :toExclusive)
-            group by coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED')
+              and (:fromFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) >= :from)
+              and (:toFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) < :toExclusive)
+            group by tx.category
             order by total_base_amount desc, item_key asc
             """.trimIndent()
         )
@@ -162,18 +145,12 @@ class TransactionStatisticsQueryRepository(
             from transaction_shares share
             join transactions tx on tx.id = share.transaction_id
             join trip_participants participant on participant.id = share.trip_participant_id
-            left join posts post on post.id = (
-                select min(candidate.id)
-                from posts candidate
-                where candidate.transaction_id = tx.id
-                  and candidate.deleted_at is null
-            )
             where share.deleted_at is null
               and tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
-              and (:fromFilterEnabled = false or coalesce(post.occurred_at, tx.created_at) >= :from)
-              and (:toFilterEnabled = false or coalesce(post.occurred_at, tx.created_at) < :toExclusive)
+              and (:fromFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) >= :from)
+              and (:toFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) < :toExclusive)
             group by participant.id, participant.display_name
             order by total_base_amount desc, participant.id asc
             """.trimIndent()
@@ -245,25 +222,15 @@ class TransactionStatisticsQueryRepository(
     ): List<TransactionStatisticsRow> {
         return entityManager.createNativeQuery(
             """
-            select coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_key,
-                   coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED') as item_label,
-                   count(tx.id) as transaction_count,
+            select coalesce(tx.category, 'UNCATEGORIZED') as item_key,
+                   coalesce(tx.category, 'UNCATEGORIZED') as item_label,
+                   count(*) as transaction_count,
                    coalesce(sum(tx.base_amount), 0) as total_base_amount
             from transactions tx
-            left join (
-                select distinct on (candidate.transaction_id)
-                       candidate.transaction_id,
-                       candidate.category
-                from posts candidate
-                where candidate.deleted_at is null
-                  and candidate.trip_id = :tripId
-                  and candidate.transaction_id is not null
-                order by candidate.transaction_id, candidate.id
-            ) post on post.transaction_id = tx.id
             where tx.deleted_at is null
               and tx.trip_id = :tripId
               and tx.status = :status
-            group by coalesce(nullif(trim(post.category), ''), 'UNCATEGORIZED')
+            group by tx.category
             order by total_base_amount desc, item_key asc
             """.trimIndent()
         )

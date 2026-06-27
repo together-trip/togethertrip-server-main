@@ -247,6 +247,16 @@ HOLD: 유지 시간입니다. 기본값은 1m 입니다.
 RAMP_DOWN: 감소 시간입니다. 기본값은 30s 입니다.
 SLEEP: 반복 사이 대기 시간입니다. 기본값은 1초입니다.
 SLOW_REQUEST_MS: 이 시간 이상 걸린 요청을 slow_request 로그로 남깁니다. 기본값은 200ms이고, 0 이하면 비활성화합니다.
+MONITOR_INTERVAL_SECONDS: run-load-test.sh 리소스 수집 주기입니다. 기본값은 1초입니다.
+ACTUATOR_BASE_URL: Actuator 메트릭 수집 대상입니다. 기본값은 http://localhost:8081 입니다.
+```
+
+`run-load-test.sh`는 k6 실행 중 아래 파일을 추가로 남깁니다.
+
+```text
+{run_id}-docker-stats.log: docker stats --no-stream 결과입니다.
+{run_id}-host-stats.log: 호스트 프로세스 CPU/메모리 상위 목록입니다.
+{run_id}-actuator-metrics.log: JVM/CPU 등 Actuator 메트릭입니다. Actuator가 열려 있지 않으면 curl 오류가 기록됩니다.
 ```
 
 `TARGET_STRATEGY` 값은 아래와 같습니다.
@@ -360,7 +370,7 @@ cd /Users/jujaewan/1_Projects/togethertrip/togethertrip-server-main
 
 ```text
 새 여행 생성
-거래 등록
+소비 게시글 통합 생성
 거래 수정
 정산 preview
 정산 확정
@@ -393,6 +403,9 @@ DML 정합성 검증은 아래 내용을 확인합니다.
 여행 SETTLED 상태
 참여자 3명
 거래 1건
+소비 게시글 1건
+거래와 소비 게시글 1:1 연결
+거래와 소비 게시글 카테고리/발생일 동기화
 수정 후 거래 금액 33,000원
 결제 합계 33,000원
 부담 합계 33,000원
@@ -402,24 +415,30 @@ DML 정합성 검증은 아래 내용을 확인합니다.
 송금자/수신자 확인 시간 존재
 ```
 
-작성 시점 짧은 검증은 아래 조건으로 통과했습니다.
+작성 시점 기본 검증은 아래 조건으로 통과했습니다.
 
 ```bash
-VUS=1 RAMP_UP=1s HOLD=1s RAMP_DOWN=1s ./performance/k6/run-dml-load-test.sh
+./performance/k6/run-dml-load-test.sh
 ```
 
 결과 요약:
 
 ```text
+run id: 20260627-160110
+VUS=1
+RAMP_UP=10s
+HOLD=30s
+RAMP_DOWN=10s
 checks: 100.00%
 http_req_failed: 0.00%
-http_reqs: 26
-iterations: 2
-dml_trips: 2
-dml_transactions: 2
-dml_settlements: 2
-dml_transfers: 4
-dml_completed_transfers: 4
+http_reqs: 406
+iterations: 40
+dml_trips: 40
+dml_transactions: 40
+dml_posts: 40
+dml_settlements: 40
+dml_transfers: 80
+dml_completed_transfers: 80
 k6 exit code: 0
 ```
 

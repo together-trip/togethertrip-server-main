@@ -16,6 +16,7 @@ import jakarta.persistence.Table
 import jakarta.persistence.Version
 import org.hibernate.annotations.SQLRestriction
 import java.math.BigDecimal
+import java.time.Instant
 
 @Entity
 @Table(name = "transactions")
@@ -50,11 +51,21 @@ class Transaction(
     @Column(name = "base_amount", nullable = false, precision = 19, scale = 2)
     var baseAmount: BigDecimal,
 
+    @Column(length = 30)
+    var category: String? = null,
+
+    @Column(name = "occurred_at")
+    var occurredAt: Instant? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     var status: TransactionStatus = TransactionStatus.ACTIVE,
 
 ) : BaseEntity() {
+
+    init {
+        category = normalizeCategory(category)
+    }
 
     // 거래 낙관적 락 버전 (DDL: version BIGINT NOT NULL DEFAULT 0)
     @Version
@@ -64,6 +75,8 @@ class Transaction(
     fun updateSnapshot(
         ledgerEntry: TransactionLedgerEntry,
         currencySnapshot: TransactionCurrencySnapshot,
+        category: String?,
+        occurredAt: Instant?,
     ) {
         this.transactionType = ledgerEntry.transactionType
         this.amount = ledgerEntry.amount
@@ -71,9 +84,25 @@ class Transaction(
         this.exchangeRate = currencySnapshot.exchangeRate
         this.baseCurrency = currencySnapshot.baseCurrency
         this.baseAmount = currencySnapshot.convert(ledgerEntry.amount)
+        updateMetadata(
+            category = category,
+            occurredAt = occurredAt,
+        )
+    }
+
+    fun updateMetadata(
+        category: String?,
+        occurredAt: Instant?,
+    ) {
+        this.category = normalizeCategory(category)
+        this.occurredAt = occurredAt
     }
 
     fun void() {
         status = TransactionStatus.VOIDED
+    }
+
+    private fun normalizeCategory(category: String?): String? {
+        return category?.trim()?.takeIf { it.isNotEmpty() }
     }
 }

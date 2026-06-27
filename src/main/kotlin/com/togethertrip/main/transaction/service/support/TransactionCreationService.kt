@@ -78,6 +78,8 @@ class TransactionCreationService(
                 exchangeRate = currencySnapshot.exchangeRate,
                 baseCurrency = currencySnapshot.baseCurrency,
                 baseAmount = currencySnapshot.convert(ledgerEntry.amount),
+                category = request.category,
+                occurredAt = request.occurredAt,
             )
         )
         val payments = savePayments(

@@ -22,7 +22,12 @@ class ExpensePostController(
     private val postService: PostService,
 ) : ExpensePostApiSpec {
 
-    @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @PostMapping(
+        consumes = [
+            MediaType.MULTIPART_FORM_DATA_VALUE,
+            MediaType.APPLICATION_FORM_URLENCODED_VALUE,
+        ]
+    )
     @RequireActiveTripParticipant
     override fun createExpensePost(
         @AuthenticationPrincipal authUser: AuthUser,

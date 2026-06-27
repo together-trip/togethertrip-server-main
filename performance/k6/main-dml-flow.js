@@ -11,7 +11,7 @@ const receiverToken = __ENV.RECEIVER_KAKAO_ACCESS_TOKEN || 'local-test:verified:
 const requestSleepSeconds = Number(__ENV.SLEEP || 1);
 
 const createTripTrend = new Trend('dml_create_trip_duration', true);
-const createTransactionTrend = new Trend('dml_create_transaction_duration', true);
+const createExpensePostTrend = new Trend('dml_create_expense_post_duration', true);
 const updateTransactionTrend = new Trend('dml_update_transaction_duration', true);
 const previewSettlementTrend = new Trend('dml_preview_settlement_duration', true);
 const confirmSettlementTrend = new Trend('dml_confirm_settlement_duration', true);
@@ -34,7 +34,7 @@ export const options = {
     http_req_failed: ['rate<0.01'],
     checks: ['rate>0.99'],
     dml_create_trip_duration: ['p(95)<1000'],
-    dml_create_transaction_duration: ['p(95)<1000'],
+    dml_create_expense_post_duration: ['p(95)<1000'],
     dml_update_transaction_duration: ['p(95)<1000'],
     dml_confirm_settlement_duration: ['p(95)<3000'],
     dml_confirm_transfer_duration: ['p(95)<1000'],
@@ -61,7 +61,7 @@ export default function (data) {
     fail(`failed to resolve participants from trip ${trip.id}`);
   }
 
-  const transaction = createTransaction(
+  const created = createExpensePost(
     data.owner.accessToken,
     trip.id,
     senderParticipantId,
@@ -73,7 +73,7 @@ export default function (data) {
   updateTransaction(
     data.owner.accessToken,
     trip.id,
-    transaction.summary.id,
+    created.transaction.summary.id,
     senderParticipantId,
     [ownerParticipantId, senderParticipantId, receiverParticipantId],
     33000,
@@ -178,28 +178,31 @@ function createTrip(data) {
   return trip;
 }
 
-function createTransaction(accessToken, tripId, payerParticipantId, participantIds, amount, shareAmount) {
+function createExpensePost(accessToken, tripId, payerParticipantId, participantIds, amount, shareAmount) {
   const response = http.post(
-    `${baseUrl}/api/trips/${tripId}/transactions`,
-    JSON.stringify(transactionBody(payerParticipantId, participantIds, amount, shareAmount)),
+    `${baseUrl}/api/trips/${tripId}/expense-posts`,
+    formUrlEncode(expensePostBody(payerParticipantId, participantIds, amount, shareAmount)),
     {
-      headers: authHeaders(accessToken),
-      tags: { endpoint: 'dml-create-transaction' },
+      headers: formHeaders(accessToken),
+      tags: { endpoint: 'dml-create-expense-post' },
     },
   );
-  createTransactionTrend.add(response.timings.duration);
+  createExpensePostTrend.add(response.timings.duration);
 
   check(response, {
-    'create transaction returned 200': (r) => r.status === 200,
-    'create transaction has id': (r) => Boolean(r.json('data.summary.id')),
+    'create expense post returned 200': (r) => r.status === 200,
+    'create expense post has post id': (r) => Boolean(r.json('data.post.id')),
+    'create expense post has transaction id': (r) => Boolean(r.json('data.transaction.summary.id')),
+    'create expense post is EXPENSE': (r) => r.json('data.post.postType') === 'EXPENSE',
   });
 
-  const transaction = response.json('data');
-  if (!transaction || !transaction.summary || !transaction.summary.id) {
-    fail(`failed to create transaction for trip ${tripId}`);
+  const created = response.json('data');
+  if (!created || !created.transaction || !created.transaction.summary || !created.transaction.summary.id) {
+    logFailure('dml_create_expense_post_failed', response, { tripId });
+    fail(`failed to create expense post for trip ${tripId}`);
   }
 
-  return transaction;
+  return created;
 }
 
 function updateTransaction(accessToken, tripId, transactionId, payerParticipantId, participantIds, amount, shareAmount) {
@@ -347,6 +350,8 @@ function transactionBody(payerParticipantId, participantIds, amount, shareAmount
     transactionType: 'EXPENSE',
     amount,
     currency: 'KRW',
+    category: 'DML_FOOD',
+    occurredAt: '2026-06-02T03:00:00Z',
     payments: [
       {
         participantId: payerParticipantId,
@@ -361,9 +366,54 @@ function transactionBody(payerParticipantId, participantIds, amount, shareAmount
   };
 }
 
+function expensePostBody(payerParticipantId, participantIds, amount, shareAmount) {
+  const body = {
+    title: 'DML 소비 기록',
+    category: 'DML_FOOD',
+    content: 'DML load test expense post',
+    occurredAt: '2026-06-02T03:00:00Z',
+    placeName: 'DML 식당',
+    transactionType: 'EXPENSE',
+    amount: String(amount),
+    currency: 'KRW',
+  };
+
+  body['payments[0].participantId'] = String(payerParticipantId);
+  body['payments[0].amount'] = String(amount);
+
+  participantIds.forEach((participantId, index) => {
+    body[`shares[${index}].participantId`] = String(participantId);
+    body[`shares[${index}].shareAmount`] = String(shareAmount);
+  });
+
+  return body;
+}
+
+function formUrlEncode(body) {
+  return Object.entries(body)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+}
+
+function logFailure(type, response, context = {}) {
+  console.error(JSON.stringify({
+    type,
+    status: response.status,
+    body: response.body,
+    ...context,
+  }));
+}
+
 function authHeaders(accessToken) {
   return {
     Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
+  };
+}
+
+function formHeaders(accessToken) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/x-www-form-urlencoded',
   };
 }

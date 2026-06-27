@@ -44,6 +44,8 @@ data class CreateExpensePostRequest(
             transactionType = transactionType,
             amount = amount,
             currency = currency,
+            category = category,
+            occurredAt = occurredAt,
             payments = payments,
             shares = shares,
         )
