@@ -66,6 +66,7 @@ class TransactionServiceTest {
     private lateinit var userRepository: UserRepository
     private lateinit var balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService
     private lateinit var transactionService: TransactionService
+    private lateinit var clock: Clock
 
     @BeforeEach
     fun setUp() {
@@ -80,12 +81,13 @@ class TransactionServiceTest {
         exchangeRateRepository = mock(ExchangeRateRepository::class.java)
         userRepository = mock(UserRepository::class.java)
         balanceSummaryProjectionService = mock(TripParticipantBalanceSummaryProjectionService::class.java)
+        clock = Clock.fixed(
+            Instant.parse("2026-07-02T00:30:00Z"),
+            ZoneId.of("Asia/Seoul"),
+        )
         val transactionExchangeRateResolver = TransactionExchangeRateResolver(
             exchangeRateRepository = exchangeRateRepository,
-            clock = Clock.fixed(
-                Instant.parse("2026-07-02T00:30:00Z"),
-                ZoneId.of("Asia/Seoul"),
-            ),
+            clock = clock,
         )
         val transactionCreationService = TransactionCreationService(
             transactionRepository = transactionRepository,
@@ -97,6 +99,7 @@ class TransactionServiceTest {
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            clock = clock,
         )
         transactionService = TransactionService(
             transactionRepository = transactionRepository,
@@ -111,6 +114,7 @@ class TransactionServiceTest {
             transactionCreationService = transactionCreationService,
             userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            clock = clock,
         )
     }
 
@@ -181,6 +185,61 @@ class TransactionServiceTest {
         assertEquals(BigDecimal("9150.00"), response.shares.first().baseShareAmount)
         assertEquals(1L, trip.expenseVersion)
         assertEquals(TransactionEventType.CREATED, savedEvents.first().eventType)
+    }
+
+    @Test
+    fun `거래 등록 시 소비일 기준 환율을 적용한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 6, 30),
+            )
+        ).thenReturn(
+            createExchangeRate(
+                rate = BigDecimal("8.800000"),
+                rateDate = LocalDate.of(2026, 6, 30),
+            )
+        )
+        mockTransactionSaves()
+
+        val response = transactionService.createTransaction(
+            userId = 1L,
+            tripId = 10L,
+            request = CreateTransactionRequest(
+                amount = BigDecimal("1000.00"),
+                currency = "JPY",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("1000.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("1000.00"),
+                    )
+                ),
+                occurredAt = Instant.parse("2026-06-30T03:00:00Z"),
+            ),
+        )
+
+        assertEquals(BigDecimal("8.800000"), response.summary.exchangeRate)
+        assertEquals(BigDecimal("8800.00"), response.summary.baseAmount)
     }
 
     @Test
@@ -527,6 +586,73 @@ class TransactionServiceTest {
         assertEquals(BigDecimal("10.000000"), response.summary.exchangeRate)
         assertEquals(BigDecimal("10000.00"), response.summary.baseAmount)
         assertEquals(1L, trip.expenseVersion)
+    }
+
+    @Test
+    fun `거래 수정 시 소비일 기준 환율을 다시 적용한다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val participant = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val transaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-01T12:00:00Z"),
+        )
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = participant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 6, 30),
+            )
+        ).thenReturn(
+            createExchangeRate(
+                rate = BigDecimal("8.800000"),
+                rateDate = LocalDate.of(2026, 6, 30),
+            )
+        )
+        `when`(transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L))
+            .thenReturn(emptyList())
+        `when`(transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L))
+            .thenReturn(emptyList())
+        mockTransactionSaves()
+
+        val response = transactionService.updateTransaction(
+            userId = 1L,
+            tripId = 10L,
+            transactionId = 300L,
+            request = UpdateTransactionRequest(
+                amount = BigDecimal("1000.00"),
+                currency = "JPY",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("1000.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("1000.00"),
+                    )
+                ),
+                occurredAt = Instant.parse("2026-06-30T03:00:00Z"),
+            ),
+        )
+
+        assertEquals(BigDecimal("8.800000"), response.summary.exchangeRate)
+        assertEquals(BigDecimal("8800.00"), response.summary.baseAmount)
     }
 
     @Test

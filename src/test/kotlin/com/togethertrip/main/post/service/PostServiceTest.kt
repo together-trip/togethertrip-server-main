@@ -109,12 +109,13 @@ class PostServiceTest {
         balanceSummaryProjectionService = mock(TripParticipantBalanceSummaryProjectionService::class.java)
         outboxEventRepository = mock(OutboxEventRepository::class.java)
         postAttachmentStorage = mock(PostAttachmentStorage::class.java)
+        val clock = Clock.fixed(
+            Instant.parse("2026-07-02T00:30:00Z"),
+            ZoneId.of("Asia/Seoul"),
+        )
         val transactionExchangeRateResolver = TransactionExchangeRateResolver(
             exchangeRateRepository = mock(ExchangeRateRepository::class.java),
-            clock = Clock.fixed(
-                Instant.parse("2026-07-02T00:30:00Z"),
-                ZoneId.of("Asia/Seoul"),
-            ),
+            clock = clock,
         )
         val transactionCreationService = TransactionCreationService(
             transactionRepository = transactionRepository,
@@ -126,6 +127,7 @@ class PostServiceTest {
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            clock = clock,
         )
         `when`(
             tripParticipantRepository.findActiveUserIdsForNotification(
