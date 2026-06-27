@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check, fail, sleep } from 'k6';
+import exec from 'k6/execution';
 import { Trend } from 'k6/metrics';
 
 const DEFAULT_BASE_URL = 'http://localhost:8080';
@@ -9,10 +10,14 @@ const ownerToken = __ENV.OWNER_KAKAO_ACCESS_TOKEN || 'local-test:verified:hana';
 const senderToken = __ENV.SENDER_KAKAO_ACCESS_TOKEN || 'local-test:verified:minseo';
 const receiverToken = __ENV.RECEIVER_KAKAO_ACCESS_TOKEN || 'local-test:verified:joon';
 const requestSleepSeconds = Number(__ENV.SLEEP || 1);
+const concurrentTransactionCount = Number(
+  __ENV.CONCURRENT_TRANSACTIONS || __ENV.CONCURRENT_VUS || __ENV.VUS || 1,
+);
 
 const createTripTrend = new Trend('dml_create_trip_duration', true);
 const createExpensePostTrend = new Trend('dml_create_expense_post_duration', true);
 const updateTransactionTrend = new Trend('dml_update_transaction_duration', true);
+const concurrentUpdateTransactionTrend = new Trend('dml_concurrent_update_transaction_duration', true);
 const previewSettlementTrend = new Trend('dml_preview_settlement_duration', true);
 const confirmSettlementTrend = new Trend('dml_confirm_settlement_duration', true);
 const getTransfersTrend = new Trend('dml_get_transfers_duration', true);
@@ -29,6 +34,14 @@ export const options = {
       ],
       gracefulRampDown: '10s',
     },
+    dml_concurrent_projection: {
+      executor: 'constant-vus',
+      exec: 'concurrentProjectionUpdates',
+      vus: Number(__ENV.CONCURRENT_VUS || __ENV.VUS || 1),
+      duration: __ENV.CONCURRENT_HOLD || __ENV.HOLD || '30s',
+      gracefulStop: '10s',
+      startTime: __ENV.CONCURRENT_START || '0s',
+    },
   },
   thresholds: {
     http_req_failed: ['rate<0.01'],
@@ -36,6 +49,7 @@ export const options = {
     dml_create_trip_duration: ['p(95)<1000'],
     dml_create_expense_post_duration: ['p(95)<1000'],
     dml_update_transaction_duration: ['p(95)<1000'],
+    dml_concurrent_update_transaction_duration: ['p(95)<1000'],
     dml_confirm_settlement_duration: ['p(95)<3000'],
     dml_confirm_transfer_duration: ['p(95)<1000'],
   },
@@ -45,8 +59,9 @@ export function setup() {
   const owner = login(ownerToken, 'owner');
   const sender = login(senderToken, 'sender');
   const receiver = login(receiverToken, 'receiver');
+  const concurrent = createConcurrentProjectionFixture({ owner, sender, receiver });
 
-  return { owner, sender, receiver };
+  return { owner, sender, receiver, concurrent };
 }
 
 export default function (data) {
@@ -85,6 +100,37 @@ export default function (data) {
   const transfers = getTransfers(data.owner.accessToken, trip.id, settlement.id);
 
   confirmTransfers(data, trip.id, transfers, participants.byParticipantId);
+
+  sleep(requestSleepSeconds);
+}
+
+export function concurrentProjectionUpdates(data) {
+  const fixture = data.concurrent;
+  if (!fixture || !fixture.transactionIds || fixture.transactionIds.length === 0) {
+    fail('concurrent projection fixture is missing');
+  }
+
+  const scenarioIteration = exec.scenario.iterationInTest;
+  const transactionId = fixture.transactionIds[scenarioIteration % fixture.transactionIds.length];
+  const amount = 30000 + ((scenarioIteration + 1) * 300);
+  const shareAmount = amount / fixture.participantIds.length;
+
+  const response = updateTransaction(
+    data.owner.accessToken,
+    fixture.tripId,
+    transactionId,
+    fixture.payerParticipantId,
+    fixture.participantIds,
+    amount,
+    shareAmount,
+    concurrentUpdateTransactionTrend,
+    'dml-concurrent-update-transaction',
+  );
+
+  check(response, {
+    'concurrent update transaction returned 200': (r) => r.status === 200,
+    'concurrent update transaction amount changed': (r) => Number(r.json('data.summary.amount')) === amount,
+  });
 
   sleep(requestSleepSeconds);
 }
@@ -129,6 +175,10 @@ function login(kakaoAccessToken, label) {
 
 function createTrip(data) {
   const title = `DML_LOADTEST_${__VU}_${__ITER}_${Date.now()}`;
+  return createTripWithTitle(data, title);
+}
+
+function createTripWithTitle(data, title) {
   const body = {
     title,
     defaultCurrency: 'KRW',
@@ -178,6 +228,39 @@ function createTrip(data) {
   return trip;
 }
 
+function createConcurrentProjectionFixture(data) {
+  const trip = createTripWithTitle(data, `DML_CONCURRENT_${Date.now()}`);
+  const participants = participantMap(trip);
+  const ownerParticipantId = participants.byUserId[data.owner.userId];
+  const senderParticipantId = participants.byUserId[data.sender.userId];
+  const receiverParticipantId = participants.byUserId[data.receiver.userId];
+  const participantIds = [ownerParticipantId, senderParticipantId, receiverParticipantId];
+
+  if (participantIds.some((participantId) => !participantId)) {
+    fail(`failed to resolve concurrent participants from trip ${trip.id}`);
+  }
+
+  const transactionIds = [];
+  for (let index = 0; index < concurrentTransactionCount; index += 1) {
+    const created = createExpensePost(
+      data.owner.accessToken,
+      trip.id,
+      senderParticipantId,
+      participantIds,
+      30000,
+      10000,
+    );
+    transactionIds.push(created.transaction.summary.id);
+  }
+
+  return {
+    tripId: trip.id,
+    payerParticipantId: senderParticipantId,
+    participantIds,
+    transactionIds,
+  };
+}
+
 function createExpensePost(accessToken, tripId, payerParticipantId, participantIds, amount, shareAmount) {
   const response = http.post(
     `${baseUrl}/api/trips/${tripId}/expense-posts`,
@@ -205,21 +288,33 @@ function createExpensePost(accessToken, tripId, payerParticipantId, participantI
   return created;
 }
 
-function updateTransaction(accessToken, tripId, transactionId, payerParticipantId, participantIds, amount, shareAmount) {
+function updateTransaction(
+  accessToken,
+  tripId,
+  transactionId,
+  payerParticipantId,
+  participantIds,
+  amount,
+  shareAmount,
+  trend = updateTransactionTrend,
+  endpoint = 'dml-update-transaction',
+) {
   const response = http.patch(
     `${baseUrl}/api/trips/${tripId}/transactions/${transactionId}`,
     JSON.stringify(transactionBody(payerParticipantId, participantIds, amount, shareAmount)),
     {
       headers: authHeaders(accessToken),
-      tags: { endpoint: 'dml-update-transaction' },
+      tags: { endpoint },
     },
   );
-  updateTransactionTrend.add(response.timings.duration);
+  trend.add(response.timings.duration);
 
   check(response, {
     'update transaction returned 200': (r) => r.status === 200,
     'update transaction amount changed': (r) => Number(r.json('data.summary.amount')) === amount,
   });
+
+  return response;
 }
 
 function previewSettlement(accessToken, tripId) {
