@@ -57,6 +57,8 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 
 @Service
@@ -73,6 +75,7 @@ class TransactionService(
     private val transactionCreationService: TransactionCreationService,
     private val userRepository: UserRepository,
     private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
+    private val clock: Clock,
 ) {
 
     @Transactional
@@ -217,6 +220,7 @@ class TransactionService(
         val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
             currency = ledgerEntry.currency,
+            occurredAt = request.occurredAt,
         )
         val previousPayments = transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
         val previousShares = transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
@@ -634,11 +638,16 @@ class TransactionService(
 
     private fun resolveCurrencySnapshot(
         currency: String,
+        occurredAt: Instant?,
     ): TransactionCurrencySnapshot {
         return transactionExchangeRateResolver.resolve(
             currency = currency,
-            spendingDate = null,
+            spendingDate = resolveSpendingDate(occurredAt),
         ).toCurrencySnapshot()
+    }
+
+    private fun resolveSpendingDate(occurredAt: Instant?): LocalDate? {
+        return occurredAt?.atZone(clock.zone)?.toLocalDate()
     }
 
     private fun getTransactionOrThrow(

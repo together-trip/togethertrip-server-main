@@ -32,6 +32,9 @@ import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
 
 @Service
 class TransactionCreationService(
@@ -44,6 +47,7 @@ class TransactionCreationService(
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
     private val userRepository: UserRepository,
     private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
+    private val clock: Clock,
 ) {
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -67,6 +71,7 @@ class TransactionCreationService(
         val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
             currency = ledgerEntry.currency,
+            occurredAt = request.occurredAt,
         )
         val transaction = transactionRepository.save(
             Transaction(
@@ -206,11 +211,16 @@ class TransactionCreationService(
 
     private fun resolveCurrencySnapshot(
         currency: String,
+        occurredAt: Instant?,
     ): TransactionCurrencySnapshot {
         return transactionExchangeRateResolver.resolve(
             currency = currency,
-            spendingDate = null,
+            spendingDate = resolveSpendingDate(occurredAt),
         ).toCurrencySnapshot()
+    }
+
+    private fun resolveSpendingDate(occurredAt: Instant?): LocalDate? {
+        return occurredAt?.atZone(clock.zone)?.toLocalDate()
     }
 
     private fun getAccessibleTrip(
