@@ -184,6 +184,88 @@ class TransactionServiceTest {
     }
 
     @Test
+    fun `거래 등록 시 배분 환산 금액 합계를 거래 기준 금액에 맞춘다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val payer = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val shareParticipant = createParticipant(
+            id = 101L,
+            trip = trip,
+            user = createUser().apply { id = 2L },
+        )
+        val savedPayments = mutableListOf<TransactionPayment>()
+        val savedShares = mutableListOf<TransactionShare>()
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = payer,
+        )
+        mockActiveParticipant(
+            trip = trip,
+            participant = shareParticipant,
+        )
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 7, 2),
+            )
+        ).thenReturn(createExchangeRate(rate = BigDecimal("9.500000")))
+        `when`(transactionRepository.save(any(Transaction::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Transaction).apply { id = 300L }
+        }
+        `when`(transactionPaymentRepository.save(any(TransactionPayment::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionPayment).apply {
+                id = 400L + savedPayments.size
+                savedPayments.add(this)
+            }
+        }
+        `when`(transactionShareRepository.save(any(TransactionShare::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionShare).apply {
+                id = 500L + savedShares.size
+                savedShares.add(this)
+            }
+        }
+        `when`(transactionEventRepository.save(any(TransactionEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionEvent).apply { id = 600L }
+        }
+
+        val response = transactionService.createTransaction(
+            userId = 1L,
+            tripId = 10L,
+            request = CreateTransactionRequest(
+                amount = BigDecimal("100.00"),
+                currency = "JPY",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("100.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("33.33"),
+                    ),
+                    TransactionShareInput(
+                        participantId = 101L,
+                        shareAmount = BigDecimal("66.67"),
+                    )
+                ),
+            ),
+        )
+
+        assertEquals(BigDecimal("950.00"), response.summary.baseAmount)
+        assertEquals(BigDecimal("950.00"), savedPayments.fold(BigDecimal.ZERO) { total, payment -> total + payment.baseAmount })
+        assertEquals(BigDecimal("950.00"), savedShares.fold(BigDecimal.ZERO) { total, share -> total + share.baseShareAmount })
+    }
+
+    @Test
     fun `KRW 거래 등록 시 환율 DB를 조회하지 않고 1대1 환율을 적용한다`() {
         val user = createUser()
         val trip = createTrip(user)
@@ -445,6 +527,92 @@ class TransactionServiceTest {
         assertEquals(BigDecimal("10.000000"), response.summary.exchangeRate)
         assertEquals(BigDecimal("10000.00"), response.summary.baseAmount)
         assertEquals(1L, trip.expenseVersion)
+    }
+
+    @Test
+    fun `거래 수정 시 배분 환산 금액 합계를 거래 기준 금액에 맞춘다`() {
+        val user = createUser()
+        val trip = createTrip(user)
+        val payer = createParticipant(
+            id = 100L,
+            trip = trip,
+            user = user,
+        )
+        val shareParticipant = createParticipant(
+            id = 101L,
+            trip = trip,
+            user = createUser().apply { id = 2L },
+        )
+        val transaction = createTransaction(
+            trip = trip,
+            user = user,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-01T12:00:00Z"),
+        )
+        val savedShares = mutableListOf<TransactionShare>()
+
+        mockWritableTrip(
+            user = user,
+            trip = trip,
+            participant = payer,
+        )
+        mockActiveParticipant(
+            trip = trip,
+            participant = shareParticipant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+        `when`(
+            exchangeRateRepository.findFirstByBaseCurrencyAndTargetCurrencyAndRateDateLessThanEqualAndDeletedAtIsNullOrderByRateDateDesc(
+                baseCurrency = "KRW",
+                targetCurrency = "JPY",
+                rateDate = LocalDate.of(2026, 7, 2),
+            )
+        ).thenReturn(createExchangeRate(rate = BigDecimal("9.500000")))
+        `when`(transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L))
+            .thenReturn(emptyList())
+        `when`(transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(300L))
+            .thenReturn(emptyList())
+        `when`(transactionPaymentRepository.save(any(TransactionPayment::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionPayment).apply { id = 400L }
+        }
+        `when`(transactionShareRepository.save(any(TransactionShare::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionShare).apply {
+                id = 500L + savedShares.size
+                savedShares.add(this)
+            }
+        }
+        `when`(transactionEventRepository.save(any(TransactionEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionEvent).apply { id = 600L }
+        }
+
+        val response = transactionService.updateTransaction(
+            userId = 1L,
+            tripId = 10L,
+            transactionId = 300L,
+            request = UpdateTransactionRequest(
+                amount = BigDecimal("100.00"),
+                currency = "JPY",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("100.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("33.33"),
+                    ),
+                    TransactionShareInput(
+                        participantId = 101L,
+                        shareAmount = BigDecimal("66.67"),
+                    )
+                ),
+            ),
+        )
+
+        assertEquals(BigDecimal("950.00"), response.summary.baseAmount)
+        assertEquals(BigDecimal("950.00"), savedShares.fold(BigDecimal.ZERO) { total, share -> total + share.baseShareAmount })
     }
 
     @Test
@@ -1080,6 +1248,19 @@ class TransactionServiceTest {
                 participantStatus = TripParticipantStatus.ACTIVE,
             )
         ).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                id = participant.id,
+                tripId = trip.id,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+    }
+
+    private fun mockActiveParticipant(
+        trip: Trip,
+        participant: TripParticipant,
+    ) {
         `when`(
             tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
                 id = participant.id,

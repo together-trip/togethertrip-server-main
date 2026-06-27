@@ -7,6 +7,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -81,6 +82,20 @@ class GlobalExceptionHandler {
                     message = CommonErrorCode.CONCURRENT_MODIFICATION.message,
                 )
             )
+    }
+
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResourceFoundException(
+        exception: NoResourceFoundException,
+    ): ResponseEntity<ErrorResponse> {
+        logger.debug(
+            "static resource not found path={}",
+            exception.resourcePath,
+        )
+
+        return ResponseEntity
+            .notFound()
+            .build()
     }
 
     @ExceptionHandler(Exception::class)

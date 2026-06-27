@@ -123,7 +123,12 @@ class TransactionCreationService(
         allocations: List<PaymentAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionPayment> {
-        return allocations.map { allocation ->
+        val baseAmounts = snapshot.convertAllocations(
+            amounts = allocations.map { it.amount },
+            expectedTotal = transaction.baseAmount,
+        )
+
+        return allocations.mapIndexed { index, allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
                 participantId = allocation.participantId,
@@ -136,7 +141,7 @@ class TransactionCreationService(
                 currency = snapshot.currency,
                 exchangeRate = snapshot.exchangeRate,
                 baseCurrency = snapshot.baseCurrency,
-                baseAmount = snapshot.convert(allocation.amount),
+                baseAmount = baseAmounts[index],
             )
 
             transactionPaymentRepository.save(payment)
@@ -149,7 +154,12 @@ class TransactionCreationService(
         allocations: List<ShareAllocation>,
         snapshot: TransactionCurrencySnapshot,
     ): List<TransactionShare> {
-        return allocations.map { allocation ->
+        val baseShareAmounts = snapshot.convertAllocations(
+            amounts = allocations.map { it.shareAmount },
+            expectedTotal = transaction.baseAmount,
+        )
+
+        return allocations.mapIndexed { index, allocation ->
             val participant = getActiveParticipant(
                 tripId = tripId,
                 participantId = allocation.participantId,
@@ -162,7 +172,7 @@ class TransactionCreationService(
                 currency = snapshot.currency,
                 exchangeRate = snapshot.exchangeRate,
                 baseCurrency = snapshot.baseCurrency,
-                baseShareAmount = snapshot.convert(allocation.shareAmount),
+                baseShareAmount = baseShareAmounts[index],
                 shareRatio = allocation.shareRatio,
             )
 
