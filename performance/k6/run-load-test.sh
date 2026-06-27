@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="/Users/jujaewan/1_Projects/togethertrip"
 MAIN_DIR="${ROOT_DIR}/togethertrip-server-main"
 GATEWAY_COMPOSE="${ROOT_DIR}/togethertrip-server-gateway/docker-compose.yml"
-RESULT_DIR="${ROOT_DIR}/docs/k6-results"
+RESULT_DIR="${ROOT_DIR}/docs/k6-results/read-settlement"
 K6_RUN_ID="$(date '+%Y%m%d-%H%M%S')"
 RUN_LOG="${RESULT_DIR}/${K6_RUN_ID}-run.log"
 PID_FILE="${RESULT_DIR}/run-load-test.pid"

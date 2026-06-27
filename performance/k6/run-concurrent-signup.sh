@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-/Users/jujaewan/1_Projects/togethertrip}"
 MAIN_DIR="${MAIN_DIR:-${ROOT_DIR}/togethertrip-server-main}"
 GATEWAY_COMPOSE="${GATEWAY_COMPOSE:-${ROOT_DIR}/togethertrip-server-gateway/docker-compose.yml}"
-RESULT_DIR="${RESULT_DIR:-${ROOT_DIR}/docs/verifications-jaewan/k6/results}"
-RUN_ID="${RUN_ID:-$(date '+%Y%m%d%H%M%S')}"
+RESULT_DIR="${RESULT_DIR:-${ROOT_DIR}/docs/k6-results/concurrent-signup}"
+RUN_ID="${RUN_ID:-$(date '+%Y%m%d-%H%M%S')}"
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 CONFIRM_CODE="${CONFIRM_CODE:-123456}"
 SAME_SESSION_VUS="${SAME_SESSION_VUS:-20}"
@@ -90,7 +90,7 @@ run_scenario() {
   MAX_DURATION="${MAX_DURATION}" \
   k6 run \
     --summary-export "${summary_json}" \
-    docs/verifications-jaewan/k6/concurrent-signup.js \
+    performance/k6/concurrent-signup.js \
     2>&1 | tee "${terminal_log}"
   local exit_code="${PIPESTATUS[0]}"
   set -e
@@ -109,7 +109,7 @@ run_scenario "same-phone" "${SAME_PHONE_VUS}"
 echo
 echo "[db] Validate created rows through gateway compose postgres"
 docker compose -f "${GATEWAY_COMPOSE}" \
-  cp docs/verifications-jaewan/k6/validate-concurrent-signup.sql postgres:/tmp/validate-concurrent-signup.sql
+  cp performance/seed/validate-concurrent-signup.sql postgres:/tmp/validate-concurrent-signup.sql
 
 docker compose -f "${GATEWAY_COMPOSE}" \
   exec -T postgres psql -U together_trip -d together_trip \
