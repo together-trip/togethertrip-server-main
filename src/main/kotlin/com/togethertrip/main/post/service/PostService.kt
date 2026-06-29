@@ -17,6 +17,7 @@ import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreateExpensePostRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
+import com.togethertrip.main.post.dto.request.UpdateExpensePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.dto.response.CreateExpensePostResponse
 import com.togethertrip.main.post.dto.response.PostCommentResponse
@@ -34,6 +35,7 @@ import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionStatus
 import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
+import com.togethertrip.main.transaction.service.TransactionService
 import com.togethertrip.main.transaction.service.support.TransactionCreationResult
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -59,6 +61,7 @@ class PostService(
     private val transactionRepository: TransactionRepository,
     private val postAttachmentStorage: PostAttachmentStorage,
     private val transactionCreationService: TransactionCreationService,
+    private val transactionService: TransactionService,
     private val outboxEventPublisher: OutboxEventPublisher,
     private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
 ) {
@@ -167,6 +170,60 @@ class PostService(
                 payments = creationResult.payments,
                 shares = creationResult.shares,
             ),
+        )
+    }
+
+    @Transactional
+    fun updateExpensePost(
+        userId: Long,
+        tripId: Long,
+        postId: Long,
+        request: UpdateExpensePostRequest,
+    ): CreateExpensePostResponse {
+        val post = getPostOrThrow(
+            tripId = tripId,
+            postId = postId,
+        )
+        validateAuthor(
+            author = post.author,
+            userId = userId,
+        )
+        validateEditablePost(post)
+        validateExpensePost(post)
+        val transactionId = post.transaction?.id
+            ?: throw BusinessException(PostErrorCode.TRANSACTION_NOT_FOUND)
+
+        val transaction = transactionService.updateTransaction(
+            userId = userId,
+            tripId = tripId,
+            transactionId = transactionId,
+            request = request.toUpdateTransactionRequest(),
+        )
+        post.update(
+            title = request.title,
+            category = request.category,
+            content = request.content,
+            occurredAt = request.occurredAt,
+            placeName = request.placeName,
+            latitude = request.latitude,
+            longitude = request.longitude,
+        )
+        val attachments = if (request.replaceAttachments) {
+            replaceAttachments(
+                post = post,
+                files = request.files,
+            )
+        } else {
+            postAttachmentRepository
+                .findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(postId)
+        }
+
+        return CreateExpensePostResponse(
+            post = PostDetailResponse.from(
+                post = post,
+                attachments = attachments,
+            ),
+            transaction = transaction,
         )
     }
 
@@ -448,6 +505,12 @@ class PostService(
     private fun validateEditablePost(post: Post) {
         if (post.transaction != null && post.trip.settlementStatus != TripSettlementStatus.NOT_STARTED) {
             throw BusinessException(PostErrorCode.POST_LOCKED_BY_SETTLEMENT)
+        }
+    }
+
+    private fun validateExpensePost(post: Post) {
+        if (post.postType != PostType.EXPENSE) {
+            throw BusinessException(PostErrorCode.TRANSACTION_NOT_FOUND)
         }
     }
 

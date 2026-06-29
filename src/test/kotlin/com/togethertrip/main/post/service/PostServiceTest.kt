@@ -18,6 +18,7 @@ import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.post.dto.request.CreateExpensePostRequest
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
+import com.togethertrip.main.post.dto.request.UpdateExpensePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
 import com.togethertrip.main.post.exception.PostErrorCode
 import com.togethertrip.main.post.pagination.PostCommentCursor
@@ -40,6 +41,7 @@ import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
+import com.togethertrip.main.transaction.service.TransactionService
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
@@ -129,6 +131,21 @@ class PostServiceTest {
             balanceSummaryProjectionService = balanceSummaryProjectionService,
             clock = clock,
         )
+        val transactionService = TransactionService(
+            transactionRepository = transactionRepository,
+            transactionShareRepository = transactionShareRepository,
+            transactionPaymentRepository = transactionPaymentRepository,
+            transactionEventRepository = transactionEventRepository,
+            transactionStatisticsQueryRepository = mock(),
+            postRepository = postRepository,
+            tripRepository = tripRepository,
+            tripParticipantRepository = tripParticipantRepository,
+            transactionExchangeRateResolver = transactionExchangeRateResolver,
+            transactionCreationService = transactionCreationService,
+            userRepository = userRepository,
+            balanceSummaryProjectionService = balanceSummaryProjectionService,
+            clock = clock,
+        )
         `when`(
             tripParticipantRepository.findActiveUserIdsForNotification(
                 tripId = 10L,
@@ -144,6 +161,7 @@ class PostServiceTest {
             transactionRepository = transactionRepository,
             postAttachmentStorage = postAttachmentStorage,
             transactionCreationService = transactionCreationService,
+            transactionService = transactionService,
             outboxEventPublisher = OutboxEventPublisher(
                 outboxEventRepository = outboxEventRepository,
                 objectMapper = jacksonObjectMapper(),
@@ -818,6 +836,98 @@ class PostServiceTest {
         )
 
         assertEquals("소비 수정", response.title)
+    }
+
+    @Test
+    fun `소비 게시글 통합 수정은 거래와 게시글을 함께 수정한다`() {
+        val user = createUser()
+        val trip = createTrip(ownerUser = user)
+        val participant = createParticipant(
+            user = user,
+            trip = trip,
+        )
+        val transaction = createTransaction(trip = trip)
+        val post = createPost(
+            author = participant,
+            transaction = transaction,
+        )
+        val savedPayments = mutableListOf<TransactionPayment>()
+        val savedShares = mutableListOf<TransactionShare>()
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                tripId = 10L,
+                userId = 1L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                id = 100L,
+                tripId = 10L,
+                participantStatus = TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+        `when`(
+            postRepository.findByIdAndTripIdAndDeletedAtIsNull(
+                id = 300L,
+                tripId = 10L,
+            )
+        ).thenReturn(post)
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(200L)).thenReturn(transaction)
+        `when`(transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(200L))
+            .thenReturn(emptyList())
+        `when`(transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(200L))
+            .thenReturn(emptyList())
+        `when`(transactionPaymentRepository.save(any(TransactionPayment::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionPayment).apply {
+                id = 410L
+                savedPayments.add(this)
+            }
+        }
+        `when`(transactionShareRepository.save(any(TransactionShare::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionShare).apply {
+                id = 420L
+                savedShares.add(this)
+            }
+        }
+        `when`(transactionEventRepository.save(any(TransactionEvent::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TransactionEvent).apply { id = 430L }
+        }
+        `when`(postAttachmentRepository.findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(300L))
+            .thenReturn(emptyList())
+
+        val response = postService.updateExpensePost(
+            userId = 1L,
+            tripId = 10L,
+            postId = 300L,
+            request = UpdateExpensePostRequest(
+                title = "수정된 라멘",
+                category = "식비",
+                amount = BigDecimal("15000.00"),
+                currency = "KRW",
+                payments = listOf(
+                    TransactionPaymentInput(
+                        participantId = 100L,
+                        amount = BigDecimal("15000.00"),
+                    )
+                ),
+                shares = listOf(
+                    TransactionShareInput(
+                        participantId = 100L,
+                        shareAmount = BigDecimal("15000.00"),
+                    )
+                ),
+            ),
+        )
+
+        assertEquals("수정된 라멘", response.post.title)
+        assertEquals(BigDecimal("15000.00"), response.transaction.summary.amount)
+        assertEquals(BigDecimal("15000.00"), savedPayments.first().amount)
+        assertEquals(BigDecimal("15000.00"), savedShares.first().shareAmount)
+        assertEquals(1L, trip.expenseVersion)
     }
 
     @Test

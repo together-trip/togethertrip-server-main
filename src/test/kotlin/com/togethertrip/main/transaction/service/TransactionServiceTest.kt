@@ -742,6 +742,62 @@ class TransactionServiceTest {
     }
 
     @Test
+    fun `거래 생성자가 아니면 거래 수정에 실패한다`() {
+        val author = createUser()
+        val otherUser = createUser().apply {
+            id = 2L
+            nickname = "민서"
+        }
+        val trip = createTrip(author)
+        val otherParticipant = createParticipant(
+            id = 101L,
+            trip = trip,
+            user = otherUser,
+        )
+        val transaction = createTransaction(
+            trip = trip,
+            user = author,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-01T12:00:00Z"),
+        )
+
+        mockWritableTrip(
+            user = otherUser,
+            trip = trip,
+            participant = otherParticipant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+
+        val exception = assertBusinessException {
+            transactionService.updateTransaction(
+                userId = 2L,
+                tripId = 10L,
+                transactionId = 300L,
+                request = UpdateTransactionRequest(
+                    amount = BigDecimal("1000.00"),
+                    currency = "JPY",
+                    payments = listOf(
+                        TransactionPaymentInput(
+                            participantId = 101L,
+                            amount = BigDecimal("1000.00"),
+                        )
+                    ),
+                    shares = listOf(
+                        TransactionShareInput(
+                            participantId = 101L,
+                            shareAmount = BigDecimal("1000.00"),
+                        )
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.ACCESS_DENIED, exception.errorCode)
+        verifyNoInteractions(exchangeRateRepository)
+        verify(transactionEventRepository, never()).save(any(TransactionEvent::class.java))
+    }
+
+    @Test
     fun `결제 금액 합계가 거래 금액과 다르면 거래 등록에 실패한다`() {
         val user = createUser()
         val trip = createTrip(user)
@@ -1016,6 +1072,46 @@ class TransactionServiceTest {
 
         assertEquals(TransactionErrorCode.TRANSACTION_ALREADY_VOIDED, exception.errorCode)
         assertEquals(0L, trip.expenseVersion)
+        verify(transactionEventRepository, never()).save(any(TransactionEvent::class.java))
+    }
+
+    @Test
+    fun `거래 생성자가 아니면 거래 삭제에 실패한다`() {
+        val author = createUser()
+        val otherUser = createUser().apply {
+            id = 2L
+            nickname = "민서"
+        }
+        val trip = createTrip(author)
+        val otherParticipant = createParticipant(
+            id = 101L,
+            trip = trip,
+            user = otherUser,
+        )
+        val transaction = createTransaction(
+            trip = trip,
+            user = author,
+            id = 300L,
+            createdAt = Instant.parse("2026-07-01T12:00:00Z"),
+        )
+
+        mockWritableTrip(
+            user = otherUser,
+            trip = trip,
+            participant = otherParticipant,
+        )
+        `when`(transactionRepository.findByIdAndDeletedAtIsNull(300L)).thenReturn(transaction)
+
+        val exception = assertBusinessException {
+            transactionService.deleteTransaction(
+                userId = 2L,
+                tripId = 10L,
+                transactionId = 300L,
+            )
+        }
+
+        assertEquals(CommonErrorCode.ACCESS_DENIED, exception.errorCode)
+        assertEquals(TransactionStatus.ACTIVE, transaction.status)
         verify(transactionEventRepository, never()).save(any(TransactionEvent::class.java))
     }
 

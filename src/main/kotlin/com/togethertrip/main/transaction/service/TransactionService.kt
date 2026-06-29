@@ -216,6 +216,10 @@ class TransactionService(
             tripId = tripId,
             transactionId = transactionId,
         )
+        validateTransactionActor(
+            transaction = transaction,
+            userId = userId,
+        )
         validateActiveTransaction(transaction)
         val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
@@ -283,6 +287,10 @@ class TransactionService(
         val transaction = getTransactionOrThrow(
             tripId = tripId,
             transactionId = transactionId,
+        )
+        validateTransactionActor(
+            transaction = transaction,
+            userId = userId,
         )
         validateActiveTransaction(transaction)
         val payments = transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
@@ -728,6 +736,15 @@ class TransactionService(
     private fun validateActiveTransaction(transaction: Transaction) {
         if (transaction.status != TransactionStatus.ACTIVE) {
             throw BusinessException(TransactionErrorCode.TRANSACTION_ALREADY_VOIDED)
+        }
+    }
+
+    private fun validateTransactionActor(
+        transaction: Transaction,
+        userId: Long,
+    ) {
+        if (transaction.createdBy.id != userId) {
+            throw BusinessException(CommonErrorCode.ACCESS_DENIED)
         }
     }
 
