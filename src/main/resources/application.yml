@@ -117,5 +117,17 @@ exchange-rate:
     wait-time: ${EXCHANGE_RATE_LOCK_WAIT_TIME}
     lease-time: ${EXCHANGE_RATE_LOCK_LEASE_TIME}
 
+notification:
+  sqs:
+    queue-url: ${NOTIFICATION_QUEUE_URL:}
+    region: ${AWS_REGION:ap-northeast-2}
+    enabled: ${NOTIFICATION_SQS_SENDER_ENABLED:true}
+
+outbox:
+  dispatch:
+    enabled: ${OUTBOX_DISPATCH_ENABLED:true}
+    fixed-delay: ${OUTBOX_DISPATCH_FIXED_DELAY:PT3S}
+    limit: ${OUTBOX_DISPATCH_LIMIT:50}
+
 server:
   port: ${SERVER_PORT}
