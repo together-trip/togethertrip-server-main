@@ -122,6 +122,9 @@ notification:
     queue-url: ${NOTIFICATION_QUEUE_URL:}
     region: ${AWS_REGION:ap-northeast-2}
     enabled: ${NOTIFICATION_SQS_SENDER_ENABLED:true}
+    access-key-id: ${AWS_ACCESS_KEY_ID:}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+    session-token: ${AWS_SESSION_TOKEN:}
 
 outbox:
   dispatch:
