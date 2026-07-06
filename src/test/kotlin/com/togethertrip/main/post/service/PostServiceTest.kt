@@ -42,7 +42,9 @@ import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
 import com.togethertrip.main.transaction.service.TransactionService
+import com.togethertrip.main.transaction.service.support.TransactionAllocationWriter
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
+import com.togethertrip.main.transaction.service.support.TransactionEventRecorder
 import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -125,14 +127,21 @@ class PostServiceTest {
             tripParticipantRepository = tripParticipantRepository,
             userRepository = userRepository,
         )
+        val transactionEventRecorder = TransactionEventRecorder(
+            transactionEventRepository = transactionEventRepository,
+        )
+        val transactionAllocationWriter = TransactionAllocationWriter(
+            transactionPaymentRepository = transactionPaymentRepository,
+            transactionShareRepository = transactionShareRepository,
+            tripAccessResolver = tripAccessResolver,
+        )
         val transactionCreationService = TransactionCreationService(
             transactionRepository = transactionRepository,
-            transactionShareRepository = transactionShareRepository,
-            transactionPaymentRepository = transactionPaymentRepository,
-            transactionEventRepository = transactionEventRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
             tripAccessResolver = tripAccessResolver,
+            transactionEventRecorder = transactionEventRecorder,
+            transactionAllocationWriter = transactionAllocationWriter,
             clock = clock,
         )
         val transactionService = TransactionService(
@@ -146,6 +155,8 @@ class PostServiceTest {
             transactionCreationService = transactionCreationService,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
             tripAccessResolver = tripAccessResolver,
+            transactionEventRecorder = transactionEventRecorder,
+            transactionAllocationWriter = transactionAllocationWriter,
             clock = clock,
         )
         `when`(

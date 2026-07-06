@@ -127,17 +127,12 @@ class TripParticipantService(
             tripId = tripId,
             participantId = participantId,
         )
-        if (participant.user != null) {
-            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_PROFILE_EDIT_DENIED)
-        }
-
-        request.displayName?.let {
-            participant.displayName = normalizeRequiredName(it)
-        }
-        request.profileImageUrl?.let {
-            participant.profileImageUrl = normalizeOptional(it)
-        }
-        participant.updatedAt = Instant.now(clock)
+        participant.updateTemporaryProfile(
+            displayName = request.displayName?.let(::normalizeRequiredName),
+            profileImageUrl = normalizeOptional(request.profileImageUrl),
+            profileImageUrlChanged = request.profileImageUrl != null,
+            updatedAt = Instant.now(clock),
+        )
 
         return TripParticipantSummaryResponse.from(participant)
     }
@@ -156,17 +151,11 @@ class TripParticipantService(
             tripId = tripId,
             participantId = participantId,
         )
-        if (
-            participant.participantRole == TripParticipantRole.LEADER ||
-            participant.user?.id == trip.ownerUser.id
-        ) {
-            throw BusinessException(TripErrorCode.TRIP_LEADER_REMOVE_DENIED)
-        }
-
         val now = Instant.now(clock)
-        participant.participantStatus = TripParticipantStatus.REMOVED
-        participant.leftAt = now
-        participant.markDeleted(now)
+        participant.remove(
+            tripOwnerUserId = trip.ownerUser.id,
+            removedAt = now,
+        )
         publishParticipantRemoved(
             trip = trip,
             actor = actor,
@@ -202,16 +191,11 @@ class TripParticipantService(
             participantStatus = TripParticipantStatus.ACTIVE,
         ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
 
-        if (participant.user != null) {
-            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_ALREADY_LINKED)
-        }
-
         val now = Instant.now(clock)
-        participant.user = user
-        participant.displayName = user.nickname
-        participant.profileImageUrl = user.profileImageUrl
-        participant.joinedAt = now
-        participant.updatedAt = now
+        participant.linkUser(
+            user = user,
+            linkedAt = now,
+        )
 
         val savedParticipant = try {
             tripParticipantRepository.saveAndFlush(participant)

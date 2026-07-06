@@ -326,10 +326,13 @@ class TripService(
         return normalizedCountries.map { country ->
             val existingCountry = existingByCode[country.countryCode]
             if (existingCountry != null) {
-                existingCountry.countryName = country.countryName
-                existingCountry.sortOrder = country.sortOrder
-                existingCountry.deletedAt = null
-                existingCountry.updatedAt = Instant.now()
+                val now = Instant.now()
+                existingCountry.update(
+                    countryName = country.countryName,
+                    sortOrder = country.sortOrder,
+                    updatedAt = now,
+                )
+                existingCountry.restore(now)
                 existingCountry
             } else {
                 tripCountryRepository.save(

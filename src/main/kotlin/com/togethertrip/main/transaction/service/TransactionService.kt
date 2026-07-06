@@ -5,16 +5,10 @@ import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.transaction.domain.Transaction
-import com.togethertrip.main.transaction.domain.TransactionEvent
 import com.togethertrip.main.transaction.domain.TransactionEventType
-import com.togethertrip.main.transaction.domain.TransactionPayment
-import com.togethertrip.main.transaction.domain.TransactionShare
 import com.togethertrip.main.transaction.domain.TransactionStatus
 import com.togethertrip.main.transaction.domain.TransactionType
-import com.togethertrip.main.transaction.domain.event.TransactionEventPayload
 import com.togethertrip.main.transaction.domain.exchange.TransactionCurrencySnapshot
-import com.togethertrip.main.transaction.domain.ledger.PaymentAllocation
-import com.togethertrip.main.transaction.domain.ledger.ShareAllocation
 import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.TransactionPaymentInput
 import com.togethertrip.main.transaction.dto.request.TransactionShareInput
@@ -38,14 +32,15 @@ import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
+import com.togethertrip.main.transaction.service.support.TransactionAllocationWriter
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsGroupBy
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsPeriod
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
+import com.togethertrip.main.transaction.service.support.TransactionEventRecorder
 import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.service.support.TripAccessResolver
-import com.togethertrip.main.user.domain.User
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -66,6 +61,8 @@ class TransactionService(
     private val transactionCreationService: TransactionCreationService,
     private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
     private val tripAccessResolver: TripAccessResolver,
+    private val transactionEventRecorder: TransactionEventRecorder,
+    private val transactionAllocationWriter: TransactionAllocationWriter,
     private val clock: Clock,
 ) {
 
@@ -226,14 +223,14 @@ class TransactionService(
             occurredAt = request.occurredAt,
         )
         syncLinkedExpensePostsMetadata(transaction)
-        val currentPayments = replacePayments(
+        val currentPayments = transactionAllocationWriter.replacePayments(
             transaction = transaction,
             tripId = tripId,
             allocations = ledgerEntry.payments,
             snapshot = currencySnapshot,
             previousPayments = previousPayments,
         )
-        val currentShares = replaceShares(
+        val currentShares = transactionAllocationWriter.replaceShares(
             transaction = transaction,
             tripId = tripId,
             allocations = ledgerEntry.shares,
@@ -241,7 +238,7 @@ class TransactionService(
             previousShares = previousShares,
         )
 
-        recordEvent(
+        transactionEventRecorder.record(
             trip = trip,
             transaction = transaction,
             eventType = TransactionEventType.UPDATED,
@@ -289,7 +286,7 @@ class TransactionService(
         transaction.void()
         markLinkedExpensePostsDeleted(transaction)
 
-        recordEvent(
+        transactionEventRecorder.record(
             trip = trip,
             transaction = transaction,
             eventType = TransactionEventType.VOIDED,
@@ -493,123 +490,6 @@ class TransactionService(
             shareAmount = share.shareAmount,
             shareRatio = share.shareRatio,
         )
-    }
-
-    private fun replacePayments(
-        transaction: Transaction,
-        tripId: Long,
-        allocations: List<PaymentAllocation>,
-        snapshot: TransactionCurrencySnapshot,
-        previousPayments: List<TransactionPayment>,
-    ): List<TransactionPayment> {
-        previousPayments.forEach { it.markDeleted() }
-        return savePayments(
-            transaction = transaction,
-            tripId = tripId,
-            allocations = allocations,
-            snapshot = snapshot,
-        )
-    }
-
-    private fun replaceShares(
-        transaction: Transaction,
-        tripId: Long,
-        allocations: List<ShareAllocation>,
-        snapshot: TransactionCurrencySnapshot,
-        previousShares: List<TransactionShare>,
-    ): List<TransactionShare> {
-        previousShares.forEach { it.markDeleted() }
-        return saveShares(
-            transaction = transaction,
-            tripId = tripId,
-            allocations = allocations,
-            snapshot = snapshot,
-        )
-    }
-
-    private fun savePayments(
-        transaction: Transaction,
-        tripId: Long,
-        allocations: List<PaymentAllocation>,
-        snapshot: TransactionCurrencySnapshot,
-    ): List<TransactionPayment> {
-        val baseAmounts = snapshot.convertAllocations(
-            amounts = allocations.map { it.amount },
-            expectedTotal = transaction.baseAmount,
-        )
-
-        return allocations.mapIndexed { index, allocation ->
-            val participant = tripAccessResolver.getActiveParticipantById(
-                tripId = tripId,
-                participantId = allocation.participantId,
-            )
-            val payment = TransactionPayment(
-                transaction = transaction,
-                tripParticipant = participant,
-                amount = allocation.amount,
-                currency = snapshot.currency,
-                exchangeRate = snapshot.exchangeRate,
-                baseCurrency = snapshot.baseCurrency,
-                baseAmount = baseAmounts[index],
-            )
-
-            transactionPaymentRepository.save(payment)
-        }
-    }
-
-    private fun saveShares(
-        transaction: Transaction,
-        tripId: Long,
-        allocations: List<ShareAllocation>,
-        snapshot: TransactionCurrencySnapshot,
-    ): List<TransactionShare> {
-        val baseShareAmounts = snapshot.convertAllocations(
-            amounts = allocations.map { it.shareAmount },
-            expectedTotal = transaction.baseAmount,
-        )
-
-        return allocations.mapIndexed { index, allocation ->
-            val participant = tripAccessResolver.getActiveParticipantById(
-                tripId = tripId,
-                participantId = allocation.participantId,
-            )
-            val share = TransactionShare(
-                transaction = transaction,
-                tripParticipant = participant,
-                shareAmount = allocation.shareAmount,
-                currency = snapshot.currency,
-                exchangeRate = snapshot.exchangeRate,
-                baseCurrency = snapshot.baseCurrency,
-                baseShareAmount = baseShareAmounts[index],
-                shareRatio = allocation.shareRatio,
-            )
-
-            transactionShareRepository.save(share)
-        }
-    }
-
-    private fun recordEvent(
-        trip: Trip,
-        transaction: Transaction,
-        eventType: TransactionEventType,
-        createdBy: User,
-    ) {
-        trip.expenseVersion += 1
-
-        val payload = TransactionEventPayload.from(
-            transaction = transaction,
-            eventType = eventType,
-        ).toJson()
-        val event = TransactionEvent(
-            transaction = transaction,
-            trip = trip,
-            eventType = eventType,
-            aggregateVersion = trip.expenseVersion,
-            payload = payload,
-            createdBy = createdBy,
-        )
-
-        transactionEventRepository.save(event)
     }
 
     private fun syncLinkedExpensePostsMetadata(transaction: Transaction) {
