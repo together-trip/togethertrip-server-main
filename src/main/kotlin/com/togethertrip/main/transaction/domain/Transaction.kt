@@ -1,8 +1,11 @@
 package com.togethertrip.main.transaction.domain
 
 import com.togethertrip.main.global.domain.BaseEntity
+import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.transaction.domain.exchange.TransactionCurrencySnapshot
 import com.togethertrip.main.transaction.domain.ledger.TransactionLedgerEntry
+import com.togethertrip.main.transaction.exception.TransactionErrorCode
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.user.domain.User
 import jakarta.persistence.Column
@@ -102,7 +105,45 @@ class Transaction(
         status = TransactionStatus.VOIDED
     }
 
+    fun assertMutableBy(userId: Long) {
+        if (createdBy.id != userId) {
+            throw BusinessException(CommonErrorCode.ACCESS_DENIED)
+        }
+        if (status != TransactionStatus.ACTIVE) {
+            throw BusinessException(TransactionErrorCode.TRANSACTION_ALREADY_VOIDED)
+        }
+    }
+
+    fun voidBy(userId: Long) {
+        assertMutableBy(userId)
+        void()
+    }
+
     private fun normalizeCategory(category: String?): String? {
         return category?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    companion object {
+        fun create(
+            trip: Trip,
+            createdBy: User,
+            ledgerEntry: TransactionLedgerEntry,
+            currencySnapshot: TransactionCurrencySnapshot,
+            category: String?,
+            occurredAt: Instant?,
+        ): Transaction {
+            return Transaction(
+                trip = trip,
+                createdBy = createdBy,
+                transactionType = ledgerEntry.transactionType,
+                amount = ledgerEntry.amount,
+                currency = currencySnapshot.currency,
+                exchangeRate = currencySnapshot.exchangeRate,
+                baseCurrency = currencySnapshot.baseCurrency,
+                baseAmount = currencySnapshot.convert(ledgerEntry.amount),
+                category = category,
+                occurredAt = occurredAt,
+            )
+        }
     }
 }

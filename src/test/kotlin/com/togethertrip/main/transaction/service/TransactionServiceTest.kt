@@ -23,7 +23,10 @@ import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
 import com.togethertrip.main.transaction.repository.projection.CommonFundBalanceRow
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
+import com.togethertrip.main.transaction.service.support.LinkedExpensePostSynchronizer
+import com.togethertrip.main.transaction.service.support.TransactionAllocationWriter
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
+import com.togethertrip.main.transaction.service.support.TransactionEventRecorder
 import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.exchange.domain.ExchangeRate
 import com.togethertrip.main.trip.domain.Trip
@@ -34,6 +37,7 @@ import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.exchange.repository.ExchangeRateRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripAccessResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
@@ -89,16 +93,29 @@ class TransactionServiceTest {
             exchangeRateRepository = exchangeRateRepository,
             clock = clock,
         )
-        val transactionCreationService = TransactionCreationService(
-            transactionRepository = transactionRepository,
-            transactionShareRepository = transactionShareRepository,
-            transactionPaymentRepository = transactionPaymentRepository,
-            transactionEventRepository = transactionEventRepository,
+        val tripAccessResolver = TripAccessResolver(
             tripRepository = tripRepository,
             tripParticipantRepository = tripParticipantRepository,
-            transactionExchangeRateResolver = transactionExchangeRateResolver,
             userRepository = userRepository,
+        )
+        val transactionEventRecorder = TransactionEventRecorder(
+            transactionEventRepository = transactionEventRepository,
+        )
+        val transactionAllocationWriter = TransactionAllocationWriter(
+            transactionPaymentRepository = transactionPaymentRepository,
+            transactionShareRepository = transactionShareRepository,
+            tripAccessResolver = tripAccessResolver,
+        )
+        val linkedExpensePostSynchronizer = LinkedExpensePostSynchronizer(
+            postRepository = postRepository,
+        )
+        val transactionCreationService = TransactionCreationService(
+            transactionRepository = transactionRepository,
+            transactionExchangeRateResolver = transactionExchangeRateResolver,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            tripAccessResolver = tripAccessResolver,
+            transactionEventRecorder = transactionEventRecorder,
+            transactionAllocationWriter = transactionAllocationWriter,
             clock = clock,
         )
         transactionService = TransactionService(
@@ -107,13 +124,13 @@ class TransactionServiceTest {
             transactionPaymentRepository = transactionPaymentRepository,
             transactionEventRepository = transactionEventRepository,
             transactionStatisticsQueryRepository = transactionStatisticsQueryRepository,
-            postRepository = postRepository,
-            tripRepository = tripRepository,
-            tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             transactionCreationService = transactionCreationService,
-            userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            tripAccessResolver = tripAccessResolver,
+            transactionEventRecorder = transactionEventRecorder,
+            transactionAllocationWriter = transactionAllocationWriter,
+            linkedExpensePostSynchronizer = linkedExpensePostSynchronizer,
             clock = clock,
         )
     }

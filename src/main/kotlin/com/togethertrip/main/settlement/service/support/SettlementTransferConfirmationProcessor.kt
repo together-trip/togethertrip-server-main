@@ -13,8 +13,8 @@ import java.time.Instant
 @Component
 class SettlementTransferConfirmationProcessor(
     private val settlementTransferRepository: SettlementTransferRepository,
+    private val clock: Clock,
 ) {
-    private val clock = Clock.systemDefaultZone()
 
     fun confirmAsSender(
         tripId: Long,

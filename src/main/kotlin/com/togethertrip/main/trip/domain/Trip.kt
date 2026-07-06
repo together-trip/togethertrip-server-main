@@ -91,4 +91,13 @@ class Trip(
         settledAt = null
         updatedAt = startedAt
     }
+
+    fun canChangeTransactions(): Boolean {
+        return settlementStatus == TripSettlementStatus.NOT_STARTED
+    }
+
+    fun advanceExpenseVersion(): Long {
+        expenseVersion += 1
+        return expenseVersion
+    }
 }

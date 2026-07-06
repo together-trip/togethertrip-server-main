@@ -241,15 +241,10 @@ class TripInviteService(
             participantStatus = TripParticipantStatus.ACTIVE,
         ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
 
-        if (participant.user != null) {
-            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_ALREADY_LINKED)
-        }
-
-        participant.user = user
-        participant.displayName = user.nickname
-        participant.profileImageUrl = user.profileImageUrl
-        participant.joinedAt = now
-        participant.updatedAt = now
+        participant.linkUser(
+            user = user,
+            linkedAt = now,
+        )
 
         return try {
             tripParticipantRepository.saveAndFlush(participant)

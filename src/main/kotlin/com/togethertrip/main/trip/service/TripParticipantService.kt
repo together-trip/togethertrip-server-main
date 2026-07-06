@@ -8,10 +8,12 @@ import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipient
 import com.togethertrip.main.global.outbox.payload.trip.TripParticipantRemovedPayload
 import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPayload
 import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
+import com.togethertrip.main.trip.domain.FieldChange
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripParticipantProfilePatch
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.dto.request.AddTripParticipantRequest
 import com.togethertrip.main.trip.dto.request.LinkTripParticipantRequest
@@ -127,17 +129,10 @@ class TripParticipantService(
             tripId = tripId,
             participantId = participantId,
         )
-        if (participant.user != null) {
-            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_PROFILE_EDIT_DENIED)
-        }
-
-        request.displayName?.let {
-            participant.displayName = normalizeRequiredName(it)
-        }
-        request.profileImageUrl?.let {
-            participant.profileImageUrl = normalizeOptional(it)
-        }
-        participant.updatedAt = Instant.now(clock)
+        participant.updateTemporaryProfile(
+            patch = request.toProfilePatch(),
+            updatedAt = Instant.now(clock),
+        )
 
         return TripParticipantSummaryResponse.from(participant)
     }
@@ -156,17 +151,11 @@ class TripParticipantService(
             tripId = tripId,
             participantId = participantId,
         )
-        if (
-            participant.participantRole == TripParticipantRole.LEADER ||
-            participant.user?.id == trip.ownerUser.id
-        ) {
-            throw BusinessException(TripErrorCode.TRIP_LEADER_REMOVE_DENIED)
-        }
-
         val now = Instant.now(clock)
-        participant.participantStatus = TripParticipantStatus.REMOVED
-        participant.leftAt = now
-        participant.markDeleted(now)
+        participant.remove(
+            tripOwnerUserId = trip.ownerUser.id,
+            removedAt = now,
+        )
         publishParticipantRemoved(
             trip = trip,
             actor = actor,
@@ -202,16 +191,11 @@ class TripParticipantService(
             participantStatus = TripParticipantStatus.ACTIVE,
         ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
 
-        if (participant.user != null) {
-            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_ALREADY_LINKED)
-        }
-
         val now = Instant.now(clock)
-        participant.user = user
-        participant.displayName = user.nickname
-        participant.profileImageUrl = user.profileImageUrl
-        participant.joinedAt = now
-        participant.updatedAt = now
+        participant.linkUser(
+            user = user,
+            linkedAt = now,
+        )
 
         val savedParticipant = try {
             tripParticipantRepository.saveAndFlush(participant)
@@ -373,6 +357,19 @@ class TripParticipantService(
         if (request.displayName == null && request.profileImageUrl == null) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
+    }
+
+    private fun UpdateTripParticipantRequest.toProfilePatch(): TripParticipantProfilePatch {
+        val profileImageUrl = if (this.profileImageUrl == null) {
+            FieldChange.Unchanged
+        } else {
+            FieldChange.Changed(normalizeOptional(this.profileImageUrl))
+        }
+
+        return TripParticipantProfilePatch(
+            displayName = displayName?.let(::normalizeRequiredName),
+            profileImageUrl = profileImageUrl,
+        )
     }
 
     private fun parseParticipantStatus(status: String): TripParticipantStatus {

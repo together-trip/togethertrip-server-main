@@ -12,8 +12,8 @@ import java.time.Instant
 class SettlementShareTokenIssuer(
     private val settlementRepository: SettlementRepository,
     private val settlementShareTokenGenerator: SettlementShareTokenGenerator,
+    private val clock: Clock,
 ) {
-    private val clock = Clock.systemDefaultZone()
 
     fun issue(settlement: Settlement): String {
         settlement.shareToken?.let { token -> return token }
