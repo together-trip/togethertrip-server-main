@@ -42,6 +42,7 @@ import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
 import com.togethertrip.main.transaction.service.TransactionService
+import com.togethertrip.main.transaction.service.support.LinkedExpensePostSynchronizer
 import com.togethertrip.main.transaction.service.support.TransactionAllocationWriter
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.transaction.service.support.TransactionEventRecorder
@@ -135,6 +136,9 @@ class PostServiceTest {
             transactionShareRepository = transactionShareRepository,
             tripAccessResolver = tripAccessResolver,
         )
+        val linkedExpensePostSynchronizer = LinkedExpensePostSynchronizer(
+            postRepository = postRepository,
+        )
         val transactionCreationService = TransactionCreationService(
             transactionRepository = transactionRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
@@ -150,13 +154,13 @@ class PostServiceTest {
             transactionPaymentRepository = transactionPaymentRepository,
             transactionEventRepository = transactionEventRepository,
             transactionStatisticsQueryRepository = mock(),
-            postRepository = postRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             transactionCreationService = transactionCreationService,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
             tripAccessResolver = tripAccessResolver,
             transactionEventRecorder = transactionEventRecorder,
             transactionAllocationWriter = transactionAllocationWriter,
+            linkedExpensePostSynchronizer = linkedExpensePostSynchronizer,
             clock = clock,
         )
         `when`(

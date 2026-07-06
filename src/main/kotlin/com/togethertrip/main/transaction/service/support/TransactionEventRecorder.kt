@@ -20,7 +20,7 @@ class TransactionEventRecorder(
         eventType: TransactionEventType,
         createdBy: User,
     ): TransactionEvent {
-        trip.expenseVersion += 1
+        val aggregateVersion = trip.advanceExpenseVersion()
 
         val payload = TransactionEventPayload.from(
             transaction = transaction,
@@ -30,7 +30,7 @@ class TransactionEventRecorder(
             transaction = transaction,
             trip = trip,
             eventType = eventType,
-            aggregateVersion = trip.expenseVersion,
+            aggregateVersion = aggregateVersion,
             payload = payload,
             createdBy = createdBy,
         )

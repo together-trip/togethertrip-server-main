@@ -8,10 +8,12 @@ import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipient
 import com.togethertrip.main.global.outbox.payload.trip.TripParticipantRemovedPayload
 import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPayload
 import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
+import com.togethertrip.main.trip.domain.FieldChange
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.domain.TripParticipantProfilePatch
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.dto.request.AddTripParticipantRequest
 import com.togethertrip.main.trip.dto.request.LinkTripParticipantRequest
@@ -128,9 +130,7 @@ class TripParticipantService(
             participantId = participantId,
         )
         participant.updateTemporaryProfile(
-            displayName = request.displayName?.let(::normalizeRequiredName),
-            profileImageUrl = normalizeOptional(request.profileImageUrl),
-            profileImageUrlChanged = request.profileImageUrl != null,
+            patch = request.toProfilePatch(),
             updatedAt = Instant.now(clock),
         )
 
@@ -357,6 +357,19 @@ class TripParticipantService(
         if (request.displayName == null && request.profileImageUrl == null) {
             throw BusinessException(CommonErrorCode.INVALID_INPUT)
         }
+    }
+
+    private fun UpdateTripParticipantRequest.toProfilePatch(): TripParticipantProfilePatch {
+        val profileImageUrl = if (this.profileImageUrl == null) {
+            FieldChange.Unchanged
+        } else {
+            FieldChange.Changed(normalizeOptional(this.profileImageUrl))
+        }
+
+        return TripParticipantProfilePatch(
+            displayName = displayName?.let(::normalizeRequiredName),
+            profileImageUrl = profileImageUrl,
+        )
     }
 
     private fun parseParticipantStatus(status: String): TripParticipantStatus {

@@ -10,7 +10,6 @@ import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.service.TransactionExchangeRateResolver
 import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
-import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.service.support.TripAccessResolver
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
@@ -41,7 +40,7 @@ class TransactionCreationService(
             userId = userId,
             tripId = tripId,
         )
-        validateWritableTrip(trip)
+        requireTransactionWritable(trip)
         val actorParticipant = tripAccessResolver.getActiveParticipantByUserId(
             tripId = tripId,
             userId = userId,
@@ -53,15 +52,11 @@ class TransactionCreationService(
             occurredAt = request.occurredAt,
         )
         val transaction = transactionRepository.save(
-            Transaction(
+            Transaction.create(
                 trip = trip,
                 createdBy = user,
-                transactionType = ledgerEntry.transactionType,
-                amount = ledgerEntry.amount,
-                currency = currencySnapshot.currency,
-                exchangeRate = currencySnapshot.exchangeRate,
-                baseCurrency = currencySnapshot.baseCurrency,
-                baseAmount = currencySnapshot.convert(ledgerEntry.amount),
+                ledgerEntry = ledgerEntry,
+                currencySnapshot = currencySnapshot,
                 category = request.category,
                 occurredAt = request.occurredAt,
             )
@@ -115,8 +110,8 @@ class TransactionCreationService(
         return occurredAt?.atZone(clock.zone)?.toLocalDate()
     }
 
-    private fun validateWritableTrip(trip: Trip) {
-        if (trip.settlementStatus != TripSettlementStatus.NOT_STARTED) {
+    private fun requireTransactionWritable(trip: Trip) {
+        if (!trip.canChangeTransactions()) {
             throw BusinessException(TransactionErrorCode.TRANSACTION_LOCKED_BY_SETTLEMENT)
         }
     }

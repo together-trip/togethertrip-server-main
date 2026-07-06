@@ -2,7 +2,6 @@ package com.togethertrip.main.transaction.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
-import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionEventType
@@ -32,6 +31,7 @@ import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
+import com.togethertrip.main.transaction.service.support.LinkedExpensePostSynchronizer
 import com.togethertrip.main.transaction.service.support.TransactionAllocationWriter
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsGroupBy
 import com.togethertrip.main.transaction.service.support.TransactionStatisticsPeriod
@@ -39,7 +39,6 @@ import com.togethertrip.main.transaction.service.support.TransactionCreationServ
 import com.togethertrip.main.transaction.service.support.TransactionEventRecorder
 import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
-import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.service.support.TripAccessResolver
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
@@ -56,13 +55,13 @@ class TransactionService(
     private val transactionPaymentRepository: TransactionPaymentRepository,
     private val transactionEventRepository: TransactionEventRepository,
     private val transactionStatisticsQueryRepository: TransactionStatisticsQueryRepository,
-    private val postRepository: PostRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
     private val transactionCreationService: TransactionCreationService,
     private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
     private val tripAccessResolver: TripAccessResolver,
     private val transactionEventRecorder: TransactionEventRecorder,
     private val transactionAllocationWriter: TransactionAllocationWriter,
+    private val linkedExpensePostSynchronizer: LinkedExpensePostSynchronizer,
     private val clock: Clock,
 ) {
 
@@ -146,7 +145,7 @@ class TransactionService(
             userId = userId,
             tripId = tripId,
         )
-        validateWritableTrip(trip)
+        requireTransactionWritable(trip)
         tripAccessResolver.getActiveParticipantByUserId(
             tripId = tripId,
             userId = userId,
@@ -198,16 +197,12 @@ class TransactionService(
             userId = userId,
             tripId = tripId,
         )
-        validateWritableTrip(trip)
+        requireTransactionWritable(trip)
         val transaction = getTransactionOrThrow(
             tripId = tripId,
             transactionId = transactionId,
         )
-        validateTransactionActor(
-            transaction = transaction,
-            userId = userId,
-        )
-        validateActiveTransaction(transaction)
+        transaction.assertMutableBy(userId)
         val ledgerEntry = request.toLedgerEntry()
         val currencySnapshot = resolveCurrencySnapshot(
             currency = ledgerEntry.currency,
@@ -222,7 +217,7 @@ class TransactionService(
             category = request.category,
             occurredAt = request.occurredAt,
         )
-        syncLinkedExpensePostsMetadata(transaction)
+        linkedExpensePostSynchronizer.syncMetadata(transaction)
         val currentPayments = transactionAllocationWriter.replacePayments(
             transaction = transaction,
             tripId = tripId,
@@ -270,21 +265,16 @@ class TransactionService(
             userId = userId,
             tripId = tripId,
         )
-        validateWritableTrip(trip)
+        requireTransactionWritable(trip)
         val transaction = getTransactionOrThrow(
             tripId = tripId,
             transactionId = transactionId,
         )
-        validateTransactionActor(
-            transaction = transaction,
-            userId = userId,
-        )
-        validateActiveTransaction(transaction)
         val payments = transactionPaymentRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
         val shares = transactionShareRepository.findByTransactionIdAndDeletedAtIsNullOrderByIdAsc(transaction.id)
 
-        transaction.void()
-        markLinkedExpensePostsDeleted(transaction)
+        transaction.voidBy(userId)
+        linkedExpensePostSynchronizer.markDeleted(transaction)
 
         transactionEventRecorder.record(
             trip = trip,
@@ -492,26 +482,6 @@ class TransactionService(
         )
     }
 
-    private fun syncLinkedExpensePostsMetadata(transaction: Transaction) {
-        postRepository.findByTransactionIdAndDeletedAtIsNull(transaction.id)
-            .forEach { post ->
-                post.update(
-                    title = post.title,
-                    category = transaction.category,
-                    content = post.content,
-                    occurredAt = transaction.occurredAt,
-                    placeName = post.placeName,
-                    latitude = post.latitude,
-                    longitude = post.longitude,
-                )
-            }
-    }
-
-    private fun markLinkedExpensePostsDeleted(transaction: Transaction) {
-        postRepository.findByTransactionIdAndDeletedAtIsNull(transaction.id)
-            .forEach { it.markDeleted() }
-    }
-
     private fun resolveCurrencySnapshot(
         currency: String,
         occurredAt: Instant?,
@@ -540,24 +510,9 @@ class TransactionService(
         return transaction
     }
 
-    private fun validateWritableTrip(trip: Trip) {
-        if (trip.settlementStatus != TripSettlementStatus.NOT_STARTED) {
+    private fun requireTransactionWritable(trip: Trip) {
+        if (!trip.canChangeTransactions()) {
             throw BusinessException(TransactionErrorCode.TRANSACTION_LOCKED_BY_SETTLEMENT)
-        }
-    }
-
-    private fun validateActiveTransaction(transaction: Transaction) {
-        if (transaction.status != TransactionStatus.ACTIVE) {
-            throw BusinessException(TransactionErrorCode.TRANSACTION_ALREADY_VOIDED)
-        }
-    }
-
-    private fun validateTransactionActor(
-        transaction: Transaction,
-        userId: Long,
-    ) {
-        if (transaction.createdBy.id != userId) {
-            throw BusinessException(CommonErrorCode.ACCESS_DENIED)
         }
     }
 

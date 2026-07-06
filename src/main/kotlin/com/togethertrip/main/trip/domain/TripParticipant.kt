@@ -51,19 +51,18 @@ class TripParticipant(
 ) : BaseEntity() {
 
     fun updateTemporaryProfile(
-        displayName: String?,
-        profileImageUrl: String?,
-        profileImageUrlChanged: Boolean,
+        patch: TripParticipantProfilePatch,
         updatedAt: Instant,
     ) {
         if (user != null) {
             throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_PROFILE_EDIT_DENIED)
         }
-        displayName?.let {
+        patch.displayName?.let {
             this.displayName = it
         }
-        if (profileImageUrlChanged) {
-            this.profileImageUrl = profileImageUrl
+        when (val profileImageUrl = patch.profileImageUrl) {
+            is FieldChange.Changed -> this.profileImageUrl = profileImageUrl.value
+            FieldChange.Unchanged -> Unit
         }
         this.updatedAt = updatedAt
     }

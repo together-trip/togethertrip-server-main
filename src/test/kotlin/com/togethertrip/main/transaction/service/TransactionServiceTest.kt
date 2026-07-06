@@ -23,6 +23,7 @@ import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
 import com.togethertrip.main.transaction.repository.projection.CommonFundBalanceRow
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
+import com.togethertrip.main.transaction.service.support.LinkedExpensePostSynchronizer
 import com.togethertrip.main.transaction.service.support.TransactionAllocationWriter
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.transaction.service.support.TransactionEventRecorder
@@ -105,6 +106,9 @@ class TransactionServiceTest {
             transactionShareRepository = transactionShareRepository,
             tripAccessResolver = tripAccessResolver,
         )
+        val linkedExpensePostSynchronizer = LinkedExpensePostSynchronizer(
+            postRepository = postRepository,
+        )
         val transactionCreationService = TransactionCreationService(
             transactionRepository = transactionRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
@@ -120,13 +124,13 @@ class TransactionServiceTest {
             transactionPaymentRepository = transactionPaymentRepository,
             transactionEventRepository = transactionEventRepository,
             transactionStatisticsQueryRepository = transactionStatisticsQueryRepository,
-            postRepository = postRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             transactionCreationService = transactionCreationService,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
             tripAccessResolver = tripAccessResolver,
             transactionEventRecorder = transactionEventRecorder,
             transactionAllocationWriter = transactionAllocationWriter,
+            linkedExpensePostSynchronizer = linkedExpensePostSynchronizer,
             clock = clock,
         )
     }
