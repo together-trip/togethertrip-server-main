@@ -34,6 +34,7 @@ import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.exchange.repository.ExchangeRateRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripAccessResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
@@ -89,16 +90,19 @@ class TransactionServiceTest {
             exchangeRateRepository = exchangeRateRepository,
             clock = clock,
         )
+        val tripAccessResolver = TripAccessResolver(
+            tripRepository = tripRepository,
+            tripParticipantRepository = tripParticipantRepository,
+            userRepository = userRepository,
+        )
         val transactionCreationService = TransactionCreationService(
             transactionRepository = transactionRepository,
             transactionShareRepository = transactionShareRepository,
             transactionPaymentRepository = transactionPaymentRepository,
             transactionEventRepository = transactionEventRepository,
-            tripRepository = tripRepository,
-            tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
-            userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            tripAccessResolver = tripAccessResolver,
             clock = clock,
         )
         transactionService = TransactionService(
@@ -108,12 +112,10 @@ class TransactionServiceTest {
             transactionEventRepository = transactionEventRepository,
             transactionStatisticsQueryRepository = transactionStatisticsQueryRepository,
             postRepository = postRepository,
-            tripRepository = tripRepository,
-            tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             transactionCreationService = transactionCreationService,
-            userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            tripAccessResolver = tripAccessResolver,
             clock = clock,
         )
     }

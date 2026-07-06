@@ -52,6 +52,7 @@ import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripAccessResolver
 import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.repository.UserRepository
@@ -119,16 +120,19 @@ class PostServiceTest {
             exchangeRateRepository = mock(ExchangeRateRepository::class.java),
             clock = clock,
         )
+        val tripAccessResolver = TripAccessResolver(
+            tripRepository = tripRepository,
+            tripParticipantRepository = tripParticipantRepository,
+            userRepository = userRepository,
+        )
         val transactionCreationService = TransactionCreationService(
             transactionRepository = transactionRepository,
             transactionShareRepository = transactionShareRepository,
             transactionPaymentRepository = transactionPaymentRepository,
             transactionEventRepository = transactionEventRepository,
-            tripRepository = tripRepository,
-            tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
-            userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            tripAccessResolver = tripAccessResolver,
             clock = clock,
         )
         val transactionService = TransactionService(
@@ -138,12 +142,10 @@ class PostServiceTest {
             transactionEventRepository = transactionEventRepository,
             transactionStatisticsQueryRepository = mock(),
             postRepository = postRepository,
-            tripRepository = tripRepository,
-            tripParticipantRepository = tripParticipantRepository,
             transactionExchangeRateResolver = transactionExchangeRateResolver,
             transactionCreationService = transactionCreationService,
-            userRepository = userRepository,
             balanceSummaryProjectionService = balanceSummaryProjectionService,
+            tripAccessResolver = tripAccessResolver,
             clock = clock,
         )
         `when`(

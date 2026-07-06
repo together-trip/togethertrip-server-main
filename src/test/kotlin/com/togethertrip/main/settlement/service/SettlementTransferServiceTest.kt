@@ -36,7 +36,9 @@ import org.mockito.Mockito.`when`
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import tools.jackson.module.kotlin.readValue
 import java.math.BigDecimal
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
 import kotlin.test.assertEquals
 
 class SettlementTransferServiceTest {
@@ -59,6 +61,10 @@ class SettlementTransferServiceTest {
             settlementAccessResolver = settlementAccessResolver,
             settlementTransferConfirmationProcessor = SettlementTransferConfirmationProcessor(
                 settlementTransferRepository = settlementTransferRepository,
+                clock = Clock.fixed(
+                    Instant.parse("2026-07-02T00:30:00Z"),
+                    ZoneId.of("Asia/Seoul"),
+                ),
             ),
             outboxEventPublisher = OutboxEventPublisher(
                 outboxEventRepository = outboxEventRepository,

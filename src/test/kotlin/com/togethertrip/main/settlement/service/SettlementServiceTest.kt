@@ -48,7 +48,9 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import tools.jackson.module.kotlin.readValue
 import java.math.BigDecimal
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
@@ -76,6 +78,10 @@ class SettlementServiceTest {
         tripRepository = mock(TripRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
         outboxEventRepository = mock(OutboxEventRepository::class.java)
+        val clock = Clock.fixed(
+            Instant.parse("2026-07-02T00:30:00Z"),
+            ZoneId.of("Asia/Seoul"),
+        )
         `when`(
             tripParticipantRepository.findActiveUserIdsForNotification(
                 tripId = 10L,
@@ -91,6 +97,7 @@ class SettlementServiceTest {
             settlementShareTokenIssuer = SettlementShareTokenIssuer(
                 settlementRepository = settlementRepository,
                 settlementShareTokenGenerator = settlementShareTokenGenerator,
+                clock = clock,
             ),
             settlementAccessResolver = settlementAccessResolver,
             tripRepository = tripRepository,
@@ -102,6 +109,7 @@ class SettlementServiceTest {
             tripNotificationRecipientResolver = TripNotificationRecipientResolver(
                 tripParticipantRepository = tripParticipantRepository,
             ),
+            clock = clock,
         )
     }
 

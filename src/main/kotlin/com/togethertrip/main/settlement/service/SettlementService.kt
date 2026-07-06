@@ -56,9 +56,8 @@ class SettlementService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val outboxEventPublisher: OutboxEventPublisher,
     private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
+    private val clock: Clock,
 ) {
-
-    private val clock = Clock.systemDefaultZone()
 
     @Transactional(readOnly = true)
     fun previewSettlement(

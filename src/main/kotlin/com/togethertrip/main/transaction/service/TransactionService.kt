@@ -43,16 +43,9 @@ import com.togethertrip.main.transaction.service.support.TransactionStatisticsPe
 import com.togethertrip.main.transaction.service.support.TransactionCreationService
 import com.togethertrip.main.settlement.service.support.TripParticipantBalanceSummaryProjectionService
 import com.togethertrip.main.trip.domain.Trip
-import com.togethertrip.main.trip.domain.TripParticipant
-import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
-import com.togethertrip.main.trip.exception.TripErrorCode
-import com.togethertrip.main.trip.repository.TripParticipantRepository
-import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.service.support.TripAccessResolver
 import com.togethertrip.main.user.domain.User
-import com.togethertrip.main.user.domain.UserStatus
-import com.togethertrip.main.user.exception.UserErrorCode
-import com.togethertrip.main.user.repository.UserRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -69,12 +62,10 @@ class TransactionService(
     private val transactionEventRepository: TransactionEventRepository,
     private val transactionStatisticsQueryRepository: TransactionStatisticsQueryRepository,
     private val postRepository: PostRepository,
-    private val tripRepository: TripRepository,
-    private val tripParticipantRepository: TripParticipantRepository,
     private val transactionExchangeRateResolver: TransactionExchangeRateResolver,
     private val transactionCreationService: TransactionCreationService,
-    private val userRepository: UserRepository,
     private val balanceSummaryProjectionService: TripParticipantBalanceSummaryProjectionService,
+    private val tripAccessResolver: TripAccessResolver,
     private val clock: Clock,
 ) {
 
@@ -106,8 +97,8 @@ class TransactionService(
         cursor: String?,
         size: Int?,
     ): CursorResponse<TransactionSummaryResponse> {
-        getActiveUser(userId)
-        getAccessibleTrip(
+        tripAccessResolver.getActiveUser(userId)
+        tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -153,15 +144,14 @@ class TransactionService(
         currency: String,
         spendingDate: LocalDate?,
     ): TransactionExchangeRatePreviewResponse {
-        getActiveUser(userId)
-        val trip = getAccessibleTrip(
+        tripAccessResolver.getActiveUser(userId)
+        val trip = tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
         validateWritableTrip(trip)
-        getActiveParticipant(
+        tripAccessResolver.getActiveParticipantByUserId(
             tripId = tripId,
-            participantId = null,
             userId = userId,
         )
         val preview = transactionExchangeRateResolver.resolve(
@@ -178,8 +168,8 @@ class TransactionService(
         tripId: Long,
         transactionId: Long,
     ): TransactionDetailResponse {
-        getActiveUser(userId)
-        getAccessibleTrip(
+        tripAccessResolver.getActiveUser(userId)
+        tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -206,8 +196,8 @@ class TransactionService(
         transactionId: Long,
         request: UpdateTransactionRequest,
     ): TransactionDetailResponse {
-        val user = getActiveUser(userId)
-        val trip = getAccessibleTrip(
+        val user = tripAccessResolver.getActiveUser(userId)
+        val trip = tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -278,8 +268,8 @@ class TransactionService(
         tripId: Long,
         transactionId: Long,
     ) {
-        val user = getActiveUser(userId)
-        val trip = getAccessibleTrip(
+        val user = tripAccessResolver.getActiveUser(userId)
+        val trip = tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -318,8 +308,8 @@ class TransactionService(
         tripId: Long,
         transactionId: Long,
     ): List<TransactionEventResponse> {
-        getActiveUser(userId)
-        getAccessibleTrip(
+        tripAccessResolver.getActiveUser(userId)
+        tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -338,8 +328,8 @@ class TransactionService(
         userId: Long,
         tripId: Long,
     ): CommonFundBalanceResponse {
-        getActiveUser(userId)
-        val trip = getAccessibleTrip(
+        tripAccessResolver.getActiveUser(userId)
+        val trip = tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -368,8 +358,8 @@ class TransactionService(
         to: String?,
         groupBy: String?,
     ): TransactionStatisticsResponse {
-        getActiveUser(userId)
-        getAccessibleTrip(
+        tripAccessResolver.getActiveUser(userId)
+        tripAccessResolver.getAccessibleTrip(
             userId = userId,
             tripId = tripId,
         )
@@ -549,10 +539,9 @@ class TransactionService(
         )
 
         return allocations.mapIndexed { index, allocation ->
-            val participant = getActiveParticipant(
+            val participant = tripAccessResolver.getActiveParticipantById(
                 tripId = tripId,
                 participantId = allocation.participantId,
-                userId = null,
             )
             val payment = TransactionPayment(
                 transaction = transaction,
@@ -580,10 +569,9 @@ class TransactionService(
         )
 
         return allocations.mapIndexed { index, allocation ->
-            val participant = getActiveParticipant(
+            val participant = tripAccessResolver.getActiveParticipantById(
                 tripId = tripId,
                 participantId = allocation.participantId,
-                userId = null,
             )
             val share = TransactionShare(
                 transaction = transaction,
@@ -670,61 +658,6 @@ class TransactionService(
         }
 
         return transaction
-    }
-
-    private fun getAccessibleTrip(
-        userId: Long,
-        tripId: Long,
-    ): Trip {
-        val trip = tripRepository.findByIdAndDeletedAtIsNull(tripId)
-            ?: throw BusinessException(TripErrorCode.TRIP_NOT_FOUND)
-
-        if (trip.ownerUser.id == userId) {
-            return trip
-        }
-
-        val participant = tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
-            tripId = tripId,
-            userId = userId,
-            participantStatus = TripParticipantStatus.ACTIVE,
-        ) ?: throw BusinessException(TripErrorCode.TRIP_ACCESS_DENIED)
-
-        return participant.trip
-    }
-
-    private fun getActiveParticipant(
-        tripId: Long,
-        participantId: Long?,
-        userId: Long?,
-    ): TripParticipant {
-        if (participantId != null) {
-            return tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
-                id = participantId,
-                tripId = tripId,
-                participantStatus = TripParticipantStatus.ACTIVE,
-            ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
-        }
-
-        if (userId != null) {
-            return tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
-                tripId = tripId,
-                userId = userId,
-                participantStatus = TripParticipantStatus.ACTIVE,
-            ) ?: throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
-        }
-
-        throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND)
-    }
-
-    private fun getActiveUser(userId: Long): User {
-        val user = userRepository.findByIdAndDeletedAtIsNull(userId)
-            ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
-
-        if (user.status != UserStatus.ACTIVE) {
-            throw BusinessException(UserErrorCode.INACTIVE_USER)
-        }
-
-        return user
     }
 
     private fun validateWritableTrip(trip: Trip) {
