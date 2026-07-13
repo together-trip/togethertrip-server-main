@@ -27,6 +27,11 @@ interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
 
     fun findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(tripId: Long): List<TripParticipant>
 
+    fun countByTripIdAndParticipantStatusAndDeletedAtIsNull(
+        tripId: Long,
+        participantStatus: TripParticipantStatus,
+    ): Int
+
     @Query(
         value = """
         select *

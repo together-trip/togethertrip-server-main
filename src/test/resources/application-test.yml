@@ -84,6 +84,15 @@ trip:
   invite:
     base-url: https://togethertrip.test/invites
 
+trip-recap:
+  ai:
+    provider: stub
+    openai:
+      api-key: ""
+  images:
+    storage-dir: ./build/test-uploads/trip-recaps
+    public-url-prefix: /uploads/trip-recaps
+
 exchange-rate:
   korea-exim:
     base-url: https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON
@@ -107,6 +116,21 @@ exchange-rate:
     name: exchange-rate:import:korea-exim
     wait-time: 0s
     lease-time: 10m
+
+notification:
+  sqs:
+    queue-url: ""
+    region: ap-northeast-2
+    enabled: false
+    access-key-id: ""
+    secret-access-key: ""
+    session-token: ""
+
+outbox:
+  dispatch:
+    enabled: false
+    fixed-delay: PT3S
+    limit: 50
 
 server:
   port: 8081

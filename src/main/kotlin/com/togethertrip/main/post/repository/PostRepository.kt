@@ -89,4 +89,18 @@ interface PostRepository : JpaRepository<Post, Long> {
     fun findByTransactionIdAndDeletedAtIsNull(transactionId: Long): List<Post>
 
     fun existsByTransactionIdAndDeletedAtIsNull(transactionId: Long): Boolean
+
+    @Query(
+        """
+        SELECT p
+        FROM Post p
+        WHERE p.trip.id = :tripId
+          AND p.deletedAt IS NULL
+        ORDER BY COALESCE(p.occurredAt, p.createdAt) ASC, p.id ASC
+        """
+    )
+    fun findTripRecapSourcePosts(
+        tripId: Long,
+        pageable: Pageable,
+    ): List<Post>
 }

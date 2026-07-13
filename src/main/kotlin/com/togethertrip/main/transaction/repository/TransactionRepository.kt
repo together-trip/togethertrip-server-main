@@ -57,4 +57,20 @@ interface TransactionRepository : JpaRepository<Transaction, Long> {
         @Param("cursorFilterEnabled") cursorFilterEnabled: Boolean,
         pageable: Pageable,
     ): List<Transaction>
+
+    @Query(
+        """
+        select tx
+        from Transaction tx
+        where tx.trip.id = :tripId
+          and tx.deletedAt is null
+          and tx.status = :status
+        order by coalesce(tx.occurredAt, tx.createdAt) asc, tx.id asc
+        """
+    )
+    fun findTripRecapExpenseSignals(
+        @Param("tripId") tripId: Long,
+        @Param("status") status: TransactionStatus = TransactionStatus.ACTIVE,
+        pageable: Pageable,
+    ): List<Transaction>
 }
