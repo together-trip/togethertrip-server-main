@@ -3,7 +3,7 @@
 ## 작업 정보
 
 - 대상 repo: `togethertrip-server-main`
-- 상태: 인터뷰 기반 사전 설계
+- 상태: OpenAI 로컬 E2E 연동 구현
 - 이슈: [#101 feat: 지난 여행 AI Recap 생성 기능](https://github.com/together-trip/togethertrip-server-main/issues/101)
 - 목표: 여행 종료 후 정산까지 완료된 여행에 대해, 사용자가 직접 요청하면 AI가 여러 장면의 9:16 이미지 recap을 생성하고 여행 멤버 전체가 공유해서 볼 수 있게 한다.
 
@@ -357,10 +357,20 @@ data class TripRecapGeneratedScene(
 
 - v1 초기: `StubTripRecapGenerator`
   - 인터페이스와 저장 흐름 검증용
-- 이후: `OpenAiTripRecapGenerator`
+- 실제 생성: `OpenAiTripRecapGenerator`
   - OpenAI API 연동
   - 텍스트 없는 9:16 이미지 생성
   - 사진이 있으면 참고하고, 없으면 일정/장소/정산 신호 기반 생성
+
+### OpenAI 로컬 E2E 설정
+
+- 기본 provider는 과금과 외부 전송을 막기 위해 `stub`으로 유지한다.
+- 실제 생성 시 `TRIP_RECAP_AI_PROVIDER=openai`와 `OPENAI_API_KEY`를 서버 환경에 설정한다.
+- 기본 이미지 모델은 `gpt-image-2`, 출력 크기는 정확한 9:16인 `1152x2048`, 품질은 `medium`이다.
+- 참고 사진이 있으면 로컬 게시글 첨부 스토리지에서 최대 4장을 읽어 `/v1/images/edits` multipart 요청으로 전송한다.
+- 참고 사진이 없거나 읽을 수 없으면 `/v1/images/generations`를 사용한다.
+- API 키는 서버 전용 환경 변수로만 전달하며 DB, 응답, Git 추적 파일에 저장하지 않는다.
+- 로컬 실행 설정과 검증 절차는 `docs/verifications-jaewan/trip-ai-recap-openai-local-e2e.md`를 따른다.
 
 ## 비동기 실행 정책
 

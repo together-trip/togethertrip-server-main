@@ -1,6 +1,7 @@
 package com.togethertrip.main.triprecap.service.ai
 
 import com.togethertrip.main.triprecap.domain.TripRecapStyle
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.awt.BasicStroke
 import java.awt.Color
@@ -14,6 +15,12 @@ import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 
 @Component
+@ConditionalOnProperty(
+    prefix = "trip-recap.ai",
+    name = ["provider"],
+    havingValue = "stub",
+    matchIfMissing = true,
+)
 class StubTripRecapGenerator : TripRecapGenerator {
 
     override fun generate(request: TripRecapGenerateRequest): TripRecapGenerateResult {

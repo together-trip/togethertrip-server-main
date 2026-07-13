@@ -85,6 +85,10 @@ trip:
     base-url: https://togethertrip.test/invites
 
 trip-recap:
+  ai:
+    provider: stub
+    openai:
+      api-key: ""
   images:
     storage-dir: ./build/test-uploads/trip-recaps
     public-url-prefix: /uploads/trip-recaps
