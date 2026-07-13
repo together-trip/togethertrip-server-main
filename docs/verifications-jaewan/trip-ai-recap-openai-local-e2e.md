@@ -25,14 +25,25 @@
 /Users/jujaewan/1_Projects/togethertrip/togethertrip-server-main
 ```
 
-리포 루트에 Git 추적되지 않는 `.env`를 만들고 다음 값을 설정한다.
+리포 루트에 Git 추적되지 않는 `.env`를 만든다. 아래 OpenAI 블록은
+`src/main/resources/.env.example` 맨 아래 블록과 변수명 및 순서가 같다.
+로컬 E2E에서는 `TRIP_RECAP_AI_PROVIDER`와 `OPENAI_API_KEY` 값만 실제 실행값으로 바꾼다.
 
 ```dotenv
 TRIP_RECAP_AI_PROVIDER=openai
+OPENAI_BASE_URL=https://api.openai.com
 OPENAI_API_KEY=사용자_서버용_API_KEY
 OPENAI_IMAGE_MODEL=gpt-image-2
 OPENAI_IMAGE_SIZE=1152x2048
 OPENAI_IMAGE_QUALITY=medium
+OPENAI_IMAGE_TIMEOUT=3m
+OPENAI_MAX_REFERENCE_IMAGES=4
+OPENAI_MAX_REFERENCE_IMAGE_BYTES=10485760
+```
+
+아래 항목은 OpenAI 신규 설정이 아니라 로컬 전체 흐름 실행을 위한 기존 환경 변수다.
+
+```dotenv
 SERVER_PORT=8081
 AUTH_LOCAL_TEST_ENABLED=true
 NOTIFICATION_SQS_SENDER_ENABLED=false
