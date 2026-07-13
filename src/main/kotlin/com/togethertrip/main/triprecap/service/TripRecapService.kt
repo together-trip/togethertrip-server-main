@@ -111,6 +111,7 @@ class TripRecapService(
             requestedBy = user,
             now = Instant.now(),
         )
+        tripRecapRepository.save(recap)
         tripRecapGenerationJobLauncher.launchAfterCommit(recap.id)
 
         return recap.toCreateResponse()

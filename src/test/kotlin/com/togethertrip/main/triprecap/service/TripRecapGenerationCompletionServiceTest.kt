@@ -94,6 +94,7 @@ class TripRecapGenerationCompletionServiceTest {
         assertEquals(TripRecapStatus.COMPLETED, recap.status)
         assertEquals(1, recap.sceneCount)
         assertNull(recap.failureReason)
+        verify(tripRecapRepository).save(recap)
         verify(tripRecapSceneRepository).softDeleteByRecapId(
             recapId = 100L,
             deletedAt = Instant.parse("2026-07-06T12:00:00Z"),

@@ -38,6 +38,10 @@ class TripRecapGenerationCompletionService(
             return
         }
 
+        val tripId = recap.trip.id
+        val tripName = recap.trip.title
+        val recapStyle = recap.style
+
         tripRecapSceneRepository.softDeleteByRecapId(
             recapId = recap.id,
             deletedAt = completedAt,
@@ -47,7 +51,7 @@ class TripRecapGenerationCompletionService(
                 TripRecapScene(
                     recap = recap,
                     sceneOrder = scene.order,
-                    style = recap.style,
+                    style = recapStyle,
                     imageObjectKey = scene.imageObjectKey,
                     imageUrl = scene.imageUrl,
                     sceneDescription = scene.sceneDescription,
@@ -62,10 +66,11 @@ class TripRecapGenerationCompletionService(
             sceneCount = scenes.size,
             now = completedAt,
         )
+        tripRecapRepository.save(recap)
         publishCompletedEvent(
             recapId = recap.id,
-            tripId = recap.trip.id,
-            tripName = recap.trip.title,
+            tripId = tripId,
+            tripName = tripName,
             occurredAt = completedAt,
         )
     }

@@ -48,6 +48,19 @@ class OpenAiTripRecapGeneratorTest {
     }
 
     @Test
+    fun `image response larger than default webclient buffer is decoded`() {
+        val generatedBytes = ByteArray(300 * 1024).apply {
+            pngPayload(1).copyInto(this)
+        }
+        startServer(generatedBytes)
+        val generator = generator(photoContentLoader = TripRecapPhotoContentLoader { null })
+
+        val result = generator.generate(request())
+
+        result.scenes.forEach { assertContentEquals(generatedBytes, it.imageBytes) }
+    }
+
+    @Test
     fun `photo recap sends local references to image edits API`() {
         val requests = startServer(pngPayload(9))
         val generator = generator(

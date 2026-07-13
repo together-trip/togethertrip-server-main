@@ -26,6 +26,9 @@ class OpenAiTripRecapGenerator(
 
     private val webClient = webClientBuilder
         .baseUrl(properties.baseUrl)
+        .codecs { configurer ->
+            configurer.defaultCodecs().maxInMemorySize(MAX_OPENAI_RESPONSE_BYTES)
+        }
         .build()
 
     override fun generate(request: TripRecapGenerateRequest): TripRecapGenerateResult {
@@ -269,6 +272,7 @@ class OpenAiTripRecapGenerator(
         private const val MAX_REFERENCE_IMAGES = 4
         private const val MAX_PROMPT_LENGTH = 32_000
         private const val MAX_GENERATED_IMAGE_BYTES = 30 * 1024 * 1024
+        private const val MAX_OPENAI_RESPONSE_BYTES = 45 * 1024 * 1024
         private const val MIN_TOTAL_PIXELS = 655_360L
         private const val MAX_TOTAL_PIXELS = 8_294_400L
         private val IMAGE_SIZE_PATTERN = Regex("^([1-9][0-9]*)x([1-9][0-9]*)$")

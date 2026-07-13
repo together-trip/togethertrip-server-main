@@ -160,6 +160,7 @@ class TripRecapServiceTest {
         val softDeleteInvocation = mockingDetails(tripRecapSceneRepository).invocations
             .first { it.method.name == "softDeleteByRecapId" }
         assertEquals(100L, softDeleteInvocation.arguments[0])
+        verify(tripRecapRepository).save(recap)
         verify(tripRecapGenerationJobLauncher).launchAfterCommit(100L)
     }
 
