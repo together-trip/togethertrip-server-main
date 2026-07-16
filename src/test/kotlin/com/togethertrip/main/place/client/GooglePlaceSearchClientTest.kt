@@ -259,7 +259,25 @@ class GooglePlaceSearchClientTest {
                     {
                       "placePrediction": {
                         "placeId": "place-2",
+                        "structuredFormat": {}
+                      }
+                    },
+                    {
+                      "placePrediction": {
+                        "placeId": "place-3",
                         "structuredFormat": {"mainText": {}}
+                      }
+                    },
+                    {
+                      "placePrediction": {
+                        "placeId": "place-4",
+                        "structuredFormat": {"mainText": {"text": ""}}
+                      }
+                    },
+                    {
+                      "placePrediction": {
+                        "placeId": "place-5",
+                        "structuredFormat": {"mainText": {"text": "   "}}
                       }
                     }
                   ]
@@ -314,6 +332,8 @@ class GooglePlaceSearchClientTest {
             ClientResponse.create(HttpStatus.NO_CONTENT).build(),
             jsonResponse("""{"status":"OK","results":[]}"""),
             jsonResponse("""{"status":"OK","results":[{}]}"""),
+            jsonResponse("""{"status":"OK","results":[{"formatted_address":""}]}"""),
+            jsonResponse("""{"status":"OK","results":[{"formatted_address":"   "}]}"""),
         )
 
         responses.forEach { response ->

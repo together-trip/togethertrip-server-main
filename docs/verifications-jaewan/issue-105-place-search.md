@@ -20,9 +20,9 @@
 ## 커버리지
 
 - 전체 LINE: 7,199 / 9,144 = 78.73%
-- 전체 BRANCH: 1,323 / 2,112 = 62.64%
+- 전체 BRANCH: 1,333 / 2,112 = 63.12%
 - 신규 `place` 패키지 LINE: 249 / 249 = 100%
-- 신규 `place` 패키지 BRANCH: 114 / 124 = 91.94%
+- 신규 `place` 패키지 BRANCH: 124 / 124 = 100%
 - `post/validation` LINE: 14 / 14 = 100%
 - `post/validation` BRANCH: 32 / 34 = 94.12%
 

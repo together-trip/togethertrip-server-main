@@ -52,6 +52,18 @@ class PlaceServiceTest {
     }
 
     @Test
+    fun `자동완성의 빈 문자열과 공백 세션 토큰은 null로 정규화한다`() {
+        listOf("", "   ").forEach { token ->
+            val client = FakePlaceSearchClient()
+            val service = PlaceService(client, FakePlaceRequestRateLimiter())
+
+            service.autocomplete(PlaceAutocompleteCommand(7, "도쿄역", token, "ko"))
+
+            assertNull(client.sessionToken)
+        }
+    }
+
+    @Test
     fun `장소 상세의 세션 토큰은 trim해서 client에 전달한다`() {
         val client = FakePlaceSearchClient()
         val service = PlaceService(client, FakePlaceRequestRateLimiter())
@@ -59,6 +71,18 @@ class PlaceServiceTest {
         service.getPlace(PlaceDetailCommand(7, "place-1", "  session-1  ", "ko"))
 
         assertEquals("session-1", client.sessionToken)
+    }
+
+    @Test
+    fun `장소 상세의 null과 빈 문자열 세션 토큰은 null로 정규화한다`() {
+        listOf<String?>(null, "").forEach { token ->
+            val client = FakePlaceSearchClient()
+            val service = PlaceService(client, FakePlaceRequestRateLimiter())
+
+            service.getPlace(PlaceDetailCommand(7, "place-1", token, "ko"))
+
+            assertNull(client.sessionToken)
+        }
     }
 
     @Test
@@ -95,7 +119,10 @@ class PlaceServiceTest {
         assertFalse(reverse.contains("35.681236"))
         assertFalse(reverse.contains("139.767125"))
         assertTrue(PlaceAutocompleteCommand(7, "도쿄역", null, "ko").toString().contains("hasSessionToken=false"))
+        assertTrue(PlaceAutocompleteCommand(7, "도쿄역", "", "ko").toString().contains("hasSessionToken=false"))
         assertTrue(PlaceDetailCommand(7, "place-1", "   ", "ko").toString().contains("hasSessionToken=false"))
+        assertTrue(PlaceDetailCommand(7, "place-1", "", "ko").toString().contains("hasSessionToken=false"))
+        assertTrue(PlaceDetailCommand(7, "place-1", null, "ko").toString().contains("hasSessionToken=false"))
     }
 
     private class FakePlaceRequestRateLimiter : PlaceRequestRateLimiter {
