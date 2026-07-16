@@ -85,6 +85,13 @@ post:
     local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH:./uploads/post-attachments}
     public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX:/uploads/post-attachments}
 
+place:
+  google:
+    places-base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com}
+    geocoding-base-url: ${GOOGLE_GEOCODING_BASE_URL:https://maps.googleapis.com}
+    api-key: ${GOOGLE_MAPS_WEB_SERVICE_API_KEY:}
+    timeout: ${GOOGLE_PLACES_TIMEOUT:5s}
+
 user:
   profile-images:
     local-storage-path: ${USER_PROFILE_IMAGE_LOCAL_STORAGE_PATH:./uploads/user-profile-images}

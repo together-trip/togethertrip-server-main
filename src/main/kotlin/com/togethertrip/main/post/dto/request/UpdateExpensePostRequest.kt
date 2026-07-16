@@ -1,5 +1,6 @@
 package com.togethertrip.main.post.dto.request
 
+import com.togethertrip.main.post.validation.ValidPlace
 import com.togethertrip.main.transaction.domain.TransactionType
 import com.togethertrip.main.transaction.dto.request.TransactionPaymentInput
 import com.togethertrip.main.transaction.dto.request.TransactionShareInput
@@ -14,14 +15,15 @@ import org.springframework.web.multipart.MultipartFile
 import java.math.BigDecimal
 import java.time.Instant
 
+@ValidPlace
 data class UpdateExpensePostRequest(
     val title: String? = null,
     val category: String? = null,
     val content: String? = null,
     val occurredAt: Instant? = null,
-    val placeName: String? = null,
-    val latitude: BigDecimal? = null,
-    val longitude: BigDecimal? = null,
+    override val placeName: String? = null,
+    override val latitude: BigDecimal? = null,
+    override val longitude: BigDecimal? = null,
     val replaceAttachments: Boolean = false,
     val files: List<MultipartFile> = emptyList(),
     @field:NotNull
@@ -38,7 +40,7 @@ data class UpdateExpensePostRequest(
     @field:Valid
     @field:NotEmpty
     val shares: List<TransactionShareInput>,
-) {
+) : PlaceRequest {
 
     fun toUpdateTransactionRequest(): UpdateTransactionRequest {
         return UpdateTransactionRequest(
