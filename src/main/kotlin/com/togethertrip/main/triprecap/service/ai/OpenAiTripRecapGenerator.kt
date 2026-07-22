@@ -17,6 +17,7 @@ import java.util.Base64
 )
 class OpenAiTripRecapGenerator(
     private val properties: OpenAiTripRecapProperties,
+    private val modelRouter: TripRecapImageModelRouter,
     private val photoContentLoader: TripRecapPhotoContentLoader,
     private val referenceImageOptimizer: TripRecapReferenceImageOptimizer,
     private val imageOperations: SpringAiOpenAiImageOperations,
@@ -25,6 +26,7 @@ class OpenAiTripRecapGenerator(
 
     override fun generate(request: TripRecapGenerateRequest): TripRecapGenerateResult {
         validateConfiguration()
+        val modelRoute = modelRouter.route(properties.model)
         val sceneCount = determineSceneCount(request)
         val scenes = (1..sceneCount).map { order ->
             val sceneFocus = selectSceneFocus(request, order)
@@ -41,11 +43,12 @@ class OpenAiTripRecapGenerator(
                 sceneDescription = description,
                 imagePrompt = prompt,
                 imageBytes = if (references.isEmpty()) {
-                    generateImage(prompt)
+                    generateImage(prompt, modelRoute.model)
                 } else {
                     generateImageWithReferences(
                         prompt = prompt,
                         references = references,
+                        model = modelRoute.model,
                     )
                 },
             )
@@ -53,30 +56,31 @@ class OpenAiTripRecapGenerator(
 
         return TripRecapGenerateResult(
             provider = PROVIDER,
-            model = properties.model,
+            model = modelRoute.model,
             scenes = scenes,
         )
     }
 
-    private fun generateImage(prompt: String): ByteArray {
-        return executeObservedRequest(OPERATION_GENERATION, 0, 0) {
-            imageOperations.call(imagePrompt(prompt))
+    private fun generateImage(prompt: String, model: String): ByteArray {
+        return executeObservedRequest(OPERATION_GENERATION, model, 0, 0) {
+            imageOperations.call(imagePrompt(prompt, model))
         }
     }
 
     private fun generateImageWithReferences(
         prompt: String,
         references: List<TripRecapPhotoContent>,
+        model: String,
     ): ByteArray {
-        return executeObservedRequest(OPERATION_EDIT, references.size, references.sumOf { it.bytes.size.toLong() }) {
-            imageOperations.edit(imagePrompt(prompt), references)
+        return executeObservedRequest(OPERATION_EDIT, model, references.size, references.sumOf { it.bytes.size.toLong() }) {
+            imageOperations.edit(imagePrompt(prompt, model), references)
         }
     }
 
-    private fun imagePrompt(prompt: String): ImagePrompt {
+    private fun imagePrompt(prompt: String, model: String): ImagePrompt {
         val output = properties.outputSettings()
         val options = OpenAiImageOptions.builder()
-            .model(properties.model)
+            .model(model)
             .n(1)
             .size(output.size)
             .quality(output.quality)
@@ -87,6 +91,7 @@ class OpenAiTripRecapGenerator(
 
     private fun executeObservedRequest(
         operation: String,
+        model: String,
         referenceImageCount: Int,
         referenceImageBytes: Long,
         request: () -> ImageResponse,
@@ -96,13 +101,14 @@ class OpenAiTripRecapGenerator(
             val response = request()
             val imageBytes = decodeImage(response)
             imageGenerationObserver.record(
-                observation(operation, referenceImageCount, referenceImageBytes, startedAt, true, response.usage())
+                observation(operation, model, referenceImageCount, referenceImageBytes, startedAt, true, response.usage())
             )
             imageBytes
         } catch (exception: Throwable) {
             imageGenerationObserver.record(
                 observation(
                     operation,
+                    model,
                     referenceImageCount,
                     referenceImageBytes,
                     startedAt,
@@ -121,6 +127,7 @@ class OpenAiTripRecapGenerator(
 
     private fun observation(
         operation: String,
+        model: String,
         referenceImageCount: Int,
         referenceImageBytes: Long,
         startedAt: Long,
@@ -129,7 +136,7 @@ class OpenAiTripRecapGenerator(
         failureType: String? = null,
     ) = TripRecapImageGenerationObservation(
         operation = operation,
-        model = properties.model,
+        model = model,
         size = properties.outputSettings().size,
         quality = properties.outputSettings().quality,
         referenceImageCount = referenceImageCount,

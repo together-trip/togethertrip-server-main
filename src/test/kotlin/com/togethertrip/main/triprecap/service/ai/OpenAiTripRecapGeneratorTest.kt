@@ -112,6 +112,7 @@ class OpenAiTripRecapGeneratorTest {
         val properties = properties().apply { apiKey = "" }
         val generator = OpenAiTripRecapGenerator(
             properties = properties,
+            modelRouter = DefaultTripRecapImageModelRouter(),
             photoContentLoader = TripRecapPhotoContentLoader { null },
             referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
             imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
@@ -163,6 +164,7 @@ class OpenAiTripRecapGeneratorTest {
             val properties = properties().also(mutate)
             val generator = OpenAiTripRecapGenerator(
                 properties = properties,
+                modelRouter = DefaultTripRecapImageModelRouter(),
                 photoContentLoader = TripRecapPhotoContentLoader { error("loader must not be called") },
                 referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
                 imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
@@ -281,6 +283,7 @@ class OpenAiTripRecapGeneratorTest {
         val properties = properties().apply { maxReferenceImages = 2 }
         val generator = OpenAiTripRecapGenerator(
             properties = properties,
+            modelRouter = DefaultTripRecapImageModelRouter(),
             photoContentLoader = TripRecapPhotoContentLoader { reference ->
                 loadedUrls += reference.imageUrl
                 TripRecapPhotoContent(
@@ -316,6 +319,7 @@ class OpenAiTripRecapGeneratorTest {
         val properties = properties().apply { maxReferenceImages = -1 }
         val generator = OpenAiTripRecapGenerator(
             properties = properties,
+            modelRouter = DefaultTripRecapImageModelRouter(),
             photoContentLoader = TripRecapPhotoContentLoader {
                 loaderCalled = true
                 null
@@ -339,6 +343,7 @@ class OpenAiTripRecapGeneratorTest {
         val properties = properties()
         return OpenAiTripRecapGenerator(
             properties = properties,
+            modelRouter = DefaultTripRecapImageModelRouter(),
             photoContentLoader = photoContentLoader,
             referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
             imageOperations = DefaultSpringAiOpenAiImageOperations(properties),

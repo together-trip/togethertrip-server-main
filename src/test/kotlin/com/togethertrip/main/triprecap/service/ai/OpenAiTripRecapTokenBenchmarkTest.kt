@@ -43,6 +43,8 @@ class OpenAiTripRecapTokenBenchmarkTest {
         }
         val referenceImage = referenceImage()
         val output = properties.outputSettings()
+        val modelRouter = DefaultTripRecapImageModelRouter()
+        val modelRoute = modelRouter.route(properties.model)
         val imageOperations = DefaultSpringAiOpenAiImageOperations(properties)
         val referenceImageOptimizer = DefaultTripRecapReferenceImageOptimizer(properties)
         val optimizedReference = assertNotNull(
@@ -52,6 +54,7 @@ class OpenAiTripRecapTokenBenchmarkTest {
         )
         val generator = OpenAiTripRecapGenerator(
             properties = properties,
+            modelRouter = modelRouter,
             photoContentLoader = TripRecapPhotoContentLoader {
                 TripRecapPhotoContent("benchmark-reference.png", "image/png", referenceImage)
             },
@@ -69,7 +72,7 @@ class OpenAiTripRecapTokenBenchmarkTest {
         val extraPrompt = generatedScenes.first { it.imagePrompt.contains("illustration") }.imagePrompt
         val extraStartedAt = System.nanoTime()
         val extraResponse = imageOperations.edit(
-            imagePrompt(extraPrompt, properties),
+            imagePrompt(extraPrompt, properties, modelRoute.model),
             listOf(optimizedReference),
         )
         val extraUsage = assertNotNull(
@@ -79,7 +82,7 @@ class OpenAiTripRecapTokenBenchmarkTest {
         )
         observations += TripRecapImageGenerationObservation(
             operation = "edit",
-            model = properties.model,
+            model = modelRoute.model,
             size = output.size,
             quality = output.quality,
             referenceImageCount = 1,
@@ -152,12 +155,16 @@ class OpenAiTripRecapTokenBenchmarkTest {
         }
     }
 
-    private fun imagePrompt(prompt: String, properties: OpenAiTripRecapProperties): ImagePrompt {
+    private fun imagePrompt(
+        prompt: String,
+        properties: OpenAiTripRecapProperties,
+        model: String,
+    ): ImagePrompt {
         val output = properties.outputSettings()
         return ImagePrompt(
             prompt,
             OpenAiImageOptions.builder()
-                .model(properties.model)
+                .model(model)
                 .n(1)
                 .size(output.size)
                 .quality(output.quality)
