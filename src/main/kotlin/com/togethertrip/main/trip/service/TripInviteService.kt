@@ -288,26 +288,27 @@ class TripInviteService(
         val normalizedCode = code?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
         val normalizedToken = token?.trim()?.takeIf { it.isNotBlank() }
 
-        if ((normalizedCode == null) == (normalizedToken == null)) {
-            throw BusinessException(TripErrorCode.INVALID_TRIP_INVITATION_LOOKUP)
+        val invitation = when {
+            normalizedCode != null && normalizedToken == null -> {
+                if (lock) {
+                    tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull(normalizedCode)
+                } else {
+                    tripInvitationRepository.findByCodeAndDeletedAtIsNull(normalizedCode)
+                }
+            }
+
+            normalizedCode == null && normalizedToken != null -> {
+                if (lock) {
+                    tripInvitationRepository.findLockedByTokenAndDeletedAtIsNull(normalizedToken)
+                } else {
+                    tripInvitationRepository.findByTokenAndDeletedAtIsNull(normalizedToken)
+                }
+            }
+
+            else -> throw BusinessException(TripErrorCode.INVALID_TRIP_INVITATION_LOOKUP)
         }
 
-        return if (normalizedCode != null) {
-            if (lock) {
-                tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull(normalizedCode)
-            } else {
-                tripInvitationRepository.findByCodeAndDeletedAtIsNull(normalizedCode)
-            }
-        } else {
-            val tokenValue = normalizedToken
-                ?: throw BusinessException(TripErrorCode.INVALID_TRIP_INVITATION_LOOKUP)
-
-            if (lock) {
-                tripInvitationRepository.findLockedByTokenAndDeletedAtIsNull(tokenValue)
-            } else {
-                tripInvitationRepository.findByTokenAndDeletedAtIsNull(tokenValue)
-            }
-        } ?: throw BusinessException(TripErrorCode.TRIP_INVITATION_NOT_FOUND)
+        return invitation ?: throw BusinessException(TripErrorCode.TRIP_INVITATION_NOT_FOUND)
     }
 
     private fun validateUsableInvitation(invitation: TripInvitation) {

@@ -100,6 +100,13 @@ class SettlementCalculatorTest {
         assertEquals(BigDecimal("2500.00"), result.balances.first { it.participantId == 2L }.netAmount)
         assertEquals(BigDecimal("-5000.00"), result.balances.first { it.participantId == 3L }.netAmount)
         assertEquals(BigDecimal("0.00"), result.balances.sumOf { it.netAmount })
+        assertEquals(
+            listOf(
+                SettlementTransferPlan(3L, 1L, BigDecimal("2500.00")),
+                SettlementTransferPlan(3L, 2L, BigDecimal("2500.00")),
+            ),
+            result.transfers,
+        )
     }
 
     @Test

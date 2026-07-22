@@ -301,6 +301,7 @@ class PostServiceTest {
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
         `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripRepository.findByIdAndDeletedAtIsNullForUpdate(10L)).thenReturn(trip)
         `when`(
             tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = 10L,
@@ -873,6 +874,7 @@ class PostServiceTest {
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
         `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripRepository.findByIdAndDeletedAtIsNullForUpdate(10L)).thenReturn(trip)
         `when`(
             tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = 10L,

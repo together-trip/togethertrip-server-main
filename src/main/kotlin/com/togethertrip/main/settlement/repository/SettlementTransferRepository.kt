@@ -79,6 +79,7 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
         left join users sender_user on sender_user.id = sender.user_id
         left join users receiver_user on receiver_user.id = receiver.user_id
         where transfer.deleted_at is null
+          and settlement.deleted_at is null
           and transfer.settlement_id = :settlementId
         order by transfer.id asc
         """,
@@ -167,6 +168,7 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
         left join users sender_user on sender_user.id = sender.user_id
         left join users receiver_user on receiver_user.id = receiver.user_id
         where transfer.deleted_at is null
+          and settlement.deleted_at is null
           and transfer.id = :transferId
         """,
         nativeQuery = true

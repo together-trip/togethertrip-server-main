@@ -36,7 +36,7 @@ class TransactionCreationService(
         request: CreateTransactionRequest,
     ): TransactionCreationResult {
         val user = tripAccessResolver.getActiveUser(userId)
-        val trip = tripAccessResolver.getAccessibleTrip(
+        val trip = tripAccessResolver.getAccessibleTripForUpdate(
             userId = userId,
             tripId = tripId,
         )

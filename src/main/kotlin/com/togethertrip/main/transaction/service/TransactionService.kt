@@ -193,7 +193,7 @@ class TransactionService(
         request: UpdateTransactionRequest,
     ): TransactionDetailResponse {
         val user = tripAccessResolver.getActiveUser(userId)
-        val trip = tripAccessResolver.getAccessibleTrip(
+        val trip = tripAccessResolver.getAccessibleTripForUpdate(
             userId = userId,
             tripId = tripId,
         )
@@ -261,7 +261,7 @@ class TransactionService(
         transactionId: Long,
     ) {
         val user = tripAccessResolver.getActiveUser(userId)
-        val trip = tripAccessResolver.getAccessibleTrip(
+        val trip = tripAccessResolver.getAccessibleTripForUpdate(
             userId = userId,
             tripId = tripId,
         )

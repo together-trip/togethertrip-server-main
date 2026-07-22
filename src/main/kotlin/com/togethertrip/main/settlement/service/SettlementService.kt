@@ -171,6 +171,10 @@ class SettlementService(
         tripId: Long,
         settlementId: Long,
     ): SettlementResponse {
+        settlementAccessResolver.getAccessibleTrip(
+            userId = userId,
+            tripId = tripId,
+        )
         val settlement = getSettlementOrThrow(settlementId)
         validateSettlementTrip(
             settlement = settlement,
@@ -192,6 +196,10 @@ class SettlementService(
         tripId: Long,
         settlementId: Long,
     ): SettlementShareTokenResponse {
+        settlementAccessResolver.getOwnedTrip(
+            userId = userId,
+            tripId = tripId,
+        )
         val settlement = getSettlementOrThrow(settlementId)
         validateSettlementTrip(
             settlement = settlement,

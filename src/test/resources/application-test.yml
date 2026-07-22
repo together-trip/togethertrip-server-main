@@ -1,16 +1,4 @@
 spring:
-  datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/together_trip_test
-    username: together_trip
-    password: together_trip
-    driver-class-name: org.postgresql.Driver
-
-  data:
-    redis:
-      host: 127.0.0.1
-      port: 6379
-      password: ""
-
   batch:
     job:
       enabled: false
@@ -29,7 +17,6 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 1
-    clean-disabled: false
 
   jpa:
     defer-datasource-initialization: false
@@ -131,6 +118,7 @@ outbox:
     enabled: false
     fixed-delay: PT3S
     limit: 50
+    max-attempts: 5
 
 server:
   port: 8081

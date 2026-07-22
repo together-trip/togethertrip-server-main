@@ -1,5 +1,6 @@
 package com.togethertrip.main.trip.repository
 
+import com.togethertrip.main.global.config.MainIntegrationTest
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -9,14 +10,11 @@ import com.togethertrip.main.user.domain.UserStatus
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import kotlin.test.assertEquals
 
-@ActiveProfiles("test")
-@SpringBootTest
+@MainIntegrationTest
 @Transactional
 class TripParticipantRepositoryNotificationTest @Autowired constructor(
     private val entityManager: EntityManager,

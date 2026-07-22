@@ -155,6 +155,7 @@ outbox:
     enabled: ${OUTBOX_DISPATCH_ENABLED:true}
     fixed-delay: ${OUTBOX_DISPATCH_FIXED_DELAY:PT3S}
     limit: ${OUTBOX_DISPATCH_LIMIT:50}
+    max-attempts: ${OUTBOX_DISPATCH_MAX_ATTEMPTS:5}
 
 server:
   port: ${SERVER_PORT:8080}

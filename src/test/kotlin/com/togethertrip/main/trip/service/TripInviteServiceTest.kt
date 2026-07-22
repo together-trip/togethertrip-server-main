@@ -1,6 +1,7 @@
 package com.togethertrip.main.trip.service
 
 import com.togethertrip.main.global.exception.BusinessException
+import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.outbox.domain.OutboxEvent
 import com.togethertrip.main.global.outbox.domain.OutboxEventType
 import com.togethertrip.main.global.outbox.payload.trip.TripParticipantJoinedPayload
@@ -22,6 +23,7 @@ import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -32,6 +34,7 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import org.springframework.dao.DataIntegrityViolationException
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Clock
 import java.time.Instant
@@ -136,6 +139,65 @@ class TripInviteServiceTest {
     }
 
     @Test
+    fun `방장은 token 기반 초대 링크를 생성할 수 있다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripInvitationRepository.existsByTokenAndDeletedAtIsNull(anyString())).thenReturn(false)
+        `when`(tripInvitationRepository.saveAndFlush(any(TripInvitation::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as TripInvitation).apply { id = 101L }
+        }
+
+        val response = tripInviteService.createInviteLink(1L, 10L)
+
+        assertEquals(TripInvitationType.LINK, response.type)
+        assertEquals(null, response.code)
+        assertTrue(response.inviteUrl.startsWith("https://app.test/invites?token="))
+        assertEquals(43, response.token.length)
+    }
+
+    @Test
+    fun `token 또는 code 충돌이 다섯 번 반복되면 동시 수정 오류로 종료한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripInvitationRepository.existsByTokenAndDeletedAtIsNull(anyString())).thenReturn(true)
+
+        val tokenCollision = assertBusinessException {
+            tripInviteService.createInviteCode(1L, 10L)
+        }
+        assertEquals(CommonErrorCode.CONCURRENT_MODIFICATION, tokenCollision.errorCode)
+
+        `when`(tripInvitationRepository.existsByTokenAndDeletedAtIsNull(anyString())).thenReturn(false)
+        `when`(tripInvitationRepository.existsByCodeAndDeletedAtIsNull(anyString())).thenReturn(true)
+        val codeCollision = assertBusinessException {
+            tripInviteService.createInviteCode(1L, 10L)
+        }
+        assertEquals(CommonErrorCode.CONCURRENT_MODIFICATION, codeCollision.errorCode)
+        verify(tripInvitationRepository, never()).saveAndFlush(any(TripInvitation::class.java))
+    }
+
+    @Test
+    fun `초대 저장 unique 충돌은 동시 수정 오류로 변환한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripInvitationRepository.existsByTokenAndDeletedAtIsNull(anyString())).thenReturn(false)
+        `when`(tripInvitationRepository.existsByCodeAndDeletedAtIsNull(anyString())).thenReturn(false)
+        `when`(tripInvitationRepository.saveAndFlush(any(TripInvitation::class.java)))
+            .thenThrow(DataIntegrityViolationException("duplicate invitation"))
+
+        val exception = assertBusinessException {
+            tripInviteService.createInviteCode(1L, 10L)
+        }
+
+        assertEquals(CommonErrorCode.CONCURRENT_MODIFICATION, exception.errorCode)
+    }
+
+    @Test
     fun `초대 정보 조회는 이미 참여 중인지 함께 반환한다`() {
         val owner = createUser()
         val member = createUser(id = 2L, nickname = "민서")
@@ -186,6 +248,49 @@ class TripInviteServiceTest {
 
         assertEquals(TripErrorCode.INVALID_TRIP_INVITATION_LOOKUP, missingException.errorCode)
         assertEquals(TripErrorCode.INVALID_TRIP_INVITATION_LOOKUP, duplicatedException.errorCode)
+    }
+
+    @Test
+    fun `초대 조회는 찾을 수 없음과 비활성 상태를 구분한다`() {
+        val user = createUser(id = 2L)
+        val invitation = createInvitation(createTrip(createUser()), createUser()).apply {
+            invitationStatus = TripInvitationStatus.USED
+        }
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(user)
+
+        val missing = assertBusinessException {
+            tripInviteService.getInviteInfo(2L, null, "missing-token")
+        }
+        assertEquals(TripErrorCode.TRIP_INVITATION_NOT_FOUND, missing.errorCode)
+
+        `when`(tripInvitationRepository.findByTokenAndDeletedAtIsNull("used-token")).thenReturn(invitation)
+        val inactive = assertBusinessException {
+            tripInviteService.getInviteInfo(2L, null, " used-token ")
+        }
+        assertEquals(TripErrorCode.TRIP_INVITATION_NOT_ACTIVE, inactive.errorCode)
+    }
+
+    @Test
+    fun `공백 code와 token은 없는 값으로 정규화하고 다른 조회 키를 사용한다`() {
+        val user = createUser(id = 2L)
+        val owner = createUser()
+        val invitation = createInvitation(createTrip(owner), owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(user)
+        `when`(tripInvitationRepository.findByTokenAndDeletedAtIsNull("token-value")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(
+            tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(false)
+
+        val byToken = tripInviteService.getInviteInfo(2L, "   ", " token-value ")
+        val byCode = tripInviteService.getInviteInfo(2L, " abc12345 ", "   ")
+
+        assertEquals(100L, byToken.invitationId)
+        assertEquals(100L, byCode.invitationId)
     }
 
     @Test
@@ -248,6 +353,55 @@ class TripInviteServiceTest {
     }
 
     @Test
+    fun `새 참여자 저장 unique 충돌은 이미 참여 중 오류로 변환한다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L)
+        val trip = createTrip(owner)
+        val invitation = createInvitation(trip, owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(
+            tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(false)
+        `when`(tripParticipantRepository.saveAndFlush(any(TripParticipant::class.java)))
+            .thenThrow(DataIntegrityViolationException("duplicate participant"))
+
+        val exception = assertBusinessException {
+            tripInviteService.joinTrip(2L, JoinTripRequest(code = "ABC12345"))
+        }
+
+        assertEquals(TripErrorCode.TRIP_ALREADY_JOINED, exception.errorCode)
+        assertEquals(TripInvitationStatus.ACTIVE, invitation.invitationStatus)
+    }
+
+    @Test
+    fun `사용자와 여행 조회 실패는 각각 계약된 오류로 구분한다`() {
+        val missingUser = assertBusinessException {
+            tripInviteService.createInviteCode(999L, 10L)
+        }
+        assertEquals(UserErrorCode.USER_NOT_FOUND, missingUser.errorCode)
+
+        val inactive = createUser(status = UserStatus.SUSPENDED)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(inactive)
+        val inactiveUser = assertBusinessException {
+            tripInviteService.createInviteCode(1L, 10L)
+        }
+        assertEquals(UserErrorCode.INACTIVE_USER, inactiveUser.errorCode)
+
+        val active = createUser()
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(active)
+        val missingTrip = assertBusinessException {
+            tripInviteService.createInviteCode(1L, 999L)
+        }
+        assertEquals(TripErrorCode.TRIP_NOT_FOUND, missingTrip.errorCode)
+    }
+
+    @Test
     fun `초대 참여 시 비회원 참여자를 현재 회원과 연결한다`() {
         val owner = createUser()
         val member = createUser(
@@ -300,6 +454,44 @@ class TripInviteServiceTest {
         assertEquals(Instant.parse("2026-06-11T00:00:00Z"), temporaryParticipant.joinedAt)
         assertEquals(TripInvitationStatus.USED, invitation.invitationStatus)
         assertEquals(member, invitation.usedBy)
+    }
+
+    @Test
+    fun `임시 참여자 연결 저장 unique 충돌은 이미 참여 중 오류로 변환한다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L, nickname = "민서")
+        val trip = createTrip(owner)
+        val invitation = createInvitation(trip, owner)
+        val temporaryParticipant = createParticipant(trip, 300L, null)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripInvitationRepository.findByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(tripInvitationRepository.findLockedByCodeAndDeletedAtIsNull("ABC12345")).thenReturn(invitation)
+        `when`(
+            tripParticipantRepository.existsByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(false)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                300L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(temporaryParticipant)
+        `when`(tripParticipantRepository.saveAndFlush(temporaryParticipant))
+            .thenThrow(DataIntegrityViolationException("duplicate participant"))
+
+        val exception = assertBusinessException {
+            tripInviteService.joinTrip(
+                2L,
+                JoinTripRequest(code = "ABC12345", participantId = 300L),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_ALREADY_JOINED, exception.errorCode)
+        assertEquals(TripInvitationStatus.ACTIVE, invitation.invitationStatus)
     }
 
     @Test

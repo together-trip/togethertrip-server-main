@@ -1,5 +1,6 @@
 package com.togethertrip.main.transaction.repository
 
+import com.togethertrip.main.global.config.MainIntegrationTest
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.transaction.domain.Transaction
@@ -14,16 +15,13 @@ import com.togethertrip.main.user.domain.User
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.assertEquals
 
-@ActiveProfiles("test")
-@SpringBootTest
+@MainIntegrationTest
 @Transactional
 class TransactionStatisticsQueryRepositoryTest @Autowired constructor(
     private val entityManager: EntityManager,

@@ -1480,6 +1480,7 @@ class TransactionServiceTest {
     ) {
         `when`(userRepository.findByIdAndDeletedAtIsNull(user.id)).thenReturn(user)
         `when`(tripRepository.findByIdAndDeletedAtIsNull(trip.id)).thenReturn(trip)
+        `when`(tripRepository.findByIdAndDeletedAtIsNullForUpdate(trip.id)).thenReturn(trip)
         `when`(
             tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
                 tripId = trip.id,

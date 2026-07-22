@@ -5,11 +5,12 @@ import com.togethertrip.main.auth.dto.KakaoUserInfoResponse
 import com.togethertrip.main.auth.dto.OAuthUserInfo
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
+import org.springframework.core.codec.DecodingException
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.WebClientResponseException
+import org.springframework.web.reactive.function.client.WebClientException
 import org.springframework.web.reactive.function.client.bodyToMono
 
 @Component
@@ -35,7 +36,9 @@ class KakaoOAuthClient(
                 .retrieve()
                 .bodyToMono<KakaoUserInfoResponse>()
                 .block()
-        } catch (exception: WebClientResponseException) {
+        } catch (exception: WebClientException) {
+            throw BusinessException(AuthErrorCode.OAUTH_USER_INFO_FAILED)
+        } catch (exception: DecodingException) {
             throw BusinessException(AuthErrorCode.OAUTH_USER_INFO_FAILED)
         } ?: throw BusinessException(AuthErrorCode.OAUTH_USER_INFO_FAILED)
 

@@ -14,7 +14,7 @@ object SensitiveDataMasker {
     private val verificationCodePattern = Regex("(?i)(verificationCode|authCode|smsCode|code)([=:]\\s*)(\\d{4,8})")
 
     fun mask(value: String): String {
-        var masked = value
+        var masked = bearerTokenPattern.replace(value, "Bearer $MASK")
 
         keyValuePatterns.forEach { pattern ->
             masked = pattern.replace(masked) { match ->
@@ -26,7 +26,6 @@ object SensitiveDataMasker {
             }
         }
 
-        masked = bearerTokenPattern.replace(masked, "Bearer $MASK")
         masked = verificationCodePattern.replace(masked) { match ->
             "${match.groupValues[1]}${match.groupValues[2]}$MASK"
         }

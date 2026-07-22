@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class SettlementTransferTest {
 
@@ -23,6 +24,7 @@ class SettlementTransferTest {
         assertEquals(null, transfer.receiverConfirmedAt)
         assertEquals(null, transfer.completedAt)
         assertEquals(SettlementTransferStatus.SENDER_CONFIRMED, transfer.status)
+        assertFalse(transfer.autoConfirmed)
     }
 
     @Test
@@ -119,6 +121,38 @@ class SettlementTransferTest {
         assertEquals(confirmedAt, transfer.completedAt)
         assertEquals(true, transfer.autoConfirmed)
         assertEquals(SettlementTransferStatus.COMPLETED, transfer.status)
+    }
+
+    @Test
+    fun `수금자 자동 동의는 확인 시각과 사유를 기록한다`() {
+        val transfer = createTransfer()
+        val confirmedAt = Instant.parse("2026-06-08T01:00:00Z")
+
+        transfer.autoConfirmReceiver(
+            reason = "WITHDRAWN_USER_AUTO_CONFIRMED",
+            confirmedAt = confirmedAt,
+        )
+
+        assertEquals(confirmedAt, transfer.receiverConfirmedAt)
+        assertEquals(true, transfer.autoConfirmed)
+        assertEquals("WITHDRAWN_USER_AUTO_CONFIRMED", transfer.autoConfirmReason)
+        assertEquals(SettlementTransferStatus.RECEIVER_CONFIRMED, transfer.status)
+    }
+
+    @Test
+    fun `이미 수금 확인한 송금은 자동 동의로 재호출해도 자동 사유를 추가하지 않는다`() {
+        val transfer = createTransfer()
+        val firstConfirmedAt = Instant.parse("2026-06-08T01:00:00Z")
+
+        transfer.confirmAsReceiver(firstConfirmedAt)
+        transfer.autoConfirmReceiver(
+            reason = "SHOULD_NOT_BE_RECORDED",
+            confirmedAt = Instant.parse("2026-06-08T02:00:00Z"),
+        )
+
+        assertEquals(firstConfirmedAt, transfer.receiverConfirmedAt)
+        assertFalse(transfer.autoConfirmed)
+        assertEquals(null, transfer.autoConfirmReason)
     }
 
     private fun createTransfer(): SettlementTransfer {

@@ -6,16 +6,44 @@
 ./gradlew check
 ```
 
-`check`는 테스트와 JaCoCo 커버리지 검증을 함께 실행한다. 상세 커버리지 보고서는 다음 명령으로 생성한다.
+`check`는 빠른 단위 테스트, Docker 기반 통합 테스트, JaCoCo 커버리지, 핵심 로직 PIT mutation gate를 함께 실행한다. PostgreSQL/PostGIS와 Redis는 Testcontainers가 시작하므로 Docker 실행 환경이 필요하다.
+
+빠른 feedback만 필요하면 Docker 없이 단위 테스트를 실행한다.
 
 ```bash
-./gradlew test jacocoTestReport jacocoTestCoverageVerification
+./gradlew test
+```
+
+PostGIS·Redis 통합 테스트만 실행하려면 다음 명령을 사용한다.
+
+```bash
+./gradlew integrationTest
+```
+
+단위·통합 테스트 실행 데이터를 합친 상세 커버리지 보고서는 다음 명령으로 생성한다.
+
+```bash
+./gradlew check jacocoTestReport
 ```
 
 - HTML 보고서: `build/reports/jacoco/test/html/index.html`
 - XML 보고서: `build/reports/jacoco/test/jacocoTestReport.xml`
-- 현재 전체 코드 하한: LINE 78%, BRANCH 60%
+- 단위 테스트 실행 데이터: `build/jacoco/test.exec`
+- 통합 테스트 실행 데이터: `build/jacoco/integrationTest.exec`
+- 현재 전체 코드 하한: LINE 90%, BRANCH 80%
 - 기준선 측정값(2026-07-14): LINE 78.09%, BRANCH 60.18%
+
+## Mutation testing gate
+
+```bash
+./gradlew mutationTest pitest
+```
+
+- 대상: 정산 계산·권한·송금 상태와 민감정보 마스킹 핵심 클래스
+- 하한: mutation score 83%, 대상 line coverage 90%
+- 보고서: `build/reports/pitest/index.html`, `build/reports/pitest/mutations.xml`
+- Spring Boot 4의 일반 테스트는 JUnit 6를 유지하고, 공개 PIT JUnit plugin 호환을 위한 `mutationTest` source set만 JUnit 5.13.4로 격리한다.
+- Kotlin compiler null-check 호출을 변이하는 noise를 방지하기 위해 core gate에서 `VOID_METHOD_CALLS`를 제외한다. Redis Lua, native SQL, JPA lock은 PIT 점수가 아니라 Testcontainers 계약·동시성 테스트로 검증한다.
 
 ## 커버리지 기준 운영 정책
 
@@ -51,6 +79,7 @@ PR에서 추가·변경한 신규 코드는 SonarQube Cloud 기본 `Sonar way` Q
 | 현재 기준선 | 78% | 60% |
 | 1차 목표 | 80% | 65% |
 | 2차 목표 | 85% | 70% |
+| 현재 달성 하한 | 90% | 80% |
 | 3차 목표 | 90% | 80% |
 
 정산 금액 계산, 인증·인가, 여행 권한처럼 실패 영향이 큰 핵심 로직은 전체 평균과 별도로 90~100% 커버리지와 정상·실패·경계값 테스트를 지향한다. 전체 100% 자체를 금지하지는 않지만 단순 DTO, 프레임워크 설정이나 생성 코드에 숫자만 채우기 위한 테스트를 추가하기보다 실제 분기와 행위를 검증한다.

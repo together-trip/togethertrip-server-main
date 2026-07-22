@@ -38,6 +38,25 @@ class TripAccessResolver(
         val trip = tripRepository.findByIdAndDeletedAtIsNull(tripId)
             ?: throw BusinessException(TripErrorCode.TRIP_NOT_FOUND)
 
+        return assertAccessibleTrip(userId, tripId, trip)
+    }
+
+    fun getAccessibleTripForUpdate(
+        userId: Long,
+        tripId: Long,
+    ): Trip {
+        val trip = tripRepository.findByIdAndDeletedAtIsNullForUpdate(tripId)
+            ?: throw BusinessException(TripErrorCode.TRIP_NOT_FOUND)
+
+        return assertAccessibleTrip(userId, tripId, trip)
+    }
+
+    private fun assertAccessibleTrip(
+        userId: Long,
+        tripId: Long,
+        trip: Trip,
+    ): Trip {
+
         if (trip.ownerUser.id == userId) {
             return trip
         }

@@ -47,6 +47,7 @@ import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class TripServiceTest {
 
@@ -544,6 +545,204 @@ class TripServiceTest {
         }
 
         assertEquals(TripErrorCode.TRIP_OWNER_ONLY, exception.errorCode)
+    }
+
+    @Test
+    fun `소유자는 여행 기본 정보를 수정하고 종료일 기준 상태를 다시 계산한다`() {
+        val owner = createUser(id = 1L)
+        val trip = createTrip(ownerUser = owner)
+        val participant = createParticipant(100L, trip, owner, TripParticipantRole.LEADER)
+        val baseDate = LocalDate.now().minusDays(10)
+        val startDate = LocalDate.now().minusDays(5)
+        val endDate = LocalDate.now().minusDays(1)
+
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripCountryRepository.findByTripIdAndDeletedAtIsNullOrderBySortOrderAsc(10L)).thenReturn(emptyList())
+        `when`(tripParticipantRepository.findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(10L))
+            .thenReturn(listOf(participant))
+
+        val response = tripService.updateTrip(
+            userId = 1L,
+            tripId = 10L,
+            request = UpdateTripRequest(
+                title = "  변경된 여행  ",
+                defaultCurrency = " usd ",
+                exchangeRateBaseDate = baseDate,
+                startDate = startDate,
+                endDate = endDate,
+            ),
+        )
+
+        assertEquals("변경된 여행", response.title)
+        assertEquals("USD", response.defaultCurrency)
+        assertEquals(baseDate, response.exchangeRateBaseDate)
+        assertEquals(startDate, response.startDate)
+        assertEquals(endDate, response.endDate)
+        assertEquals(TripStatus.COMPLETED, response.tripStatus)
+    }
+
+    @Test
+    fun `변경 필드가 없으면 여행 수정에 실패한다`() {
+        val owner = createUser(id = 1L)
+        val trip = createTrip(ownerUser = owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        val exception = assertBusinessException {
+            tripService.updateTrip(1L, 10L, UpdateTripRequest())
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        assertEquals("일본 여행", trip.title)
+    }
+
+    @Test
+    fun `종료일보다 시작일이 늦으면 여행 수정에 실패한다`() {
+        val owner = createUser(id = 1L)
+        val trip = createTrip(ownerUser = owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        val exception = assertBusinessException {
+            tripService.updateTrip(
+                1L,
+                10L,
+                UpdateTripRequest(
+                    startDate = LocalDate.of(2026, 7, 2),
+                    endDate = LocalDate.of(2026, 7, 1),
+                ),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+    }
+
+    @Test
+    fun `소유자는 여행을 삭제한다`() {
+        val owner = createUser(id = 1L)
+        val trip = createTrip(ownerUser = owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        tripService.deleteTrip(1L, 10L)
+
+        assertNotNull(trip.deletedAt)
+    }
+
+    @Test
+    fun `존재하지 않는 사용자와 여행 및 비참여자는 각각 계약된 오류로 거부한다`() {
+        val missingUser = assertBusinessException {
+            tripService.getTrips(999L, null, null, null)
+        }
+        assertEquals(UserErrorCode.USER_NOT_FOUND, missingUser.errorCode)
+
+        val user = createUser(id = 1L)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        val missingTrip = assertBusinessException { tripService.getTrip(1L, 999L) }
+        assertEquals(TripErrorCode.TRIP_NOT_FOUND, missingTrip.errorCode)
+
+        val otherOwner = createUser(id = 2L)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(createTrip(otherOwner))
+        `when`(tripParticipantRepository.findByTripIdAndUserIdAndDeletedAtIsNull(10L, 1L)).thenReturn(null)
+        val denied = assertBusinessException { tripService.getTrip(1L, 10L) }
+        assertEquals(TripErrorCode.TRIP_ACCESS_DENIED, denied.errorCode)
+    }
+
+    @Test
+    fun `송금 요약이 없으면 여행 정산 상태 자체를 표시 상태로 변환한다`() {
+        val user = createUser()
+        val trips = TripSettlementStatus.entries.mapIndexed { index, status ->
+            createTrip(user).apply {
+                id = (10L + index)
+                settlementStatus = status
+            }
+        }
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 21))).thenReturn(trips)
+        `when`(settlementTransferRepository.findCompletionSummariesByTripIds(trips.map { it.id }))
+            .thenReturn(emptyList())
+
+        val response = tripService.getTrips(1L, null, null, 20)
+
+        assertEquals(
+            listOf(
+                TripSettlementDisplayStatus.NOT_STARTED,
+                TripSettlementDisplayStatus.IN_PROGRESS,
+                TripSettlementDisplayStatus.COMPLETED,
+            ),
+            response.items.map { it.settlementDisplayStatus },
+        )
+    }
+
+    @Test
+    fun `목록 크기는 기본값과 최소 최대 범위로 보정된다`() {
+        val user = createUser()
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 21))).thenReturn(emptyList())
+        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 2))).thenReturn(emptyList())
+        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 101))).thenReturn(emptyList())
+
+        val defaultSize = tripService.getTrips(1L, null, null, null)
+        val minimumSize = tripService.getTrips(1L, null, null, 0)
+        val maximumSize = tripService.getTrips(1L, null, null, 101)
+
+        assertEquals(20, defaultSize.size)
+        assertEquals(1, minimumSize.size)
+        assertEquals(100, maximumSize.size)
+        assertNull(defaultSize.nextCursor)
+    }
+
+    @Test
+    fun `중복 국가 코드는 첫 항목만 반영하고 요청에서 빠진 국가는 삭제한다`() {
+        val owner = createUser(id = 1L)
+        val trip = createTrip(ownerUser = owner)
+        val japan = createCountry(trip)
+        val korea = TripCountry(trip, "KR", "대한민국", 1).apply { id = 201L }
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripCountryRepository.findByTripIdAndDeletedAtIsNullOrderBySortOrderAsc(10L))
+            .thenReturn(listOf(japan, korea))
+
+        val response = tripService.updateTripCountries(
+            1L,
+            10L,
+            UpdateTripCountriesRequest(
+                listOf(
+                    TripCountryInput(" jp ", " 일본 변경 "),
+                    TripCountryInput("JP", "중복 항목", 9),
+                )
+            ),
+        )
+
+        assertEquals(1, response.countries.size)
+        assertEquals("일본 변경", japan.countryName)
+        assertEquals(0, japan.sortOrder)
+        assertNotNull(korea.deletedAt)
+        verify(tripCountryRepository, never()).save(any(TripCountry::class.java))
+    }
+
+    @Test
+    fun `동일 사용자를 동행자로 중복 지정하면 여행 생성에 실패한다`() {
+        val owner = createUser(id = 1L)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+
+        val exception = assertBusinessException {
+            tripService.createTrip(
+                1L,
+                CreateTripRequest(
+                    title = "중복 동행자 여행",
+                    defaultCurrency = "KRW",
+                    participants = listOf(
+                        TripCompanionInput("동행자 A", userId = 2L),
+                        TripCompanionInput("동행자 A 중복", userId = 2L),
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(TripErrorCode.TRIP_ALREADY_JOINED, exception.errorCode)
+        verify(tripRepository, never()).save(any(Trip::class.java))
     }
 
     @Test
