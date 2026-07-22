@@ -2,6 +2,8 @@ package com.togethertrip.main.global.config
 
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
+import org.redisson.api.RedissonClient
+import org.redisson.client.codec.StringCodec
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory
@@ -17,6 +19,7 @@ class TestcontainersInfrastructureTest @Autowired constructor(
     private val flyway: Flyway,
     private val jdbcTemplate: JdbcTemplate,
     private val redisTemplate: StringRedisTemplate,
+    private val redissonClient: RedissonClient,
     private val postgisContainer: PostgreSQLContainer,
     private val redisContainer: GenericContainer<Nothing>,
 ) {
@@ -39,12 +42,12 @@ class TestcontainersInfrastructureTest @Autowired constructor(
     }
 
     @Test
-    fun `Redis container에 값을 저장하고 조회한다`() {
+    fun `Lettuce와 Redisson은 동일한 Redis container mapped port를 사용한다`() {
         val key = "testcontainers:infrastructure"
         val connectionFactory = redisTemplate.connectionFactory as LettuceConnectionFactory
 
         try {
-            redisTemplate.opsForValue().set(key, "ready")
+            redissonClient.getBucket<String>(key, StringCodec.INSTANCE).set("ready")
 
             assertTrue(redisContainer.isRunning)
             assertEquals(redisContainer.host, connectionFactory.standaloneConfiguration.hostName)
