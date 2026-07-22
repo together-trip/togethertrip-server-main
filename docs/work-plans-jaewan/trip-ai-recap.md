@@ -6,6 +6,7 @@
 - 상태: OpenAI 로컬 E2E 연동 구현
 - 이슈: [#101 feat: 지난 여행 AI Recap 생성 기능](https://github.com/together-trip/togethertrip-server-main/issues/101)
 - 목표: 여행 종료 후 정산까지 완료된 여행에 대해, 사용자가 직접 요청하면 AI가 여러 장면의 9:16 이미지 recap을 생성하고 여행 멤버 전체가 공유해서 볼 수 있게 한다.
+- 토큰 최적화 후속 작업: [이슈 107 작업 계획](issue-107-ai-recap-token-optimization.md) 및 [단계별 검증 기록](../verifications-jaewan/trip-ai-recap-token-optimization.md)
 
 ## 문제 정의
 

@@ -10,8 +10,15 @@ class OpenAiTripRecapProperties {
     var baseUrl: String = "https://api.openai.com"
     var apiKey: String = ""
     var model: String = "gpt-image-2"
+    var outputProfile: TripRecapImageOutputProfile = TripRecapImageOutputProfile.ECONOMY
     var size: String = "1152x2048"
     var quality: String = "medium"
     var timeout: Duration = Duration.ofMinutes(3)
-    var maxReferenceImages: Int = 4
+    var maxReferenceImages: Int = 1
+    var maxReferenceDimension: Int = 1_024
+    var cacheEnabled: Boolean = true
+    var cacheMaxEntries: Int = 32
+    var cacheTtl: Duration = Duration.ofMinutes(15)
+
+    fun outputSettings(): TripRecapImageOutputSettings = outputProfile.resolve(size, quality)
 }
