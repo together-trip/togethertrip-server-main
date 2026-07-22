@@ -18,6 +18,7 @@ import java.util.Base64
 class OpenAiTripRecapGenerator(
     private val properties: OpenAiTripRecapProperties,
     private val photoContentLoader: TripRecapPhotoContentLoader,
+    private val referenceImageOptimizer: TripRecapReferenceImageOptimizer,
     private val imageOperations: SpringAiOpenAiImageOperations,
     private val imageGenerationObserver: TripRecapImageGenerationObserver,
 ) : TripRecapGenerator {
@@ -58,7 +59,7 @@ class OpenAiTripRecapGenerator(
     }
 
     private fun generateImage(prompt: String): ByteArray {
-        return executeObservedRequest(OPERATION_GENERATION, 0) {
+        return executeObservedRequest(OPERATION_GENERATION, 0, 0) {
             imageOperations.call(imagePrompt(prompt))
         }
     }
@@ -67,7 +68,7 @@ class OpenAiTripRecapGenerator(
         prompt: String,
         references: List<TripRecapPhotoContent>,
     ): ByteArray {
-        return executeObservedRequest(OPERATION_EDIT, references.size) {
+        return executeObservedRequest(OPERATION_EDIT, references.size, references.sumOf { it.bytes.size.toLong() }) {
             imageOperations.edit(imagePrompt(prompt), references)
         }
     }
@@ -86,19 +87,23 @@ class OpenAiTripRecapGenerator(
     private fun executeObservedRequest(
         operation: String,
         referenceImageCount: Int,
+        referenceImageBytes: Long,
         request: () -> ImageResponse,
     ): ByteArray {
         val startedAt = System.nanoTime()
         return try {
             val response = request()
             val imageBytes = decodeImage(response)
-            imageGenerationObserver.record(observation(operation, referenceImageCount, startedAt, true, response.usage()))
+            imageGenerationObserver.record(
+                observation(operation, referenceImageCount, referenceImageBytes, startedAt, true, response.usage())
+            )
             imageBytes
         } catch (exception: Throwable) {
             imageGenerationObserver.record(
                 observation(
                     operation,
                     referenceImageCount,
+                    referenceImageBytes,
                     startedAt,
                     false,
                     null,
@@ -116,6 +121,7 @@ class OpenAiTripRecapGenerator(
     private fun observation(
         operation: String,
         referenceImageCount: Int,
+        referenceImageBytes: Long,
         startedAt: Long,
         success: Boolean,
         usage: TripRecapImageTokenUsage?,
@@ -126,6 +132,7 @@ class OpenAiTripRecapGenerator(
         size = properties.size,
         quality = properties.quality,
         referenceImageCount = referenceImageCount,
+        referenceImageBytes = referenceImageBytes,
         durationMillis = (System.nanoTime() - startedAt) / NANOSECONDS_PER_MILLISECOND,
         success = success,
         usage = usage,
@@ -168,6 +175,7 @@ class OpenAiTripRecapGenerator(
         return (0 until minOf(maxReferences, request.photoReferences.size))
             .map { offset -> request.photoReferences[(startIndex + offset) % request.photoReferences.size] }
             .mapNotNull(photoContentLoader::load)
+            .mapNotNull(referenceImageOptimizer::optimize)
     }
 
     private fun determineSceneCount(request: TripRecapGenerateRequest): Int {

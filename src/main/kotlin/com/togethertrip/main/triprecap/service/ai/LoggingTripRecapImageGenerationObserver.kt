@@ -8,7 +8,7 @@ class LoggingTripRecapImageGenerationObserver : TripRecapImageGenerationObserver
     override fun record(observation: TripRecapImageGenerationObservation) {
         val usage = observation.usage
         log.info(
-            "trip_recap_image operation={} model={} size={} quality={} references={} success={} " +
+            "trip_recap_image operation={} model={} size={} quality={} references={} reference_bytes={} success={} " +
                 "duration_ms={} total_tokens={} input_tokens={} output_tokens={} text_input_tokens={} " +
                 "image_input_tokens={} cached_input_tokens={} failure_type={}",
             observation.operation,
@@ -16,6 +16,7 @@ class LoggingTripRecapImageGenerationObserver : TripRecapImageGenerationObserver
             observation.size,
             observation.quality,
             observation.referenceImageCount,
+            observation.referenceImageBytes,
             observation.success,
             observation.durationMillis,
             usage?.totalTokens,

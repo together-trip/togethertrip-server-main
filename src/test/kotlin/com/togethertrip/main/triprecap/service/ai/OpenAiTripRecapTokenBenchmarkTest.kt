@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream
 import java.math.BigDecimal
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.util.Base64
@@ -34,15 +35,23 @@ class OpenAiTripRecapTokenBenchmarkTest {
             model = System.getenv("OPENAI_IMAGE_MODEL") ?: "gpt-image-2"
             size = System.getenv("OPENAI_IMAGE_SIZE") ?: "1152x2048"
             quality = System.getenv("OPENAI_IMAGE_QUALITY") ?: "medium"
+            timeout = Duration.ofMinutes(5)
             maxReferenceImages = 1
         }
         val referenceImage = referenceImage()
         val imageOperations = DefaultSpringAiOpenAiImageOperations(properties)
+        val referenceImageOptimizer = DefaultTripRecapReferenceImageOptimizer(properties)
+        val optimizedReference = assertNotNull(
+            referenceImageOptimizer.optimize(
+                TripRecapPhotoContent("benchmark-reference.png", "image/png", referenceImage)
+            )
+        )
         val generator = OpenAiTripRecapGenerator(
             properties = properties,
             photoContentLoader = TripRecapPhotoContentLoader {
                 TripRecapPhotoContent("benchmark-reference.png", "image/png", referenceImage)
             },
+            referenceImageOptimizer = referenceImageOptimizer,
             imageOperations = imageOperations,
             imageGenerationObserver = observations::add,
         )
@@ -57,7 +66,7 @@ class OpenAiTripRecapTokenBenchmarkTest {
         val extraStartedAt = System.nanoTime()
         val extraResponse = imageOperations.edit(
             imagePrompt(extraPrompt, properties),
-            listOf(TripRecapPhotoContent("benchmark-reference.png", "image/png", referenceImage)),
+            listOf(optimizedReference),
         )
         val extraUsage = assertNotNull(
             extraResponse.metadata.get<TripRecapImageTokenUsage>(
@@ -70,6 +79,7 @@ class OpenAiTripRecapTokenBenchmarkTest {
             size = properties.size,
             quality = properties.quality,
             referenceImageCount = 1,
+            referenceImageBytes = optimizedReference.bytes.size.toLong(),
             durationMillis = (System.nanoTime() - extraStartedAt) / 1_000_000,
             success = true,
             usage = extraUsage,
@@ -101,6 +111,7 @@ class OpenAiTripRecapTokenBenchmarkTest {
                 "textInputTokens=${usages.sumOf { it.textInputTokens }} " +
                 "imageInputTokens=${usages.sumOf { it.imageInputTokens }} " +
                 "cachedInputTokens=${usages.sumOf { it.cachedInputTokens }} " +
+                "referenceInputBytes=${observations.sumOf { it.referenceImageBytes }} " +
                 "p50Millis=${percentile(durations, .50)} p95Millis=${percentile(durations, .95)} " +
                 "promptCharsMin=${prompts.first()} promptCharsP50=${percentile(prompts, .50)} " +
                 "promptCharsP95=${percentile(prompts, .95)} promptCharsMax=${prompts.last()}"

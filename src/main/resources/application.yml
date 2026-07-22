@@ -111,7 +111,8 @@ trip-recap:
       size: ${OPENAI_IMAGE_SIZE:1152x2048}
       quality: ${OPENAI_IMAGE_QUALITY:medium}
       timeout: ${OPENAI_IMAGE_TIMEOUT:3m}
-      max-reference-images: ${OPENAI_MAX_REFERENCE_IMAGES:4}
+      max-reference-images: ${OPENAI_MAX_REFERENCE_IMAGES:1}
+      max-reference-dimension: ${OPENAI_MAX_REFERENCE_DIMENSION:1024}
       max-reference-image-bytes: ${OPENAI_MAX_REFERENCE_IMAGE_BYTES:10485760}
   images:
     storage-dir: ${TRIP_RECAP_IMAGE_STORAGE_DIR:./uploads/trip-recaps}

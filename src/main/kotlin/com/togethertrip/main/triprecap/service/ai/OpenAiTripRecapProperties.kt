@@ -13,5 +13,6 @@ class OpenAiTripRecapProperties {
     var size: String = "1152x2048"
     var quality: String = "medium"
     var timeout: Duration = Duration.ofMinutes(3)
-    var maxReferenceImages: Int = 4
+    var maxReferenceImages: Int = 1
+    var maxReferenceDimension: Int = 1_024
 }

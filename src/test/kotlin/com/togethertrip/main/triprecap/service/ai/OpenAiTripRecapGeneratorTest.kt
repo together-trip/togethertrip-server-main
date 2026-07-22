@@ -113,6 +113,7 @@ class OpenAiTripRecapGeneratorTest {
         val generator = OpenAiTripRecapGenerator(
             properties = properties,
             photoContentLoader = TripRecapPhotoContentLoader { null },
+            referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
             imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
             imageGenerationObserver = observations::add,
         )
@@ -163,6 +164,7 @@ class OpenAiTripRecapGeneratorTest {
             val generator = OpenAiTripRecapGenerator(
                 properties = properties,
                 photoContentLoader = TripRecapPhotoContentLoader { error("loader must not be called") },
+                referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
                 imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
                 imageGenerationObserver = observations::add,
             )
@@ -287,6 +289,7 @@ class OpenAiTripRecapGeneratorTest {
                     bytes = pngPayload(6),
                 )
             },
+            referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
             imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
             imageGenerationObserver = observations::add,
         )
@@ -317,6 +320,7 @@ class OpenAiTripRecapGeneratorTest {
                 loaderCalled = true
                 null
             },
+            referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
             imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
             imageGenerationObserver = observations::add,
         )
@@ -336,6 +340,7 @@ class OpenAiTripRecapGeneratorTest {
         return OpenAiTripRecapGenerator(
             properties = properties,
             photoContentLoader = photoContentLoader,
+            referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
             imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
             imageGenerationObserver = observations::add,
         )
