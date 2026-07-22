@@ -3,7 +3,9 @@ plugins {
     kotlin("plugin.spring") version "2.2.21"
     id("org.springframework.boot") version "4.0.6"
     id("io.spring.dependency-management") version "1.1.7"
+    id("org.sonarqube") version "7.3.1.8318"
     kotlin("plugin.jpa") version "2.2.21"
+    jacoco
 }
 
 group = "com.togethertrip"
@@ -71,4 +73,65 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+tasks.test {
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+
+    reports {
+        html.required = true
+        xml.required = true
+        csv.required = false
+    }
+}
+
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.78".toBigDecimal()
+            }
+
+            limit {
+                counter = "BRANCH"
+                value = "COVEREDRATIO"
+                minimum = "0.60".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
+}
+
+tasks.named("sonar") {
+    dependsOn(tasks.jacocoTestReport)
+}
+
+sonar {
+    properties {
+        property(
+            "sonar.projectKey",
+            providers.environmentVariable("SONAR_PROJECT_KEY")
+                .getOrElse("together-trip_togethertrip-server-main"),
+        )
+        property(
+            "sonar.organization",
+            providers.environmentVariable("SONAR_ORGANIZATION").getOrElse("together-trip"),
+        )
+        property("sonar.host.url", "https://sonarcloud.io")
+        property(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml").get().asFile.path,
+        )
+    }
 }
