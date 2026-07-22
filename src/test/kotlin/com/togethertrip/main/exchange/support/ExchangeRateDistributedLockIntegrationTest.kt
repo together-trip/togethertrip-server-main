@@ -24,6 +24,7 @@ class ExchangeRateDistributedLockIntegrationTest @Autowired constructor(
         val ready = CountDownLatch(contenderCount)
         val start = CountDownLatch(1)
         val winnerEntered = CountDownLatch(1)
+        val losersFinished = CountDownLatch(contenderCount - 1)
         val releaseWinner = CountDownLatch(1)
         val blockExecutions = AtomicInteger()
 
@@ -32,17 +33,22 @@ class ExchangeRateDistributedLockIntegrationTest @Autowired constructor(
                 executor.submit<Int?> {
                     ready.countDown()
                     start.await(10, TimeUnit.SECONDS)
-                    lock.runIfAcquired {
-                        blockExecutions.incrementAndGet()
-                        winnerEntered.countDown()
-                        releaseWinner.await(10, TimeUnit.SECONDS)
-                        1
+                    try {
+                        lock.runIfAcquired {
+                            blockExecutions.incrementAndGet()
+                            winnerEntered.countDown()
+                            releaseWinner.await(10, TimeUnit.SECONDS)
+                            1
+                        }
+                    } finally {
+                        losersFinished.countDown()
                     }
                 }
             }
             assertTrue(ready.await(10, TimeUnit.SECONDS))
             start.countDown()
             assertTrue(winnerEntered.await(10, TimeUnit.SECONDS))
+            assertTrue(losersFinished.await(10, TimeUnit.SECONDS))
             releaseWinner.countDown()
 
             val outcomes = futures.map { it.get(10, TimeUnit.SECONDS) }
