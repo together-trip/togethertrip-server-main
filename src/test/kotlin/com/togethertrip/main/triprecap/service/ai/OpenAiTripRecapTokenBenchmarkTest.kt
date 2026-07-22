@@ -1,11 +1,15 @@
 package com.togethertrip.main.triprecap.service.ai
 
 import com.togethertrip.main.triprecap.domain.TripRecapStyle
+import com.togethertrip.main.global.config.MainIntegrationTest
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
+import org.redisson.api.RedissonClient
 import org.springframework.ai.image.ImagePrompt
 import org.springframework.ai.openai.OpenAiImageOptions
+import org.springframework.beans.factory.annotation.Autowired
+import tools.jackson.databind.ObjectMapper
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -21,10 +25,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@MainIntegrationTest
 @Tag("live-ai")
 @EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = ".+")
 @EnabledIfEnvironmentVariable(named = "OPENAI_LIVE_BENCHMARK_APPROVED", matches = "true")
-class OpenAiTripRecapTokenBenchmarkTest {
+class OpenAiTripRecapTokenBenchmarkTest @Autowired constructor(
+    private val redissonClient: RedissonClient,
+    private val objectMapper: ObjectMapper,
+) {
 
     @Test
     fun `고정 fixture 16요청의 OpenAI 이미지 토큰 기준선을 출력한다`() {
@@ -45,7 +53,8 @@ class OpenAiTripRecapTokenBenchmarkTest {
         val output = properties.outputSettings()
         val modelRouter = DefaultTripRecapImageModelRouter()
         val modelRoute = modelRouter.route(properties.model)
-        val imageOperations = DefaultSpringAiOpenAiImageOperations(properties)
+        val requestCache = RedisTripRecapImageRequestCache(properties, redissonClient, objectMapper)
+        val imageOperations = DefaultSpringAiOpenAiImageOperations(properties, requestCache)
         val referenceImageOptimizer = DefaultTripRecapReferenceImageOptimizer(properties)
         val optimizedReference = assertNotNull(
             referenceImageOptimizer.optimize(
