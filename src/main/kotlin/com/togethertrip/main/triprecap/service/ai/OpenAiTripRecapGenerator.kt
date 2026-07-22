@@ -1,14 +1,11 @@
 package com.togethertrip.main.triprecap.service.ai
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.togethertrip.main.triprecap.domain.TripRecapStyle
+import org.springframework.ai.image.ImagePrompt
+import org.springframework.ai.image.ImageResponse
+import org.springframework.ai.openai.OpenAiImageOptions
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.core.io.ByteArrayResource
-import org.springframework.http.MediaType
-import org.springframework.http.client.MultipartBodyBuilder
 import org.springframework.stereotype.Component
-import org.springframework.web.reactive.function.BodyInserters
-import org.springframework.web.reactive.function.client.WebClient
 import java.net.URI
 import java.util.Base64
 
@@ -19,17 +16,11 @@ import java.util.Base64
     havingValue = "openai",
 )
 class OpenAiTripRecapGenerator(
-    webClientBuilder: WebClient.Builder,
     private val properties: OpenAiTripRecapProperties,
     private val photoContentLoader: TripRecapPhotoContentLoader,
+    private val imageOperations: SpringAiOpenAiImageOperations,
+    private val imageGenerationObserver: TripRecapImageGenerationObserver,
 ) : TripRecapGenerator {
-
-    private val webClient = webClientBuilder
-        .baseUrl(properties.baseUrl)
-        .codecs { configurer ->
-            configurer.defaultCodecs().maxInMemorySize(MAX_OPENAI_RESPONSE_BYTES)
-        }
-        .build()
 
     override fun generate(request: TripRecapGenerateRequest): TripRecapGenerateResult {
         validateConfiguration()
@@ -66,69 +57,86 @@ class OpenAiTripRecapGenerator(
     }
 
     private fun generateImage(prompt: String): ByteArray {
-        val response = webClient
-            .post()
-            .uri("/v1/images/generations")
-            .contentType(MediaType.APPLICATION_JSON)
-            .headers { it.setBearerAuth(properties.apiKey) }
-            .bodyValue(
-                mapOf(
-                    "model" to properties.model,
-                    "prompt" to prompt,
-                    "n" to 1,
-                    "size" to properties.size,
-                    "quality" to properties.quality,
-                    "output_format" to "png",
-                    "moderation" to "auto",
-                )
-            )
-            .retrieve()
-            .bodyToMono(OpenAiImageResponse::class.java)
-            .block(properties.timeout)
-
-        return decodeImage(response)
+        return executeObservedRequest(OPERATION_GENERATION, 0) {
+            imageOperations.call(imagePrompt(prompt))
+        }
     }
 
     private fun generateImageWithReferences(
         prompt: String,
         references: List<TripRecapPhotoContent>,
     ): ByteArray {
-        val multipart = MultipartBodyBuilder().apply {
-            part("model", properties.model)
-            part("prompt", prompt)
-            part("n", "1")
-            part("size", properties.size)
-            part("quality", properties.quality)
-            part("output_format", "png")
-            part("moderation", "auto")
-            references.forEach { reference ->
-                part(
-                    "image[]",
-                    object : ByteArrayResource(reference.bytes) {
-                        override fun getFilename(): String = reference.filename
-                    },
-                ).contentType(MediaType.parseMediaType(reference.contentType))
-            }
+        return executeObservedRequest(OPERATION_EDIT, references.size) {
+            imageOperations.edit(imagePrompt(prompt), references)
         }
-
-        val response = webClient
-            .post()
-            .uri("/v1/images/edits")
-            .headers { it.setBearerAuth(properties.apiKey) }
-            .contentType(MediaType.MULTIPART_FORM_DATA)
-            .body(BodyInserters.fromMultipartData(multipart.build()))
-            .retrieve()
-            .bodyToMono(OpenAiImageResponse::class.java)
-            .block(properties.timeout)
-
-        return decodeImage(response)
     }
 
-    private fun decodeImage(response: OpenAiImageResponse?): ByteArray {
+    private fun imagePrompt(prompt: String): ImagePrompt {
+        val options = OpenAiImageOptions.builder()
+            .model(properties.model)
+            .n(1)
+            .size(properties.size)
+            .quality(properties.quality)
+            .responseFormat("b64_json")
+            .build()
+        return ImagePrompt(prompt, options)
+    }
+
+    private fun executeObservedRequest(
+        operation: String,
+        referenceImageCount: Int,
+        request: () -> ImageResponse,
+    ): ByteArray {
+        val startedAt = System.nanoTime()
+        return try {
+            val response = request()
+            val imageBytes = decodeImage(response)
+            imageGenerationObserver.record(observation(operation, referenceImageCount, startedAt, true, response.usage()))
+            imageBytes
+        } catch (exception: Throwable) {
+            imageGenerationObserver.record(
+                observation(
+                    operation,
+                    referenceImageCount,
+                    startedAt,
+                    false,
+                    null,
+                    exception::class.simpleName ?: "UnknownFailure",
+                )
+            )
+            throw exception
+        }
+    }
+
+    private fun ImageResponse.usage(): TripRecapImageTokenUsage? {
+        return metadata.get(DefaultSpringAiOpenAiImageOperations.USAGE_METADATA_KEY)
+    }
+
+    private fun observation(
+        operation: String,
+        referenceImageCount: Int,
+        startedAt: Long,
+        success: Boolean,
+        usage: TripRecapImageTokenUsage?,
+        failureType: String? = null,
+    ) = TripRecapImageGenerationObservation(
+        operation = operation,
+        model = properties.model,
+        size = properties.size,
+        quality = properties.quality,
+        referenceImageCount = referenceImageCount,
+        durationMillis = (System.nanoTime() - startedAt) / NANOSECONDS_PER_MILLISECOND,
+        success = success,
+        usage = usage,
+        failureType = failureType,
+    )
+
+    private fun decodeImage(response: ImageResponse): ByteArray {
         val encodedImage = response
-            ?.data
+            .results
             ?.firstOrNull()
-            ?.base64Json
+            ?.output
+            ?.b64Json
             ?.takeIf { it.isNotBlank() }
             ?: error("OpenAI image response did not contain image data")
 
@@ -258,21 +266,14 @@ class OpenAiTripRecapGenerator(
         }
     }
 
-    private data class OpenAiImageResponse(
-        val data: List<OpenAiImageData> = emptyList(),
-    )
-
-    private data class OpenAiImageData(
-        @field:JsonProperty("b64_json")
-        val base64Json: String? = null,
-    )
-
     companion object {
         private const val PROVIDER = "openai"
+        private const val OPERATION_GENERATION = "generation"
+        private const val OPERATION_EDIT = "edit"
+        private const val NANOSECONDS_PER_MILLISECOND = 1_000_000L
         private const val MAX_REFERENCE_IMAGES = 4
         private const val MAX_PROMPT_LENGTH = 32_000
         private const val MAX_GENERATED_IMAGE_BYTES = 30 * 1024 * 1024
-        private const val MAX_OPENAI_RESPONSE_BYTES = 45 * 1024 * 1024
         private const val MIN_TOTAL_PIXELS = 655_360L
         private const val MAX_TOTAL_PIXELS = 8_294_400L
         private val IMAGE_SIZE_PATTERN = Regex("^([1-9][0-9]*)x([1-9][0-9]*)$")

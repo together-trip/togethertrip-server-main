@@ -5,7 +5,7 @@ import com.sun.net.httpserver.HttpServer
 import com.togethertrip.main.triprecap.domain.TripRecapStyle
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
-import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.ai.image.ImagePrompt
 import java.net.InetSocketAddress
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -22,6 +22,7 @@ import kotlin.test.assertTrue
 class OpenAiTripRecapGeneratorTest {
 
     private var server: HttpServer? = null
+    private val observations = CopyOnWriteArrayList<TripRecapImageGenerationObservation>()
 
     @AfterEach
     fun tearDown() {
@@ -48,6 +49,13 @@ class OpenAiTripRecapGeneratorTest {
             assertTrue(captured.body.contains("\"size\":\"1152x2048\""))
             assertTrue(captured.body.contains("\"quality\":\"medium\""))
             assertTrue(captured.body.contains("no recognizable face", ignoreCase = true))
+        }
+        assertEquals(3, observations.size)
+        observations.forEach {
+            assertEquals("generation", it.operation)
+            assertEquals(12, it.usage?.totalTokens)
+            assertEquals(2, it.usage?.textInputTokens)
+            assertEquals(3, it.usage?.imageInputTokens)
         }
     }
 
@@ -103,14 +111,34 @@ class OpenAiTripRecapGeneratorTest {
     fun `openai provider requires API key before making requests`() {
         val properties = properties().apply { apiKey = "" }
         val generator = OpenAiTripRecapGenerator(
-            webClientBuilder = WebClient.builder(),
             properties = properties,
             photoContentLoader = TripRecapPhotoContentLoader { null },
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageGenerationObserver = observations::add,
         )
 
         assertFailsWith<IllegalArgumentException> {
             generator.generate(request())
         }
+    }
+
+    @Test
+    fun `spring ai adapter rejects portable options for generation and edit`() {
+        val operations = DefaultSpringAiOpenAiImageOperations(properties())
+        val portablePrompt = ImagePrompt("test prompt")
+
+        val generationFailure = assertFailsWith<IllegalStateException> {
+            operations.call(portablePrompt)
+        }
+        val editFailure = assertFailsWith<IllegalStateException> {
+            operations.edit(
+                portablePrompt,
+                listOf(TripRecapPhotoContent("reference.png", "image/png", pngPayload(1))),
+            )
+        }
+
+        assertEquals("OpenAI image options are required", generationFailure.message)
+        assertEquals("OpenAI image options are required", editFailure.message)
     }
 
     @Test
@@ -133,9 +161,10 @@ class OpenAiTripRecapGeneratorTest {
         cases.forEach { mutate ->
             val properties = properties().also(mutate)
             val generator = OpenAiTripRecapGenerator(
-                webClientBuilder = WebClient.builder(),
                 properties = properties,
                 photoContentLoader = TripRecapPhotoContentLoader { error("loader must not be called") },
+                imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+                imageGenerationObserver = observations::add,
             )
 
             assertFailsWith<IllegalArgumentException> {
@@ -147,11 +176,11 @@ class OpenAiTripRecapGeneratorTest {
     @Test
     fun `missing malformed and non png image payloads are rejected`() {
         val cases = listOf(
-            "{}" to "did not contain image data",
-            "{\"data\":[]}" to "did not contain image data",
-            "{\"data\":[{}]}" to "did not contain image data",
-            "{\"data\":[{\"b64_json\":\" \"}]}" to "did not contain image data",
-            "{\"data\":[{\"b64_json\":\"not-base64!\"}]}" to "invalid base64 data",
+            "{\"created\":0}" to "did not contain image data",
+            "{\"created\":0,\"data\":[]}" to "did not contain image data",
+            "{\"created\":0,\"data\":[{}]}" to "did not contain image data",
+            "{\"created\":0,\"data\":[{\"b64_json\":\" \"}]}" to "did not contain image data",
+            "{\"created\":0,\"data\":[{\"b64_json\":\"not-base64!\"}]}" to "invalid base64 data",
             imageResponse(byteArrayOf(0x01, 0x02)) to "invalid image size",
             imageResponse(ByteArray(9) { 0x01 }) to "did not contain a PNG image",
         )
@@ -224,7 +253,6 @@ class OpenAiTripRecapGeneratorTest {
         }
         val properties = properties().apply { maxReferenceImages = 2 }
         val generator = OpenAiTripRecapGenerator(
-            webClientBuilder = WebClient.builder(),
             properties = properties,
             photoContentLoader = TripRecapPhotoContentLoader { reference ->
                 loadedUrls += reference.imageUrl
@@ -234,6 +262,8 @@ class OpenAiTripRecapGeneratorTest {
                     bytes = pngPayload(6),
                 )
             },
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageGenerationObserver = observations::add,
         )
 
         val result = generator.generate(request(photoReferences = references))
@@ -257,12 +287,13 @@ class OpenAiTripRecapGeneratorTest {
         var loaderCalled = false
         val properties = properties().apply { maxReferenceImages = -1 }
         val generator = OpenAiTripRecapGenerator(
-            webClientBuilder = WebClient.builder(),
             properties = properties,
             photoContentLoader = TripRecapPhotoContentLoader {
                 loaderCalled = true
                 null
             },
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageGenerationObserver = observations::add,
         )
 
         generator.generate(
@@ -276,10 +307,12 @@ class OpenAiTripRecapGeneratorTest {
     }
 
     private fun generator(photoContentLoader: TripRecapPhotoContentLoader): OpenAiTripRecapGenerator {
+        val properties = properties()
         return OpenAiTripRecapGenerator(
-            webClientBuilder = WebClient.builder(),
-            properties = properties(),
+            properties = properties,
             photoContentLoader = photoContentLoader,
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageGenerationObserver = observations::add,
         )
     }
 
@@ -314,7 +347,14 @@ class OpenAiTripRecapGeneratorTest {
 
     private fun imageResponse(imageBytes: ByteArray): String {
         val encodedImage = Base64.getEncoder().encodeToString(imageBytes)
-        return """{"data":[{"b64_json":"$encodedImage"}]}"""
+        return """{
+            "created":0,
+            "data":[{"b64_json":"$encodedImage"}],
+            "usage":{
+              "total_tokens":12,"input_tokens":5,"output_tokens":7,
+              "input_tokens_details":{"text_tokens":2,"image_tokens":3}
+            }
+        }""".trimIndent()
     }
 
     private fun capture(exchange: HttpExchange): CapturedRequest {
