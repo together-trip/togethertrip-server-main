@@ -74,11 +74,12 @@ class OpenAiTripRecapGenerator(
     }
 
     private fun imagePrompt(prompt: String): ImagePrompt {
+        val output = properties.outputSettings()
         val options = OpenAiImageOptions.builder()
             .model(properties.model)
             .n(1)
-            .size(properties.size)
-            .quality(properties.quality)
+            .size(output.size)
+            .quality(output.quality)
             .responseFormat("b64_json")
             .build()
         return ImagePrompt(prompt, options)
@@ -129,8 +130,8 @@ class OpenAiTripRecapGenerator(
     ) = TripRecapImageGenerationObservation(
         operation = operation,
         model = properties.model,
-        size = properties.size,
-        quality = properties.quality,
+        size = properties.outputSettings().size,
+        quality = properties.outputSettings().quality,
         referenceImageCount = referenceImageCount,
         referenceImageBytes = referenceImageBytes,
         durationMillis = (System.nanoTime() - startedAt) / NANOSECONDS_PER_MILLISECOND,
@@ -250,11 +251,12 @@ class OpenAiTripRecapGenerator(
     }
 
     private fun validateConfiguration() {
+        val output = properties.outputSettings()
         require(properties.apiKey.isNotBlank()) { "OPENAI_API_KEY is required when trip recap AI provider is openai" }
         require(properties.model.isNotBlank()) { "OpenAI image model must not be blank" }
         validateBaseUrl()
-        validateImageSize()
-        require(properties.quality in SUPPORTED_QUALITIES) { "OpenAI image quality must be low, medium, high, or auto" }
+        validateImageSize(output.size)
+        require(output.quality in SUPPORTED_QUALITIES) { "OpenAI image quality must be low, medium, high, or auto" }
     }
 
     private fun validateBaseUrl() {
@@ -267,8 +269,8 @@ class OpenAiTripRecapGenerator(
         }
     }
 
-    private fun validateImageSize() {
-        val match = IMAGE_SIZE_PATTERN.matchEntire(properties.size)
+    private fun validateImageSize(size: String) {
+        val match = IMAGE_SIZE_PATTERN.matchEntire(size)
             ?: throw IllegalArgumentException("OpenAI image size must use WIDTHxHEIGHT format")
         val width = match.groupValues[1].toLongOrNull()
             ?: throw IllegalArgumentException("OpenAI image width is too large")

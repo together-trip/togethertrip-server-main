@@ -33,12 +33,16 @@ class OpenAiTripRecapTokenBenchmarkTest {
             apiKey = requireNotNull(System.getenv("OPENAI_API_KEY"))
             baseUrl = System.getenv("OPENAI_BASE_URL") ?: "https://api.openai.com"
             model = System.getenv("OPENAI_IMAGE_MODEL") ?: "gpt-image-2"
+            outputProfile = System.getenv("OPENAI_IMAGE_OUTPUT_PROFILE")
+                ?.let(TripRecapImageOutputProfile::valueOf)
+                ?: TripRecapImageOutputProfile.ECONOMY
             size = System.getenv("OPENAI_IMAGE_SIZE") ?: "1152x2048"
             quality = System.getenv("OPENAI_IMAGE_QUALITY") ?: "medium"
             timeout = Duration.ofMinutes(5)
             maxReferenceImages = 1
         }
         val referenceImage = referenceImage()
+        val output = properties.outputSettings()
         val imageOperations = DefaultSpringAiOpenAiImageOperations(properties)
         val referenceImageOptimizer = DefaultTripRecapReferenceImageOptimizer(properties)
         val optimizedReference = assertNotNull(
@@ -76,8 +80,8 @@ class OpenAiTripRecapTokenBenchmarkTest {
         observations += TripRecapImageGenerationObservation(
             operation = "edit",
             model = properties.model,
-            size = properties.size,
-            quality = properties.quality,
+            size = output.size,
+            quality = output.quality,
             referenceImageCount = 1,
             referenceImageBytes = optimizedReference.bytes.size.toLong(),
             durationMillis = (System.nanoTime() - extraStartedAt) / 1_000_000,
@@ -149,13 +153,14 @@ class OpenAiTripRecapTokenBenchmarkTest {
     }
 
     private fun imagePrompt(prompt: String, properties: OpenAiTripRecapProperties): ImagePrompt {
+        val output = properties.outputSettings()
         return ImagePrompt(
             prompt,
             OpenAiImageOptions.builder()
                 .model(properties.model)
                 .n(1)
-                .size(properties.size)
-                .quality(properties.quality)
+                .size(output.size)
+                .quality(output.quality)
                 .responseFormat("b64_json")
                 .build(),
         )

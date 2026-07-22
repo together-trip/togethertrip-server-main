@@ -351,6 +351,7 @@ class OpenAiTripRecapGeneratorTest {
             baseUrl = "http://127.0.0.1:${server?.address?.port ?: 1}"
             apiKey = "test-openai-key"
             model = "gpt-image-2"
+            outputProfile = TripRecapImageOutputProfile.CUSTOM
             size = "1152x2048"
             quality = "medium"
         }
