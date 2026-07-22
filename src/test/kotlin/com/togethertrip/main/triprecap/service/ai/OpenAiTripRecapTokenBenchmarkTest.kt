@@ -96,6 +96,46 @@ class OpenAiTripRecapTokenBenchmarkTest {
         )
         generatedScenes += TripRecapGeneratedScene(1, "benchmark extra illustration edit", extraPrompt, extraBytes)
 
+        val firstPassObservations = observations.toList()
+        val verifyCacheReplay = System.getenv("OPENAI_BENCHMARK_VERIFY_CACHE_REPLAY") == "true"
+        if (verifyCacheReplay) {
+            val replayScenes = listOf(
+                request(TripRecapStyle.PHOTO, 0, false),
+                request(TripRecapStyle.ILLUSTRATION, 5, false),
+                request(TripRecapStyle.PHOTO, 9, true),
+            ).flatMap { generator.generate(it).scenes }.toMutableList()
+            val replayExtraStartedAt = System.nanoTime()
+            val replayExtraResponse = imageOperations.edit(
+                imagePrompt(extraPrompt, properties, modelRoute.model),
+                listOf(optimizedReference),
+            )
+            val replayExtraCacheHit = replayExtraResponse.metadata.get<Boolean>(
+                DefaultSpringAiOpenAiImageOperations.CACHE_HIT_METADATA_KEY
+            ) == true
+            observations += TripRecapImageGenerationObservation(
+                operation = "edit",
+                model = modelRoute.model,
+                size = output.size,
+                quality = output.quality,
+                referenceImageCount = 1,
+                referenceImageBytes = optimizedReference.bytes.size.toLong(),
+                cacheHit = replayExtraCacheHit,
+                durationMillis = (System.nanoTime() - replayExtraStartedAt) / 1_000_000,
+                success = true,
+                usage = null,
+            )
+            replayScenes += TripRecapGeneratedScene(
+                1,
+                "benchmark extra illustration edit",
+                extraPrompt,
+                Base64.getDecoder().decode(replayExtraResponse.results.first().output.b64Json),
+            )
+
+            generatedScenes.zip(replayScenes).forEach { (first, replay) ->
+                assertTrue(first.imageBytes.contentEquals(replay.imageBytes))
+            }
+        }
+
         val outputDirectory = Path.of(
             System.getenv("OPENAI_BENCHMARK_OUTPUT_DIR") ?: "build/reports/openai-image-benchmark"
         )
@@ -104,25 +144,35 @@ class OpenAiTripRecapTokenBenchmarkTest {
             Files.write(outputDirectory.resolve("scene-${index + 1}.png"), scene.imageBytes)
         }
 
-        assertEquals(EXPECTED_REQUEST_COUNT, observations.size)
+        assertEquals(if (verifyCacheReplay) EXPECTED_REQUEST_COUNT * 2 else EXPECTED_REQUEST_COUNT, observations.size)
         assertEquals(EXPECTED_REQUEST_COUNT, generatedScenes.size)
-        assertTrue(observations.all { it.success })
-        val usages = observations.map { assertNotNull(it.usage) }
+        assertTrue(firstPassObservations.all { it.success && !it.cacheHit })
+        val usages = firstPassObservations.map { assertNotNull(it.usage) }
         val totalTokens = usages.sumOf { it.totalTokens }
-        val durations = observations.map { it.durationMillis }.sorted()
+        val durations = firstPassObservations.map { it.durationMillis }.sorted()
         val prompts = generatedScenes.map { it.imagePrompt.length }.sorted()
         println(
-            "OPENAI_IMAGE_BENCHMARK requests=${observations.size} totalTokens=$totalTokens " +
-                "tokensPerRequest=${"%.2f".format(totalTokens.toDouble() / observations.size)} " +
+            "OPENAI_IMAGE_BENCHMARK requests=${firstPassObservations.size} totalTokens=$totalTokens " +
+                "tokensPerRequest=${"%.2f".format(totalTokens.toDouble() / firstPassObservations.size)} " +
                 "inputTokens=${usages.sumOf { it.inputTokens }} outputTokens=${usages.sumOf { it.outputTokens }} " +
                 "textInputTokens=${usages.sumOf { it.textInputTokens }} " +
                 "imageInputTokens=${usages.sumOf { it.imageInputTokens }} " +
                 "cachedInputTokens=${usages.sumOf { it.cachedInputTokens }} " +
-                "referenceInputBytes=${observations.sumOf { it.referenceImageBytes }} " +
+                "referenceInputBytes=${firstPassObservations.sumOf { it.referenceImageBytes }} " +
                 "p50Millis=${percentile(durations, .50)} p95Millis=${percentile(durations, .95)} " +
                 "promptCharsMin=${prompts.first()} promptCharsP50=${percentile(prompts, .50)} " +
                 "promptCharsP95=${percentile(prompts, .95)} promptCharsMax=${prompts.last()}"
         )
+        if (verifyCacheReplay) {
+            val replayObservations = observations.drop(EXPECTED_REQUEST_COUNT)
+            assertTrue(replayObservations.all { it.success && it.cacheHit && it.usage == null })
+            println(
+                "OPENAI_IMAGE_CACHE_REPLAY logicalRequests=${replayObservations.size} " +
+                    "externalRequests=${replayObservations.count { !it.cacheHit }} " +
+                    "cacheHits=${replayObservations.count { it.cacheHit }} " +
+                    "totalTokens=${replayObservations.sumOf { it.usage?.totalTokens ?: 0 }}"
+            )
+        }
     }
 
     private fun request(style: TripRecapStyle, richness: Int, withReference: Boolean) = TripRecapGenerateRequest(

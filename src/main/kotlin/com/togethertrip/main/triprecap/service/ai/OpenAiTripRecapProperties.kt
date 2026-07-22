@@ -16,6 +16,9 @@ class OpenAiTripRecapProperties {
     var timeout: Duration = Duration.ofMinutes(3)
     var maxReferenceImages: Int = 1
     var maxReferenceDimension: Int = 1_024
+    var cacheEnabled: Boolean = true
+    var cacheMaxEntries: Int = 32
+    var cacheTtl: Duration = Duration.ofMinutes(15)
 
     fun outputSettings(): TripRecapImageOutputSettings = outputProfile.resolve(size, quality)
 }

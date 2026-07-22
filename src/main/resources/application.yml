@@ -115,6 +115,9 @@ trip-recap:
       max-reference-images: ${OPENAI_MAX_REFERENCE_IMAGES:1}
       max-reference-dimension: ${OPENAI_MAX_REFERENCE_DIMENSION:1024}
       max-reference-image-bytes: ${OPENAI_MAX_REFERENCE_IMAGE_BYTES:10485760}
+      cache-enabled: ${OPENAI_IMAGE_CACHE_ENABLED:true}
+      cache-max-entries: ${OPENAI_IMAGE_CACHE_MAX_ENTRIES:32}
+      cache-ttl: ${OPENAI_IMAGE_CACHE_TTL:15m}
   images:
     storage-dir: ${TRIP_RECAP_IMAGE_STORAGE_DIR:./uploads/trip-recaps}
     public-url-prefix: ${TRIP_RECAP_IMAGE_PUBLIC_URL_PREFIX:/uploads/trip-recaps}

@@ -60,6 +60,24 @@ class OpenAiTripRecapGeneratorTest {
     }
 
     @Test
+    fun `identical recap replay uses cached images without another external request`() {
+        val generatedBytes = pngPayload(2)
+        val requests = startServer(generatedBytes)
+        val generator = generator(photoContentLoader = TripRecapPhotoContentLoader { null })
+
+        val first = generator.generate(request())
+        val replay = generator.generate(request())
+
+        assertEquals(3, requests.size)
+        first.scenes.zip(replay.scenes).forEach { (original, cached) ->
+            assertContentEquals(original.imageBytes, cached.imageBytes)
+        }
+        assertEquals(6, observations.size)
+        assertTrue(observations.take(3).all { !it.cacheHit && it.usage != null })
+        assertTrue(observations.takeLast(3).all { it.cacheHit && it.usage == null })
+    }
+
+    @Test
     fun `image response larger than default webclient buffer is decoded`() {
         val generatedBytes = ByteArray(300 * 1024).apply {
             pngPayload(1).copyInto(this)

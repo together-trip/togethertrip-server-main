@@ -15,6 +15,7 @@ data class TripRecapImageGenerationObservation(
     val quality: String,
     val referenceImageCount: Int,
     val referenceImageBytes: Long = 0,
+    val cacheHit: Boolean = false,
     val durationMillis: Long,
     val success: Boolean,
     val usage: TripRecapImageTokenUsage?,

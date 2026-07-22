@@ -100,8 +100,18 @@ class OpenAiTripRecapGenerator(
         return try {
             val response = request()
             val imageBytes = decodeImage(response)
+            val cacheHit = response.metadata.get<Boolean>(DefaultSpringAiOpenAiImageOperations.CACHE_HIT_METADATA_KEY) == true
             imageGenerationObserver.record(
-                observation(operation, model, referenceImageCount, referenceImageBytes, startedAt, true, response.usage())
+                observation(
+                    operation,
+                    model,
+                    referenceImageCount,
+                    referenceImageBytes,
+                    cacheHit,
+                    startedAt,
+                    true,
+                    if (cacheHit) null else response.usage(),
+                )
             )
             imageBytes
         } catch (exception: Throwable) {
@@ -111,6 +121,7 @@ class OpenAiTripRecapGenerator(
                     model,
                     referenceImageCount,
                     referenceImageBytes,
+                    false,
                     startedAt,
                     false,
                     null,
@@ -130,6 +141,7 @@ class OpenAiTripRecapGenerator(
         model: String,
         referenceImageCount: Int,
         referenceImageBytes: Long,
+        cacheHit: Boolean,
         startedAt: Long,
         success: Boolean,
         usage: TripRecapImageTokenUsage?,
@@ -141,6 +153,7 @@ class OpenAiTripRecapGenerator(
         quality = properties.outputSettings().quality,
         referenceImageCount = referenceImageCount,
         referenceImageBytes = referenceImageBytes,
+        cacheHit = cacheHit,
         durationMillis = (System.nanoTime() - startedAt) / NANOSECONDS_PER_MILLISECOND,
         success = success,
         usage = usage,
