@@ -43,6 +43,8 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -57,8 +59,14 @@ jobs:
       - name: Compile
         run: ./gradlew compileKotlin
 
-      - name: Test
-        run: ./gradlew test
+      - name: Test and coverage
+        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification
+
+      - name: SonarQube Cloud analysis
+        if: ${{ env.SONAR_TOKEN != '' }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./gradlew sonar
 
       - name: Package
         run: ./gradlew bootJar
