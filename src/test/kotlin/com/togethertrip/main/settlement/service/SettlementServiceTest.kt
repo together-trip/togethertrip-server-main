@@ -15,7 +15,10 @@ import com.togethertrip.main.settlement.domain.calculation.SettlementCalculation
 import com.togethertrip.main.settlement.domain.calculation.SettlementParticipantBalance
 import com.togethertrip.main.settlement.domain.calculation.SettlementTransferPlan
 import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantSnapshot
+import com.togethertrip.main.settlement.domain.snapshot.SettlementSnapshotBalance
+import com.togethertrip.main.settlement.domain.snapshot.SettlementSnapshotPayload
 import com.togethertrip.main.settlement.dto.response.SettlementParticipantBalanceResponse
+import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementRepository
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
@@ -30,6 +33,7 @@ import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import com.togethertrip.main.trip.domain.TripSettlementStatus
 import com.togethertrip.main.trip.dto.response.TripSettlementDisplayStatus
+import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
@@ -42,6 +46,7 @@ import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.orm.ObjectOptimisticLockingFailureException
@@ -159,6 +164,99 @@ class SettlementServiceTest {
         assertEquals(40L, response.transfers.single().id)
         assertEquals(TripSettlementStatus.IN_PROGRESS, trip.settlementStatus)
         assertEquals(TripSettlementDisplayStatus.IN_PROGRESS, response.settlementDisplayStatus)
+    }
+
+    @Test
+    fun `정산 미리보기는 계산 결과의 잔액과 송금 계획을 함께 반환한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner).apply { expenseVersion = 7L }
+        val calculation = createCalculation()
+        val participants = createParticipantSnapshots()
+        val balances = listOf(
+            SettlementParticipantBalanceResponse(
+                participantId = 100L,
+                userId = 1L,
+                displayName = "보낼 사람",
+                profileImageUrl = null,
+                participantStatus = TripParticipantStatus.ACTIVE,
+                paidAmount = BigDecimal.ZERO,
+                shareAmount = BigDecimal("5000.00"),
+                netAmount = BigDecimal("-5000.00"),
+            )
+        )
+        val transfers = listOf(SettlementTransferResponse.from(transferRow(40L)))
+        `when`(settlementAccessResolver.getAccessibleTrip(1L, 10L)).thenReturn(trip)
+        `when`(settlementCalculationService.calculate(10L, 7L)).thenReturn(calculation)
+        `when`(settlementCalculationService.getParticipantsById(10L, calculation)).thenReturn(participants)
+        `when`(settlementCalculationService.createBalanceResponses(calculation.balances, participants))
+            .thenReturn(balances)
+        `when`(settlementCalculationService.createTransferResponses(calculation, participants))
+            .thenReturn(transfers)
+
+        val response = settlementService.previewSettlement(1L, 10L)
+
+        assertEquals(10L, response.tripId)
+        assertEquals(7L, response.tripExpenseVersion)
+        assertEquals("KRW", response.baseCurrency)
+        assertEquals(BigDecimal("10000.00"), response.totalExpenseAmount)
+        assertEquals(BigDecimal("10000.00"), response.totalShareAmount)
+        assertEquals(balances, response.balances)
+        assertEquals(transfers, response.transfers)
+    }
+
+    @Test
+    fun `정산 상세는 접근 권한 확인 후 snapshot과 저장 송금을 반환한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val settlement = createSettlement(trip, owner)
+        val snapshot = SettlementSnapshotPayload(
+            balances = listOf(
+                SettlementSnapshotBalance(
+                    participantId = 100L,
+                    userId = 1L,
+                    displayName = "보낼 사람",
+                    profileImageUrl = null,
+                    participantStatus = TripParticipantStatus.ACTIVE,
+                    paidAmount = BigDecimal.ZERO,
+                    shareAmount = BigDecimal("5000.00"),
+                    netAmount = BigDecimal("-5000.00"),
+                )
+            )
+        )
+        `when`(settlementAccessResolver.getAccessibleTrip(1L, 10L)).thenReturn(trip)
+        `when`(settlementRepository.findByIdAndDeletedAtIsNull(30L)).thenReturn(settlement)
+        `when`(settlementSnapshotMapper.read(settlement)).thenReturn(snapshot)
+        `when`(settlementTransferRepository.findTransferRowsBySettlementId(30L))
+            .thenReturn(listOf(transferRow(40L)))
+
+        val response = settlementService.getSettlement(1L, 10L, 30L)
+
+        assertEquals(30L, response.id)
+        assertEquals(1, response.balances.size)
+        assertEquals(100L, response.balances.single().participantId)
+        assertEquals(40L, response.transfers.single().id)
+    }
+
+    @Test
+    fun `정산 상세와 공유 토큰은 service에서도 참여자와 방장 권한을 재검증한다`() {
+        `when`(settlementAccessResolver.getAccessibleTrip(2L, 10L))
+            .thenThrow(BusinessException(TripErrorCode.TRIP_ACCESS_DENIED))
+        `when`(settlementAccessResolver.getOwnedTrip(2L, 10L))
+            .thenThrow(BusinessException(TripErrorCode.TRIP_OWNER_ONLY))
+
+        val readDenied = assertBusinessException {
+            settlementService.getSettlement(2L, 10L, 30L)
+        }
+        val issueDenied = assertBusinessException {
+            settlementService.createShareToken(2L, 10L, 30L)
+        }
+
+        assertEquals(TripErrorCode.TRIP_ACCESS_DENIED, readDenied.errorCode)
+        assertEquals(TripErrorCode.TRIP_OWNER_ONLY, issueDenied.errorCode)
+        verifyNoInteractions(settlementSnapshotMapper)
+        assertFalse(
+            mockingDetails(settlementRepository).invocations.any { it.method.name == "findByIdAndDeletedAtIsNull" }
+        )
     }
 
     @Test

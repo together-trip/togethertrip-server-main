@@ -1,17 +1,15 @@
 package com.togethertrip.main.global.outbox.repository
 
+import com.togethertrip.main.global.config.MainIntegrationTest
 import com.togethertrip.main.global.outbox.domain.OutboxEvent
 import com.togethertrip.main.global.outbox.domain.OutboxStatus
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
 import org.springframework.transaction.annotation.Transactional
 import kotlin.test.assertEquals
 
-@ActiveProfiles("test")
-@SpringBootTest
+@MainIntegrationTest
 @Transactional
 class OutboxEventRepositoryTest @Autowired constructor(
     private val entityManager: EntityManager,

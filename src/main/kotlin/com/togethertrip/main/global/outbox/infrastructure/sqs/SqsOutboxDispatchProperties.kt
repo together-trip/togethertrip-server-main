@@ -8,4 +8,5 @@ data class SqsOutboxDispatchProperties(
     val enabled: Boolean = true,
     val fixedDelay: Duration = Duration.ofSeconds(3),
     val limit: Int = 50,
+    val maxAttempts: Int = 5,
 )

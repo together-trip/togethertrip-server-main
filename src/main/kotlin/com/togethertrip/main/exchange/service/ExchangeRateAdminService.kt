@@ -143,8 +143,8 @@ class ExchangeRateAdminService(
 
         try {
             val execution = jobOperator.start(exchangeRateBackfillJob, parameters)
-            val executionId = execution.id
-                ?: throw IllegalStateException("Spring Batch JobExecution id가 없습니다.")
+            val executionId = execution.id.takeIf { it > 0 }
+                ?: throw IllegalStateException("Spring Batch JobExecution id가 유효하지 않습니다.")
 
             backfillBatchService.markBatchExecution(
                 backfillJobId = job.id,

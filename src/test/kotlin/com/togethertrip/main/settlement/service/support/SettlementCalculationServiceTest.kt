@@ -1,6 +1,8 @@
 package com.togethertrip.main.settlement.service.support
 
+import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.settlement.domain.TripParticipantBalanceSummary
+import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantSnapshot
 import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantRow
 import com.togethertrip.main.settlement.repository.SettlementTransactionQueryRepository
 import com.togethertrip.main.settlement.repository.TripParticipantBalanceSummaryRepository
@@ -10,6 +12,7 @@ import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
 import com.togethertrip.main.trip.domain.TripParticipantStatus
+import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import org.junit.jupiter.api.BeforeEach
@@ -19,6 +22,7 @@ import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import java.math.BigDecimal
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class SettlementCalculationServiceTest {
 
@@ -191,6 +195,96 @@ class SettlementCalculationServiceTest {
         assertEquals(true, participant.requiresAutoConfirmation)
     }
 
+    @Test
+    fun `projection이 비어 있으면 원본 거래 row로 fallback한다`() {
+        `when`(balanceSummaryRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(emptyList())
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(
+            listOf(paymentRow(100L, BigDecimal("1000.00")))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(
+            listOf(shareRow(100L, BigDecimal("1000.00")))
+        )
+
+        val calculation = settlementCalculationService.calculate(10L, expectedProjectionVersion = 7L)
+
+        assertEquals(BigDecimal("1000.00"), calculation.totalExpenseAmount)
+        assertEquals(BigDecimal("1000.00"), calculation.totalShareAmount)
+    }
+
+    @Test
+    fun `projection version이 하나라도 다르면 전체를 원본 거래 row로 fallback한다`() {
+        val owner = User(nickname = "재완").apply { id = 1L }
+        val trip = Trip(owner, "projection mismatch", "KRW").apply { id = 10L }
+        val participant = participant(100L, trip, owner, "결제자")
+        `when`(balanceSummaryRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(
+            listOf(summary(trip, participant, BigDecimal("9999.00"), BigDecimal("9999.00"), 6L))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(
+            listOf(paymentRow(100L, BigDecimal("2000.00")))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(
+            listOf(shareRow(100L, BigDecimal("2000.00")))
+        )
+
+        val calculation = settlementCalculationService.calculate(10L, expectedProjectionVersion = 7L)
+
+        assertEquals(BigDecimal("2000.00"), calculation.totalExpenseAmount)
+    }
+
+    @Test
+    fun `계산 참여자가 없으면 participant repository를 조회하지 않고 빈 map을 반환한다`() {
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(emptyList())
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(emptyList())
+        val calculation = settlementCalculationService.calculate(10L)
+
+        val participants = settlementCalculationService.getParticipantsById(10L, calculation)
+
+        assertEquals(emptyMap(), participants)
+        verifyNoInteractions(tripParticipantRepository)
+    }
+
+    @Test
+    fun `계산에 포함된 참여자 row가 누락되면 participant not found를 반환한다`() {
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(
+            listOf(paymentRow(100L, BigDecimal("1000.00")))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(
+            listOf(shareRow(100L, BigDecimal("1000.00")))
+        )
+        val calculation = settlementCalculationService.calculate(10L)
+        `when`(
+            tripParticipantRepository.findSettlementParticipantRows(10L, setOf(100L))
+        ).thenReturn(emptyList())
+
+        val exception = assertFailsWith<BusinessException> {
+            settlementCalculationService.getParticipantsById(10L, calculation)
+        }
+
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, exception.errorCode)
+    }
+
+    @Test
+    fun `계산에 없는 추가 참여자는 zero balance 응답으로 포함한다`() {
+        `when`(settlementTransactionQueryRepository.findSettlementPaymentRows(10L)).thenReturn(
+            listOf(paymentRow(100L, BigDecimal("1000.00")))
+        )
+        `when`(settlementTransactionQueryRepository.findSettlementShareRows(10L)).thenReturn(
+            listOf(shareRow(100L, BigDecimal("1000.00")))
+        )
+        val calculation = settlementCalculationService.calculate(10L)
+        val participants = mapOf(
+            100L to snapshot(100L, "계산 참여자"),
+            200L to snapshot(200L, "추가 참여자"),
+        )
+
+        val responses = settlementCalculationService.createBalanceResponses(calculation.balances, participants)
+        val extra = responses.first { it.participantId == 200L }
+
+        assertEquals(BigDecimal("0.00"), extra.paidAmount)
+        assertEquals(BigDecimal("0.00"), extra.shareAmount)
+        assertEquals(BigDecimal("0.00"), extra.netAmount)
+    }
+
     private fun paymentRow(
         participantId: Long,
         amount: BigDecimal,
@@ -249,6 +343,18 @@ class SettlementCalculationServiceTest {
         ).apply {
             this.id = id
         }
+    }
+
+    private fun snapshot(id: Long, displayName: String): SettlementParticipantSnapshot {
+        return SettlementParticipantSnapshot(
+            participantId = id,
+            userId = id,
+            displayName = displayName,
+            profileImageUrl = null,
+            participantStatus = TripParticipantStatus.ACTIVE,
+            isWithdrawnUser = false,
+            requiresAutoConfirmation = false,
+        )
     }
 
     private fun summary(

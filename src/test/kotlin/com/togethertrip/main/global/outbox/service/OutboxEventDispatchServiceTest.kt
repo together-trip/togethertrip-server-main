@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
-import org.springframework.data.domain.PageRequest
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -32,10 +31,7 @@ class OutboxEventDispatchServiceTest {
         )
 
         `when`(
-            outboxEventRepository.findByStatusOrderByCreatedAtAsc(
-                OutboxStatus.PENDING,
-                PageRequest.of(0, 50),
-            )
+            outboxEventRepository.findPendingForDispatch(50, 5)
         ).thenReturn(listOf(event))
 
         val result = service.dispatchPending()
@@ -57,10 +53,7 @@ class OutboxEventDispatchServiceTest {
         )
 
         `when`(
-            outboxEventRepository.findByStatusOrderByCreatedAtAsc(
-                OutboxStatus.PENDING,
-                PageRequest.of(0, 50),
-            )
+            outboxEventRepository.findPendingForDispatch(50, 5)
         ).thenReturn(listOf(event))
 
         val result = service.dispatchPending()
@@ -81,18 +74,12 @@ class OutboxEventDispatchServiceTest {
         )
 
         `when`(
-            outboxEventRepository.findByStatusOrderByCreatedAtAsc(
-                OutboxStatus.PENDING,
-                PageRequest.of(0, 500),
-            )
+            outboxEventRepository.findPendingForDispatch(500, 5)
         ).thenReturn(emptyList())
 
         service.dispatchPending(limit = 1000)
 
-        verify(outboxEventRepository).findByStatusOrderByCreatedAtAsc(
-            OutboxStatus.PENDING,
-            PageRequest.of(0, 500),
-        )
+        verify(outboxEventRepository).findPendingForDispatch(500, 5)
     }
 
     private fun outboxEvent(): OutboxEvent {

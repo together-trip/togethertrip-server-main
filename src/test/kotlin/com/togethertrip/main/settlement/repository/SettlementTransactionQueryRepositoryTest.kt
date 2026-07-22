@@ -1,5 +1,6 @@
 package com.togethertrip.main.settlement.repository
 
+import com.togethertrip.main.global.config.MainIntegrationTest
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionPayment
 import com.togethertrip.main.transaction.domain.TransactionShare
@@ -13,14 +14,11 @@ import com.togethertrip.main.user.domain.User
 import jakarta.persistence.EntityManager
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.ActiveProfiles
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import kotlin.test.assertEquals
 
-@ActiveProfiles("test")
-@SpringBootTest
+@MainIntegrationTest
 @Transactional
 class SettlementTransactionQueryRepositoryTest @Autowired constructor(
     private val entityManager: EntityManager,

@@ -7,12 +7,16 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.springframework.web.reactive.function.client.WebClient
 import java.net.InetSocketAddress
+import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.assertContentEquals
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class OpenAiTripRecapGeneratorTest {
@@ -109,6 +113,168 @@ class OpenAiTripRecapGeneratorTest {
         }
     }
 
+    @Test
+    fun `invalid provider configuration is rejected before making requests`() {
+        val cases = listOf<(OpenAiTripRecapProperties) -> Unit>(
+            { it.model = " " },
+            { it.baseUrl = "::not-a-uri" },
+            { it.baseUrl = "http://example.com" },
+            { it.baseUrl = "ftp://localhost" },
+            { it.quality = "ultra" },
+            { it.size = "1152-2048" },
+            { it.size = "999999999999999999999999x2048" },
+            { it.size = "1152x999999999999999999999999" },
+            { it.size = "1153x2048" },
+            { it.size = "1024x1024" },
+            { it.size = "2304x4096" },
+            { it.size = "576x1024" },
+        )
+
+        cases.forEach { mutate ->
+            val properties = properties().also(mutate)
+            val generator = OpenAiTripRecapGenerator(
+                webClientBuilder = WebClient.builder(),
+                properties = properties,
+                photoContentLoader = TripRecapPhotoContentLoader { error("loader must not be called") },
+            )
+
+            assertFailsWith<IllegalArgumentException> {
+                generator.generate(request())
+            }
+        }
+    }
+
+    @Test
+    fun `missing malformed and non png image payloads are rejected`() {
+        val cases = listOf(
+            "{}" to "did not contain image data",
+            "{\"data\":[]}" to "did not contain image data",
+            "{\"data\":[{}]}" to "did not contain image data",
+            "{\"data\":[{\"b64_json\":\" \"}]}" to "did not contain image data",
+            "{\"data\":[{\"b64_json\":\"not-base64!\"}]}" to "invalid base64 data",
+            imageResponse(byteArrayOf(0x01, 0x02)) to "invalid image size",
+            imageResponse(ByteArray(9) { 0x01 }) to "did not contain a PNG image",
+        )
+
+        cases.forEach { (body, expectedMessage) ->
+            startServerResponse(body)
+            val failure = assertFailsWith<RuntimeException> {
+                generator(TripRecapPhotoContentLoader { null }).generate(request())
+            }
+            assertContains(failure.message.orEmpty(), expectedMessage)
+            server?.stop(0)
+            server = null
+        }
+    }
+
+    @Test
+    fun `illustration request with medium richness uses five scenes and prompt fallbacks`() {
+        startServer(pngPayload(3))
+        val generator = generator(TripRecapPhotoContentLoader { null })
+        val expenses = listOf("FOOD", null, "FOOD", "TRANSPORT", null).mapIndexed { index, category ->
+            TripRecapExpenseSignal(
+                category = category,
+                amount = BigDecimal.TEN,
+                currency = "KRW",
+                occurredAt = Instant.EPOCH.plusSeconds(index.toLong()),
+            )
+        }
+
+        val result = generator.generate(
+            request().copy(
+                style = TripRecapStyle.ILLUSTRATION,
+                countries = emptyList(),
+                expenseSignals = expenses,
+            )
+        )
+
+        assertEquals(5, result.scenes.size)
+        assertEquals("editorial travel illustration scene focused on FOOD", result.scenes[0].sceneDescription)
+        assertEquals("editorial travel illustration scene focused on 제주 여행", result.scenes[1].sceneDescription)
+        result.scenes.forEach { scene ->
+            assertContains(scene.imagePrompt, "warm editorial travel illustration")
+            assertContains(scene.imagePrompt, "countries unspecified destination")
+            assertContains(scene.imagePrompt, "places no named place")
+            assertContains(scene.imagePrompt, "food, transport as optional activity signals")
+        }
+    }
+
+    @Test
+    fun `high richness request is capped at seven scenes and prioritizes place focus`() {
+        startServer(pngPayload(4))
+        val places = (1..10).map { TripRecapPlaceInput("place-$it", Instant.EPOCH) }
+
+        val result = generator(TripRecapPhotoContentLoader { null }).generate(
+            request().copy(places = places)
+        )
+
+        assertEquals(7, result.scenes.size)
+        result.scenes.forEachIndexed { index, scene ->
+            assertEquals("cinematic travel photo scene focused on place-${index + 1}", scene.sceneDescription)
+            assertContains(scene.imagePrompt, "Create scene ${index + 1} of 7")
+        }
+    }
+
+    @Test
+    fun `reference selection is capped and rotates deterministically between scenes`() {
+        startServer(pngPayload(5))
+        val loadedUrls = mutableListOf<String>()
+        val references = (0..4).map {
+            TripRecapPhotoReference(imageUrl = "/photo-$it.png", thumbnailUrl = null)
+        }
+        val properties = properties().apply { maxReferenceImages = 2 }
+        val generator = OpenAiTripRecapGenerator(
+            webClientBuilder = WebClient.builder(),
+            properties = properties,
+            photoContentLoader = TripRecapPhotoContentLoader { reference ->
+                loadedUrls += reference.imageUrl
+                TripRecapPhotoContent(
+                    filename = reference.imageUrl.removePrefix("/"),
+                    contentType = "image/png",
+                    bytes = pngPayload(6),
+                )
+            },
+        )
+
+        val result = generator.generate(request(photoReferences = references))
+
+        assertEquals(5, result.scenes.size)
+        assertEquals(
+            listOf(
+                "/photo-0.png", "/photo-1.png",
+                "/photo-2.png", "/photo-3.png",
+                "/photo-4.png", "/photo-0.png",
+                "/photo-1.png", "/photo-2.png",
+                "/photo-3.png", "/photo-4.png",
+            ),
+            loadedUrls,
+        )
+    }
+
+    @Test
+    fun `disabled references skip loader and use generations API`() {
+        val requests = startServer(pngPayload(7))
+        var loaderCalled = false
+        val properties = properties().apply { maxReferenceImages = -1 }
+        val generator = OpenAiTripRecapGenerator(
+            webClientBuilder = WebClient.builder(),
+            properties = properties,
+            photoContentLoader = TripRecapPhotoContentLoader {
+                loaderCalled = true
+                null
+            },
+        )
+
+        generator.generate(
+            request(
+                photoReferences = listOf(TripRecapPhotoReference("/reference.png", null))
+            )
+        )
+
+        assertFalse(loaderCalled)
+        assertTrue(requests.all { it.path == "/v1/images/generations" })
+    }
+
     private fun generator(photoContentLoader: TripRecapPhotoContentLoader): OpenAiTripRecapGenerator {
         return OpenAiTripRecapGenerator(
             webClientBuilder = WebClient.builder(),
@@ -128,12 +294,15 @@ class OpenAiTripRecapGeneratorTest {
     }
 
     private fun startServer(imageBytes: ByteArray): List<CapturedRequest> {
+        return startServerResponse(imageResponse(imageBytes))
+    }
+
+    private fun startServerResponse(responseBody: String): List<CapturedRequest> {
         val requests = CopyOnWriteArrayList<CapturedRequest>()
-        val encodedImage = Base64.getEncoder().encodeToString(imageBytes)
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
             createContext("/") { exchange ->
                 requests += capture(exchange)
-                val response = """{"data":[{"b64_json":"$encodedImage"}]}""".toByteArray()
+                val response = responseBody.toByteArray()
                 exchange.responseHeaders.add("Content-Type", "application/json")
                 exchange.sendResponseHeaders(200, response.size.toLong())
                 exchange.responseBody.use { it.write(response) }
@@ -141,6 +310,11 @@ class OpenAiTripRecapGeneratorTest {
             start()
         }
         return requests
+    }
+
+    private fun imageResponse(imageBytes: ByteArray): String {
+        val encodedImage = Base64.getEncoder().encodeToString(imageBytes)
+        return """{"data":[{"b64_json":"$encodedImage"}]}"""
     }
 
     private fun capture(exchange: HttpExchange): CapturedRequest {

@@ -22,6 +22,7 @@ import com.togethertrip.main.trip.repository.TripRepository
 import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -215,6 +216,157 @@ class TripParticipantServiceTest {
             10L,
             TripParticipantStatus.REMOVED.name,
         )
+    }
+
+    @Test
+    fun `활성 참여자는 상태 조건 없이 회원 유형만 조회할 수 있다`() {
+        val owner = createUser()
+        val member = createUser(id = 2L, nickname = "민서")
+        val trip = createTrip(owner)
+        val ownerParticipant = createParticipant(trip, owner, 100L, role = TripParticipantRole.LEADER)
+        val memberParticipant = createParticipant(trip, member, 101L)
+        val temporaryParticipant = createParticipant(trip, null, 102L)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(2L)).thenReturn(member)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByTripIdAndUserIdAndParticipantStatusAndDeletedAtIsNull(
+                10L,
+                2L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(memberParticipant)
+        `when`(tripParticipantRepository.findByTripIdAndDeletedAtIsNullOrderByCreatedAtAsc(10L))
+            .thenReturn(listOf(ownerParticipant, memberParticipant, temporaryParticipant))
+
+        val response = tripParticipantService.getParticipants(2L, 10L, null, " user ")
+
+        assertEquals(listOf(100L, 101L), response.map { it.id })
+        assertEquals(listOf(TripParticipantType.USER, TripParticipantType.USER), response.map { it.participantType })
+    }
+
+    @Test
+    fun `참여자 단건 조회는 여행 소속과 삭제 여부를 검증한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val participant = createParticipant(trip, null, 100L)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripParticipantRepository.findByIdAndTripIdAndDeletedAtIsNull(100L, 10L))
+            .thenReturn(participant)
+
+        val response = tripParticipantService.getParticipant(1L, 10L, 100L)
+        assertEquals(100L, response.id)
+
+        val missing = assertBusinessException {
+            tripParticipantService.getParticipant(1L, 10L, 999L)
+        }
+        assertEquals(TripErrorCode.TRIP_PARTICIPANT_NOT_FOUND, missing.errorCode)
+    }
+
+    @Test
+    fun `사용자와 여행 접근 실패를 계약된 오류로 구분한다`() {
+        val missingUser = assertBusinessException {
+            tripParticipantService.getParticipants(999L, 10L, null, null)
+        }
+        assertEquals(UserErrorCode.USER_NOT_FOUND, missingUser.errorCode)
+
+        val inactive = createUser(status = UserStatus.SUSPENDED)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(inactive)
+        val inactiveUser = assertBusinessException {
+            tripParticipantService.getParticipants(1L, 10L, null, null)
+        }
+        assertEquals(UserErrorCode.INACTIVE_USER, inactiveUser.errorCode)
+
+        val active = createUser()
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(active)
+        val missingTrip = assertBusinessException {
+            tripParticipantService.getParticipants(1L, 999L, null, null)
+        }
+        assertEquals(TripErrorCode.TRIP_NOT_FOUND, missingTrip.errorCode)
+
+        val otherOwner = createUser(id = 2L)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(createTrip(otherOwner))
+        val denied = assertBusinessException {
+            tripParticipantService.getParticipants(1L, 10L, null, null)
+        }
+        assertEquals(TripErrorCode.TRIP_ACCESS_DENIED, denied.errorCode)
+    }
+
+    @Test
+    fun `빈 참여자 수정 요청과 공백 이름은 거부한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val participant = createParticipant(trip, null, 100L)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+
+        val empty = assertBusinessException {
+            tripParticipantService.updateParticipant(1L, 10L, 100L, UpdateTripParticipantRequest())
+        }
+        assertEquals(com.togethertrip.main.global.exception.CommonErrorCode.INVALID_INPUT, empty.errorCode)
+
+        val blankName = assertBusinessException {
+            tripParticipantService.updateParticipant(
+                1L,
+                10L,
+                100L,
+                UpdateTripParticipantRequest(displayName = "   "),
+            )
+        }
+        assertEquals(com.togethertrip.main.global.exception.CommonErrorCode.INVALID_INPUT, blankName.errorCode)
+    }
+
+    @Test
+    fun `표시 이름만 수정하면 기존 프로필 이미지를 유지한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val participant = createParticipant(trip, null, 100L).apply {
+            profileImageUrl = "https://image.test/original.png"
+        }
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(
+            tripParticipantRepository.findByIdAndTripIdAndParticipantStatusAndDeletedAtIsNull(
+                100L,
+                10L,
+                TripParticipantStatus.ACTIVE,
+            )
+        ).thenReturn(participant)
+
+        val response = tripParticipantService.updateParticipant(
+            1L,
+            10L,
+            100L,
+            UpdateTripParticipantRequest(displayName = "변경 이름"),
+        )
+
+        assertEquals("변경 이름", response.displayName)
+        assertEquals("https://image.test/original.png", response.profileImageUrl)
+    }
+
+    @Test
+    fun `잘못된 참여자 상태와 유형은 각각 명시적 오류로 거부한다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        val invalidStatus = assertBusinessException {
+            tripParticipantService.getParticipants(1L, 10L, "unknown", null)
+        }
+        assertEquals(TripErrorCode.INVALID_TRIP_PARTICIPANT_STATUS, invalidStatus.errorCode)
+
+        val invalidType = assertBusinessException {
+            tripParticipantService.getParticipants(1L, 10L, null, "unknown")
+        }
+        assertEquals(TripErrorCode.INVALID_TRIP_PARTICIPANT_TYPE, invalidType.errorCode)
     }
 
     @Test

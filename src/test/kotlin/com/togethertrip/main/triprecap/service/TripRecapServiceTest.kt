@@ -90,6 +90,36 @@ class TripRecapServiceTest {
     }
 
     @Test
+    fun `생성 가능한 여행에 recap이 없으면 available none 상태를 반환한다`() {
+        val owner = createUser()
+        val trip = createAvailableTrip(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripRecapRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(null)
+
+        val response = tripRecapService.getStatus(1L, 10L)
+
+        assertTrue(response.available)
+        assertEquals(TripRecapViewStatus.NONE, response.status)
+        assertNull(response.recapId)
+    }
+
+    @Test
+    fun `생성 가능한 여행의 기존 recap 상태와 스타일을 반환한다`() {
+        val owner = createUser()
+        val trip = createAvailableTrip(owner)
+        val recap = createRecap(trip, owner).apply { id = 100L }
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripRecapRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(recap)
+
+        val response = tripRecapService.getStatus(1L, 10L)
+
+        assertTrue(response.available)
+        assertEquals(100L, response.recapId)
+        assertEquals(TripRecapViewStatus.CREATING, response.status)
+        assertEquals(TripRecapStyle.PHOTO, response.style)
+    }
+
+    @Test
     fun `종료 및 정산 완료된 여행은 recap 생성 요청에 성공한다`() {
         val owner = createUser()
         val trip = createAvailableTrip(owner)
@@ -136,6 +166,25 @@ class TripRecapServiceTest {
     }
 
     @Test
+    fun `종료 또는 정산 조건을 충족하지 못하면 recap 생성과 재시도를 거부한다`() {
+        val owner = createUser()
+        val unavailableTrip = createTrip(owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(unavailableTrip)
+
+        val createFailure = assertBusinessException {
+            tripRecapService.create(1L, 10L, TripRecapStyle.PHOTO)
+        }
+        val retryFailure = assertBusinessException {
+            tripRecapService.retry(1L, 10L, TripRecapStyle.ILLUSTRATION)
+        }
+
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_NOT_AVAILABLE, createFailure.errorCode)
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_NOT_AVAILABLE, retryFailure.errorCode)
+        verify(tripRecapRepository, never()).save(any(TripRecap::class.java))
+    }
+
+    @Test
     fun `실패한 recap 은 스타일을 다시 선택해 재시도할 수 있다`() {
         val owner = createUser()
         val trip = createAvailableTrip(owner)
@@ -165,6 +214,31 @@ class TripRecapServiceTest {
     }
 
     @Test
+    fun `recap 재시도는 대상 없음과 실패 상태 아님을 구분한다`() {
+        val owner = createUser()
+        val trip = createAvailableTrip(owner)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+        `when`(tripRecapRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(null)
+
+        val missing = assertBusinessException {
+            tripRecapService.retry(1L, 10L, TripRecapStyle.PHOTO)
+        }
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND, missing.errorCode)
+
+        val creating = createRecap(trip, owner).apply { id = 100L }
+        `when`(tripRecapRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(creating)
+        val notFailed = assertBusinessException {
+            tripRecapService.retry(1L, 10L, TripRecapStyle.PHOTO)
+        }
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_RETRY_NOT_ALLOWED, notFailed.errorCode)
+        assertTrue(
+            mockingDetails(tripRecapSceneRepository).invocations
+                .none { it.method.name == "softDeleteByRecapId" }
+        )
+    }
+
+    @Test
     fun `완료되지 않은 recap 조회는 실패한다`() {
         val owner = createUser()
         val trip = createAvailableTrip(owner)
@@ -180,6 +254,16 @@ class TripRecapServiceTest {
         }
 
         assertEquals(TripRecapErrorCode.TRIP_RECAP_NOT_COMPLETED, exception.errorCode)
+    }
+
+    @Test
+    fun `recap 상세 조회는 recap 없음과 미완료를 구분한다`() {
+        val owner = createUser()
+        val trip = createAvailableTrip(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        val missing = assertBusinessException { tripRecapService.getRecap(1L, 10L) }
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND, missing.errorCode)
     }
 
     @Test
@@ -254,6 +338,35 @@ class TripRecapServiceTest {
         )
 
         assertEquals(imageFile, response)
+    }
+
+    @Test
+    fun `장면 이미지 조회는 recap 없음 미완료 scene 없음을 각각 구분한다`() {
+        val owner = createUser()
+        val trip = createAvailableTrip(owner)
+        `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
+
+        val missingRecap = assertBusinessException {
+            tripRecapService.getSceneImage(1L, 10L, 200L)
+        }
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND, missingRecap.errorCode)
+
+        val creating = createRecap(trip, owner).apply { id = 100L }
+        `when`(tripRecapRepository.findByTripIdAndDeletedAtIsNull(10L)).thenReturn(creating)
+        val notCompleted = assertBusinessException {
+            tripRecapService.getSceneImage(1L, 10L, 200L)
+        }
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_NOT_COMPLETED, notCompleted.errorCode)
+
+        creating.complete(sceneCount = 1, now = java.time.Instant.now())
+        val missingScene = assertBusinessException {
+            tripRecapService.getSceneImage(1L, 10L, 200L)
+        }
+        assertEquals(TripRecapErrorCode.TRIP_RECAP_SCENE_NOT_FOUND, missingScene.errorCode)
+        assertTrue(
+            mockingDetails(tripRecapImageStorage).invocations
+                .none { it.method.name == "load" }
+        )
     }
 
     @Test

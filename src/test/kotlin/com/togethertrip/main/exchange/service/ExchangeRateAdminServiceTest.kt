@@ -4,6 +4,8 @@ import com.togethertrip.main.exchange.batch.ExchangeRateBackfillBatchService
 import com.togethertrip.main.exchange.config.ExchangeRateProperties
 import com.togethertrip.main.exchange.domain.ExchangeRateBackfillJob
 import com.togethertrip.main.exchange.domain.ExchangeRateBackfillJobStatus
+import com.togethertrip.main.exchange.domain.ExchangeRateImportRun
+import com.togethertrip.main.exchange.domain.ExchangeRateImportRunStatus
 import com.togethertrip.main.exchange.dto.request.ExchangeRateBackfillRequest
 import com.togethertrip.main.exchange.repository.ExchangeRateBackfillJobRepository
 import com.togethertrip.main.exchange.repository.ExchangeRateImportRunRepository
@@ -21,10 +23,12 @@ import org.springframework.batch.core.job.JobInstance
 import org.springframework.batch.core.job.parameters.JobParameters
 import org.springframework.batch.core.launch.JobOperator
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.data.domain.PageRequest
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class ExchangeRateAdminServiceTest {
 
@@ -169,6 +173,126 @@ class ExchangeRateAdminServiceTest {
         )
     }
 
+    @Test
+    fun `환율 수집 이력은 날짜 범위를 검증하고 상태로 필터링한다`() {
+        val success = importRun(1L, "2026-06-01", ExchangeRateImportRunStatus.SUCCESS)
+        val failed = importRun(2L, "2026-06-02", ExchangeRateImportRunStatus.FAILED)
+        `when`(
+            importRunRepository.findByProviderAndRateDateBetweenAndDeletedAtIsNullOrderByRateDateAsc(
+                "KOREA_EXIM",
+                LocalDate.parse("2026-06-01"),
+                LocalDate.parse("2026-06-02"),
+            )
+        ).thenReturn(listOf(success, failed))
+
+        val all = service.getImportRuns(
+            LocalDate.parse("2026-06-01"),
+            LocalDate.parse("2026-06-02"),
+            null,
+        )
+        val failures = service.getImportRuns(
+            LocalDate.parse("2026-06-01"),
+            LocalDate.parse("2026-06-02"),
+            ExchangeRateImportRunStatus.FAILED,
+        )
+
+        assertEquals(listOf(1L, 2L), all.map { it.id })
+        assertEquals(listOf(2L), failures.map { it.id })
+        assertFailsWith<IllegalArgumentException> {
+            service.getImportRuns(
+                LocalDate.parse("2026-06-03"),
+                LocalDate.parse("2026-06-02"),
+                null,
+            )
+        }
+    }
+
+    @Test
+    fun `백필 목록 limit은 최소 최대 범위로 보정한다`() {
+        val job = backfillJob(10L, ExchangeRateBackfillJobStatus.RUNNING)
+        `when`(backfillJobRepository.findByDeletedAtIsNullOrderByCreatedAtDesc(PageRequest.of(0, 1)))
+            .thenReturn(listOf(job))
+        `when`(backfillJobRepository.findByDeletedAtIsNullOrderByCreatedAtDesc(PageRequest.of(0, 100)))
+            .thenReturn(listOf(job))
+
+        assertEquals(listOf(10L), service.getBackfillJobs(0).map { it.id })
+        assertEquals(listOf(10L), service.getBackfillJobs(101).map { it.id })
+    }
+
+    @Test
+    fun `백필 단건은 존재 여부를 구분한다`() {
+        val job = backfillJob(10L, ExchangeRateBackfillJobStatus.RUNNING)
+        `when`(backfillJobRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(job)
+
+        assertEquals(10L, service.getBackfillJob(10L).id)
+        assertFailsWith<IllegalArgumentException> { service.getBackfillJob(999L) }
+    }
+
+    @Test
+    fun `역전된 백필 날짜는 job 생성 전에 거부한다`() {
+        assertFailsWith<IllegalArgumentException> {
+            service.runBackfill(
+                1L,
+                ExchangeRateBackfillRequest(
+                    from = LocalDate.parse("2026-06-02"),
+                    to = LocalDate.parse("2026-06-01"),
+                ),
+            )
+        }
+        verify(backfillJobRepository, never()).saveAndFlush(any(ExchangeRateBackfillJob::class.java))
+    }
+
+    @Test
+    fun `Batch 실행 예외는 실패 처리 후 저장된 실패 상태를 반환한다`() {
+        val saved = backfillJob(12L, ExchangeRateBackfillJobStatus.REQUESTED)
+        val failed = backfillJob(12L, ExchangeRateBackfillJobStatus.FAILED).also {
+            it.lastErrorMessage = "launcher unavailable"
+        }
+        `when`(
+            backfillJobRepository.findFirstByStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(ACTIVE_STATUSES)
+        ).thenReturn(null)
+        `when`(backfillJobRepository.saveAndFlush(any(ExchangeRateBackfillJob::class.java))).thenReturn(saved)
+        `when`(jobOperator.start(eq(exchangeRateBackfillJob), any(JobParameters::class.java)))
+            .thenThrow(IllegalStateException("launcher unavailable"))
+        `when`(backfillJobRepository.findByIdAndDeletedAtIsNull(12L)).thenReturn(failed)
+
+        val response = service.runBackfill(1L, backfillRequest())
+
+        assertEquals(ExchangeRateBackfillJobStatus.FAILED, response.status)
+        assertEquals("launcher unavailable", response.lastErrorMessage)
+        verify(backfillBatchService).markLaunchFailed(eq(12L), anyException())
+    }
+
+    @Test
+    fun `Batch execution id 누락도 실행 실패로 수렴하고 저장 row fallback을 사용한다`() {
+        val saved = backfillJob(12L, ExchangeRateBackfillJobStatus.REQUESTED)
+        val execution = mock(JobExecution::class.java)
+        `when`(
+            backfillJobRepository.findFirstByStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(ACTIVE_STATUSES)
+        ).thenReturn(null)
+        `when`(backfillJobRepository.saveAndFlush(any(ExchangeRateBackfillJob::class.java))).thenReturn(saved)
+        `when`(jobOperator.start(eq(exchangeRateBackfillJob), any(JobParameters::class.java))).thenReturn(execution)
+
+        val response = service.runBackfill(1L, backfillRequest())
+
+        assertEquals(12L, response.id)
+        verify(backfillBatchService).markLaunchFailed(eq(12L), anyException())
+    }
+
+    @Test
+    fun `active unique 충돌이 두 번 반복되고 재사용 job도 없으면 마지막 충돌을 전달한다`() {
+        `when`(
+            backfillJobRepository.findFirstByStatusInAndDeletedAtIsNullOrderByCreatedAtDesc(ACTIVE_STATUSES)
+        ).thenReturn(null)
+        `when`(backfillJobRepository.saveAndFlush(any(ExchangeRateBackfillJob::class.java)))
+            .thenThrow(DataIntegrityViolationException("active backfill exists"))
+
+        assertFailsWith<DataIntegrityViolationException> {
+            service.runBackfill(1L, backfillRequest())
+        }
+        verify(jobOperator, never()).start(any(Job::class.java), any(JobParameters::class.java))
+    }
+
     private fun backfillRequest(): ExchangeRateBackfillRequest {
         return ExchangeRateBackfillRequest(
             from = LocalDate.parse("2026-06-01"),
@@ -190,6 +314,18 @@ class ExchangeRateAdminServiceTest {
         ).also {
             it.id = id
         }
+    }
+
+    private fun importRun(
+        id: Long,
+        rateDate: String,
+        status: ExchangeRateImportRunStatus,
+    ): ExchangeRateImportRun {
+        return ExchangeRateImportRun(
+            provider = "KOREA_EXIM",
+            rateDate = LocalDate.parse(rateDate),
+            status = status,
+        ).also { it.id = id }
     }
 
     private fun anyException(): Exception {

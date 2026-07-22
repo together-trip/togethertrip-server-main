@@ -15,31 +15,6 @@ jobs:
     name: Build Test
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgis/postgis:17-3.5
-        env:
-          POSTGRES_DB: together_trip_test
-          POSTGRES_USER: together_trip
-          POSTGRES_PASSWORD: together_trip
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U together_trip -d together_trip_test"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -60,7 +35,7 @@ jobs:
         run: ./gradlew compileKotlin
 
       - name: Test and coverage
-        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification
+        run: ./gradlew check jacocoTestReport
 
       - name: SonarQube Cloud analysis
         if: ${{ env.SONAR_TOKEN != '' }}

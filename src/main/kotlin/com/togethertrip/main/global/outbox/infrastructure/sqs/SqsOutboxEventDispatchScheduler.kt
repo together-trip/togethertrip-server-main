@@ -17,6 +17,9 @@ class SqsOutboxEventDispatchScheduler(
             return
         }
 
-        dispatchService.dispatchPending(dispatchProperties.limit)
+        dispatchService.dispatchPending(
+            limit = dispatchProperties.limit,
+            maxAttempts = dispatchProperties.maxAttempts,
+        )
     }
 }
