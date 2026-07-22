@@ -1,8 +1,18 @@
 package com.togethertrip.main.triprecap.service.ai
 
+import com.togethertrip.main.global.config.MainIntegrationTest
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.redisson.api.RedissonClient
+import org.springframework.ai.image.Image
+import org.springframework.ai.image.ImageGeneration
 import org.springframework.ai.image.ImageResponse
+import org.springframework.ai.image.ImageResponseMetadata
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.data.redis.core.StringRedisTemplate
+import tools.jackson.databind.ObjectMapper
 import java.time.Duration
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -10,47 +20,34 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-class TripRecapImageRequestCacheTest {
+@MainIntegrationTest
+class TripRecapImageRequestCacheTest @Autowired constructor(
+    private val redissonClient: RedissonClient,
+    private val objectMapper: ObjectMapper,
+    private val redisTemplate: StringRedisTemplate,
+) {
 
-    @Test
-    fun `same key is loaded once and then returned as a hit`() {
-        val cache = cache()
-        val response = ImageResponse(emptyList())
-        var loads = 0
+    private val keys = mutableSetOf<String>()
 
-        val first = cache.get("same") { loads += 1; response }
-        val second = cache.get("same") { loads += 1; error("must not reload") }
-
-        assertFalse(first.hit)
-        assertTrue(second.hit)
-        assertSame(response, second.response)
-        assertEquals(1, loads)
+    @AfterEach
+    fun cleanRedisKeys() {
+        keys.flatMap { key ->
+            listOf(
+                RedisTripRecapImageRequestCache.RESPONSE_KEY_PREFIX + key,
+                RedisTripRecapImageRequestCache.LOCK_KEY_PREFIX + key,
+            )
+        }.takeIf { it.isNotEmpty() }
+            ?.let(redisTemplate::delete)
     }
 
     @Test
-    fun `failed and non cacheable responses are not retained`() {
-        val cache = cache()
-        val response = ImageResponse(emptyList())
-
-        assertFailsWith<IllegalStateException> {
-            cache.get("failed") { error("temporary failure") }
-        }
-        val afterFailure = cache.get("failed") { response }
-        val nonCacheable = cache.get("invalid", cacheable = { false }) { response }
-        val afterInvalid = cache.get("invalid") { response }
-
-        assertFalse(afterFailure.hit)
-        assertFalse(nonCacheable.hit)
-        assertFalse(afterInvalid.hit)
-    }
-
-    @Test
-    fun `concurrent identical requests share one in flight load`() {
-        val cache = cache()
-        val response = ImageResponse(emptyList())
+    fun `서로 다른 캐시 인스턴스의 동일 요청은 한 번만 생성한다`() {
+        val key = key("shared")
+        val firstCache = cache()
+        val secondCache = cache()
+        val response = response()
         val loads = AtomicInteger()
         val loaderStarted = CountDownLatch(1)
         val releaseLoader = CountDownLatch(1)
@@ -58,22 +55,33 @@ class TripRecapImageRequestCacheTest {
 
         try {
             val first = executor.submit<TripRecapImageCacheLookup> {
-                cache.get("concurrent") {
+                firstCache.get(key) {
                     loads.incrementAndGet()
                     loaderStarted.countDown()
-                    check(releaseLoader.await(1, TimeUnit.SECONDS))
+                    check(releaseLoader.await(3, TimeUnit.SECONDS))
                     response
                 }
             }
-            assertTrue(loaderStarted.await(1, TimeUnit.SECONDS))
+            assertTrue(loaderStarted.await(3, TimeUnit.SECONDS))
             val second = executor.submit<TripRecapImageCacheLookup> {
-                cache.get("concurrent") { error("second loader must not run") }
+                secondCache.get(key) {
+                    loads.incrementAndGet()
+                    error("두 번째 인스턴스는 이미 진행 중인 생성 결과를 사용해야 합니다.")
+                }
             }
-            Thread.sleep(20)
             releaseLoader.countDown()
 
-            assertFalse(first.get(1, TimeUnit.SECONDS).hit)
-            assertTrue(second.get(1, TimeUnit.SECONDS).hit)
+            assertFalse(first.get(3, TimeUnit.SECONDS).hit)
+            val shared = second.get(3, TimeUnit.SECONDS)
+            assertTrue(shared.hit)
+            assertEquals(
+                response.results.map { it.output.url to it.output.b64Json },
+                shared.response.results.map { it.output.url to it.output.b64Json },
+            )
+            assertEquals(
+                response.metadata.get<TripRecapImageTokenUsage>(DefaultSpringAiOpenAiImageOperations.USAGE_METADATA_KEY),
+                shared.response.metadata.get(DefaultSpringAiOpenAiImageOperations.USAGE_METADATA_KEY),
+            )
             assertEquals(1, loads.get())
         } finally {
             releaseLoader.countDown()
@@ -82,45 +90,100 @@ class TripRecapImageRequestCacheTest {
     }
 
     @Test
-    fun `disabled zero sized and expired cache entries reload`() {
-        val response = ImageResponse(emptyList())
-        val properties = OpenAiTripRecapProperties().apply { cacheEnabled = false }
-        assertFalse(TripRecapImageRequestCache(properties).get("disabled") { response }.hit)
+    fun `분산 lock 대기 시간이 끝나면 중복 생성을 실행하지 않는다`() {
+        val key = key("timeout")
+        val ownerCache = cache(lockWait = Duration.ofSeconds(2))
+        val contenderCache = cache(lockWait = Duration.ofMillis(50))
+        val loaderStarted = CountDownLatch(1)
+        val releaseLoader = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
 
-        properties.cacheEnabled = true
-        properties.cacheMaxEntries = 0
-        assertFalse(TripRecapImageRequestCache(properties).get("zero") { response }.hit)
+        try {
+            val owner = executor.submit<TripRecapImageCacheLookup> {
+                ownerCache.get(key) {
+                    loaderStarted.countDown()
+                    check(releaseLoader.await(3, TimeUnit.SECONDS))
+                    response()
+                }
+            }
+            assertTrue(loaderStarted.await(3, TimeUnit.SECONDS))
 
-        properties.cacheMaxEntries = 1
-        properties.cacheTtl = Duration.ofNanos(-1)
-        assertFalse(TripRecapImageRequestCache(properties).get("negative") { response }.hit)
+            assertFailsWith<IllegalStateException> {
+                contenderCache.get(key) { error("lock 획득 실패 시 중복 생성하면 안 됩니다.") }
+            }
 
-        properties.cacheTtl = Duration.ofNanos(1)
-        val expiring = TripRecapImageRequestCache(properties)
-        expiring.get("expired") { response }
-        assertFalse(expiring.get("expired") { response }.hit)
+            releaseLoader.countDown()
+            assertFalse(owner.get(3, TimeUnit.SECONDS).hit)
+        } finally {
+            releaseLoader.countDown()
+            executor.shutdownNow()
+        }
     }
 
     @Test
-    fun `least recently used completed entry is evicted at the configured bound`() {
+    fun `실패 응답과 캐시 불가 응답은 저장하지 않는다`() {
+        val failedKey = key("failed")
+        val invalidKey = key("invalid")
         val cache = cache()
-        val response = ImageResponse(emptyList())
 
-        cache.get("first") { response }
-        cache.get("second") { response }
-        assertTrue(cache.get("first") { error("first must be retained by access") }.hit)
-        cache.get("third") { response }
-
-        assertFalse(cache.get("second") { response }.hit)
-        assertTrue(cache.get("third") { error("third must still be cached") }.hit)
+        assertFailsWith<IllegalStateException> {
+            cache.get(failedKey) { error("temporary failure") }
+        }
+        assertFalse(cache.get(failedKey) { response() }.hit)
+        assertFalse(cache.get(invalidKey, cacheable = { false }) { response() }.hit)
+        assertFalse(cache.get(invalidKey) { response() }.hit)
     }
 
-    private fun cache(): TripRecapImageRequestCache {
-        val properties = OpenAiTripRecapProperties().apply {
-            cacheEnabled = true
-            cacheMaxEntries = 2
-            cacheTtl = Duration.ofMinutes(1)
+    @Test
+    fun `TTL이 지난 응답은 다시 생성한다`() {
+        val key = key("expired")
+        val cache = cache(ttl = Duration.ofMillis(80))
+
+        assertFalse(cache.get(key) { response() }.hit)
+        Thread.sleep(160)
+
+        assertFalse(cache.get(key) { response() }.hit)
+    }
+
+    @Test
+    fun `캐시를 끄면 Redis를 거치지 않고 매번 생성한다`() {
+        val key = key("disabled")
+        val cache = cache(enabled = false)
+        val loads = AtomicInteger()
+
+        repeat(2) {
+            assertFalse(cache.get(key) { loads.incrementAndGet(); response() }.hit)
         }
-        return TripRecapImageRequestCache(properties)
+
+        assertEquals(2, loads.get())
+        assertFalse(redisTemplate.hasKey(RedisTripRecapImageRequestCache.RESPONSE_KEY_PREFIX + key))
+    }
+
+    private fun cache(
+        enabled: Boolean = true,
+        ttl: Duration = Duration.ofMinutes(1),
+        lockWait: Duration = Duration.ofSeconds(2),
+    ): RedisTripRecapImageRequestCache {
+        val properties = OpenAiTripRecapProperties().apply {
+            cacheEnabled = enabled
+            cacheTtl = ttl
+            cacheLockWait = lockWait
+        }
+        return RedisTripRecapImageRequestCache(properties, redissonClient, objectMapper)
+    }
+
+    private fun key(label: String): String {
+        return "$label-${UUID.randomUUID()}".also(keys::add)
+    }
+
+    private fun response(): ImageResponse {
+        val usage = TripRecapImageTokenUsage(120, 40, 80, 10, 30, 0)
+        val metadata = ImageResponseMetadata(123L).apply {
+            put(DefaultSpringAiOpenAiImageOperations.USAGE_METADATA_KEY, usage)
+        }
+        return ImageResponse(
+            listOf(ImageGeneration(Image(null, "iVBORw0KGgo="))),
+            metadata,
+        )
     }
 }

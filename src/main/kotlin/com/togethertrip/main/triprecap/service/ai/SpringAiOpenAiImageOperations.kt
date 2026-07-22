@@ -30,7 +30,7 @@ interface SpringAiOpenAiImageOperations : ImageModel {
 @ConditionalOnProperty(prefix = "trip-recap.ai", name = ["provider"], havingValue = "openai")
 class DefaultSpringAiOpenAiImageOperations(
     properties: OpenAiTripRecapProperties,
-    private val requestCache: TripRecapImageRequestCache = TripRecapImageRequestCache(properties),
+    private val requestCache: TripRecapImageRequestCache,
 ) : SpringAiOpenAiImageOperations {
 
     private val client: OpenAIClient by lazy {
@@ -51,6 +51,7 @@ class DefaultSpringAiOpenAiImageOperations(
         val prompt = request.instructions.joinToString("\n") { it.text }
         val lookup = requestCache.get(
             key = cacheKey(OPERATION_GENERATION, prompt, options, emptyList()),
+            cacheable = ::hasValidPngPayload,
             loader = {
                 client.images().generate(
                     ImageGenerateParams.builder()
@@ -64,7 +65,6 @@ class DefaultSpringAiOpenAiImageOperations(
                         .build()
                 ).toSpringAiResponse()
             },
-            cacheable = ::hasValidPngPayload,
         )
         return lookup.response.markCacheHit(lookup.hit)
     }
@@ -80,6 +80,7 @@ class DefaultSpringAiOpenAiImageOperations(
             .build()
         val lookup = requestCache.get(
             key = cacheKey(OPERATION_EDIT, prompt, options, references),
+            cacheable = ::hasValidPngPayload,
             loader = {
                 client.images().edit(
                     ImageEditParams.builder()
@@ -93,7 +94,6 @@ class DefaultSpringAiOpenAiImageOperations(
                         .build()
                 ).toSpringAiResponse()
             },
-            cacheable = ::hasValidPngPayload,
         )
         return lookup.response.markCacheHit(lookup.hit)
     }

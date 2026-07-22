@@ -23,6 +23,7 @@ class OpenAiTripRecapGeneratorTest {
 
     private var server: HttpServer? = null
     private val observations = CopyOnWriteArrayList<TripRecapImageGenerationObservation>()
+    private val requestCache = TestTripRecapImageRequestCache()
 
     @AfterEach
     fun tearDown() {
@@ -133,7 +134,7 @@ class OpenAiTripRecapGeneratorTest {
             modelRouter = DefaultTripRecapImageModelRouter(),
             photoContentLoader = TripRecapPhotoContentLoader { null },
             referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
-            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties, requestCache),
             imageGenerationObserver = observations::add,
         )
 
@@ -144,7 +145,7 @@ class OpenAiTripRecapGeneratorTest {
 
     @Test
     fun `spring ai adapter rejects portable options for generation and edit`() {
-        val operations = DefaultSpringAiOpenAiImageOperations(properties())
+        val operations = DefaultSpringAiOpenAiImageOperations(properties(), TripRecapImageRequestCache.NOOP)
         val portablePrompt = ImagePrompt("test prompt")
 
         val generationFailure = assertFailsWith<IllegalStateException> {
@@ -185,7 +186,7 @@ class OpenAiTripRecapGeneratorTest {
                 modelRouter = DefaultTripRecapImageModelRouter(),
                 photoContentLoader = TripRecapPhotoContentLoader { error("loader must not be called") },
                 referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
-                imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+                imageOperations = DefaultSpringAiOpenAiImageOperations(properties, TripRecapImageRequestCache.NOOP),
                 imageGenerationObserver = observations::add,
             )
 
@@ -311,7 +312,7 @@ class OpenAiTripRecapGeneratorTest {
                 )
             },
             referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
-            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties, requestCache),
             imageGenerationObserver = observations::add,
         )
 
@@ -343,7 +344,7 @@ class OpenAiTripRecapGeneratorTest {
                 null
             },
             referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
-            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties, TripRecapImageRequestCache.NOOP),
             imageGenerationObserver = observations::add,
         )
 
@@ -364,7 +365,7 @@ class OpenAiTripRecapGeneratorTest {
             modelRouter = DefaultTripRecapImageModelRouter(),
             photoContentLoader = photoContentLoader,
             referenceImageOptimizer = TripRecapReferenceImageOptimizer.IDENTITY,
-            imageOperations = DefaultSpringAiOpenAiImageOperations(properties),
+            imageOperations = DefaultSpringAiOpenAiImageOperations(properties, requestCache),
             imageGenerationObserver = observations::add,
         )
     }
@@ -382,6 +383,23 @@ class OpenAiTripRecapGeneratorTest {
 
     private fun startServer(imageBytes: ByteArray): List<CapturedRequest> {
         return startServerResponse(imageResponse(imageBytes))
+    }
+
+    private class TestTripRecapImageRequestCache : TripRecapImageRequestCache {
+        private val responses = mutableMapOf<String, org.springframework.ai.image.ImageResponse>()
+
+        override fun get(
+            key: String,
+            cacheable: (org.springframework.ai.image.ImageResponse) -> Boolean,
+            loader: () -> org.springframework.ai.image.ImageResponse,
+        ): TripRecapImageCacheLookup {
+            responses[key]?.let { return TripRecapImageCacheLookup(it, true) }
+            val response = loader()
+            if (cacheable(response)) {
+                responses[key] = response
+            }
+            return TripRecapImageCacheLookup(response, false)
+        }
     }
 
     private fun startServerResponse(responseBody: String): List<CapturedRequest> {
