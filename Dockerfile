@@ -15,7 +15,12 @@ FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-COPY --from=builder /app/build/libs/*.jar app.jar
+RUN groupadd --system --gid 10001 togethertrip \
+    && useradd --system --uid 10001 --gid togethertrip --home-dir /app --shell /usr/sbin/nologin togethertrip
+
+COPY --from=builder --chown=10001:10001 /app/build/libs/*.jar app.jar
+
+USER 10001:10001
 
 EXPOSE 8080
 
