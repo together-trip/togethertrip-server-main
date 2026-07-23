@@ -1,5 +1,6 @@
 package com.togethertrip.main.global.security.handler
 
+import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.response.ErrorResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -23,9 +24,10 @@ class CustomAuthenticationEntryPoint(
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = Charsets.UTF_8.name()
 
+        val errorCode = CommonErrorCode.AUTHENTICATION_REQUIRED
         val errorResponse = ErrorResponse(
-            code = "AUTHENTICATION_REQUIRED",
-            message = "인증이 필요합니다.",
+            code = errorCode.code,
+            message = errorCode.message,
         )
 
         response.writer.write(objectMapper.writeValueAsString(errorResponse))

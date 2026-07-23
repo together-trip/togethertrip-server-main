@@ -5,11 +5,16 @@ import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.security.SecurityRequirement
 import io.swagger.v3.oas.models.security.SecurityScheme
+import io.swagger.v3.oas.models.servers.Server
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 @Configuration
-class OpenApiConfig {
+class OpenApiConfig(
+    @Value("\${openapi.server.url:http://localhost:8080}")
+    private val openApiServerUrl: String,
+) {
 
     @Bean
     fun openApi(): OpenAPI {
@@ -19,6 +24,13 @@ class OpenApiConfig {
             .bearerFormat("JWT")
             .`in`(SecurityScheme.In.HEADER)
             .name("Authorization")
+            .description(
+                "관리자: local-test:admin<br>" +
+                    "한지민(인증): local-test:verified:hana<br>" +
+                    "김민서(인증): local-test:verified:minseo<br>" +
+                    "박서준(인증): local-test:verified:joon<br>" +
+                    "이유리(미인증): local-test:unverified:yuri"
+            )
 
         return OpenAPI()
             .info(
@@ -31,5 +43,12 @@ class OpenApiConfig {
                 Components().addSecuritySchemes("bearerAuth", bearerScheme)
             )
             .addSecurityItem(SecurityRequirement().addList("bearerAuth"))
+            .servers(
+                listOf(
+                    Server()
+                        .url(openApiServerUrl)
+                        .description("Gateway")
+                )
+            )
     }
 }

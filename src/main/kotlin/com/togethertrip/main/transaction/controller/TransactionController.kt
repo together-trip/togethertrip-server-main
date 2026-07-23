@@ -1,14 +1,22 @@
 package com.togethertrip.main.transaction.controller
 
+import com.togethertrip.main.global.response.ApiResponse
+import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.global.security.principal.AuthUser
+import com.togethertrip.main.transaction.controller.spec.TransactionApiSpec
 import com.togethertrip.main.transaction.dto.request.CreateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionPaymentsRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionRequest
 import com.togethertrip.main.transaction.dto.request.UpdateTransactionSharesRequest
+import com.togethertrip.main.transaction.dto.response.CommonFundBalanceResponse
+import com.togethertrip.main.transaction.dto.response.TransactionDetailResponse
+import com.togethertrip.main.transaction.dto.response.TransactionEventResponse
+import com.togethertrip.main.transaction.dto.response.TransactionExchangeRatePreviewResponse
+import com.togethertrip.main.transaction.dto.response.TransactionStatisticsResponse
+import com.togethertrip.main.transaction.dto.response.TransactionSummaryResponse
 import com.togethertrip.main.transaction.service.TransactionService
-import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.security.SecurityRequirement
-import io.swagger.v3.oas.annotations.tags.Tag
+import com.togethertrip.main.trip.security.RequireActiveTripParticipant
+import jakarta.validation.Valid
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -20,112 +28,203 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 
-@Tag(name = "Transaction", description = "거래 API")
-@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/trips/{tripId}")
 class TransactionController(
     private val transactionService: TransactionService,
-) {
+) : TransactionApiSpec {
 
-    @Operation(summary = "거래 등록", description = "여행 지출, 공동경비 충전, 공동경비 사용 거래를 등록합니다.")
     @PostMapping("/transactions")
-    fun createTransaction(
+    @RequireActiveTripParticipant
+    override fun createTransaction(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-        @RequestBody request: CreateTransactionRequest,
-    ) {
+        @Valid @RequestBody request: CreateTransactionRequest,
+    ): ApiResponse<TransactionDetailResponse> {
+        return ApiResponse.success(
+            transactionService.createTransaction(
+                userId = authUser.userId,
+                tripId = tripId,
+                request = request,
+            )
+        )
     }
 
-    @Operation(summary = "거래 목록 조회", description = "여행의 거래 목록을 조회합니다.")
     @GetMapping("/transactions")
-    fun getTransactions(
+    @RequireActiveTripParticipant
+    override fun getTransactions(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @RequestParam(required = false) type: String?,
-        @RequestParam(required = false) category: String?,
         @RequestParam(required = false) participantId: Long?,
-        @RequestParam(required = false) from: String?,
-        @RequestParam(required = false) to: String?,
-        @RequestParam(required = false) page: Int?,
+        @RequestParam(required = false) cursor: String?,
         @RequestParam(required = false) size: Int?,
-    ) {
+    ): ApiResponse<CursorResponse<TransactionSummaryResponse>> {
+        return ApiResponse.success(
+            transactionService.getTransactions(
+                userId = authUser.userId,
+                tripId = tripId,
+                type = type,
+                participantId = participantId,
+                cursor = cursor,
+                size = size,
+            )
+        )
     }
 
-    @Operation(summary = "거래 상세 조회", description = "특정 거래의 결제자와 부담자 정보를 조회합니다.")
+    @GetMapping("/transactions/exchange-rate")
+    @RequireActiveTripParticipant
+    override fun getTransactionExchangeRatePreview(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+        @RequestParam currency: String,
+        @RequestParam(required = false) spendingDate: LocalDate?,
+    ): ApiResponse<TransactionExchangeRatePreviewResponse> {
+        return ApiResponse.success(
+            transactionService.getTransactionExchangeRatePreview(
+                userId = authUser.userId,
+                tripId = tripId,
+                currency = currency,
+                spendingDate = spendingDate,
+            )
+        )
+    }
+
     @GetMapping("/transactions/{transactionId}")
-    fun getTransaction(
+    @RequireActiveTripParticipant
+    override fun getTransaction(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable transactionId: Long,
-    ) {
+    ): ApiResponse<TransactionDetailResponse> {
+        return ApiResponse.success(
+            transactionService.getTransaction(
+                userId = authUser.userId,
+                tripId = tripId,
+                transactionId = transactionId,
+            )
+        )
     }
 
-    @Operation(summary = "거래 수정", description = "거래 금액, 통화, 카테고리, 설명, 발생일시, 위치 정보를 수정합니다.")
     @PatchMapping("/transactions/{transactionId}")
-    fun updateTransaction(
+    @RequireActiveTripParticipant
+    override fun updateTransaction(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable transactionId: Long,
-        @RequestBody request: UpdateTransactionRequest,
-    ) {
+        @Valid @RequestBody request: UpdateTransactionRequest,
+    ): ApiResponse<TransactionDetailResponse> {
+        return ApiResponse.success(
+            transactionService.updateTransaction(
+                userId = authUser.userId,
+                tripId = tripId,
+                transactionId = transactionId,
+                request = request,
+            )
+        )
     }
 
-    @Operation(summary = "거래 삭제", description = "특정 거래를 삭제(무효 처리)합니다.")
     @DeleteMapping("/transactions/{transactionId}")
-    fun deleteTransaction(
+    @RequireActiveTripParticipant
+    override fun deleteTransaction(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable transactionId: Long,
-    ) {
+    ): ApiResponse<Unit> {
+        transactionService.deleteTransaction(
+            userId = authUser.userId,
+            tripId = tripId,
+            transactionId = transactionId,
+        )
+
+        return ApiResponse.success()
     }
 
-    @Operation(summary = "거래 변경 이력 조회", description = "특정 거래의 변경 이벤트 이력(생성/조정/무효)을 버전 순으로 조회합니다.")
     @GetMapping("/transactions/{transactionId}/events")
-    fun getTransactionEvents(
+    @RequireActiveTripParticipant
+    override fun getTransactionEvents(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable transactionId: Long,
-    ) {
+    ): ApiResponse<List<TransactionEventResponse>> {
+        return ApiResponse.success(
+            transactionService.getTransactionEvents(
+                userId = authUser.userId,
+                tripId = tripId,
+                transactionId = transactionId,
+            )
+        )
     }
 
-    @Operation(summary = "거래 결제자 목록 변경", description = "특정 거래의 결제자 목록과 결제 금액을 변경합니다.")
     @PutMapping("/transactions/{transactionId}/payments")
-    fun updateTransactionPayments(
+    @RequireActiveTripParticipant
+    override fun updateTransactionPayments(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable transactionId: Long,
-        @RequestBody request: UpdateTransactionPaymentsRequest,
-    ) {
+        @Valid @RequestBody request: UpdateTransactionPaymentsRequest,
+    ): ApiResponse<TransactionDetailResponse> {
+        return ApiResponse.success(
+            transactionService.updateTransactionPayments(
+                userId = authUser.userId,
+                tripId = tripId,
+                transactionId = transactionId,
+                request = request,
+            )
+        )
     }
 
-    @Operation(summary = "거래 부담자 목록 변경", description = "특정 거래의 부담자 목록과 부담 금액을 변경합니다.")
     @PutMapping("/transactions/{transactionId}/shares")
-    fun updateTransactionShares(
+    @RequireActiveTripParticipant
+    override fun updateTransactionShares(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable transactionId: Long,
-        @RequestBody request: UpdateTransactionSharesRequest,
-    ) {
+        @Valid @RequestBody request: UpdateTransactionSharesRequest,
+    ): ApiResponse<TransactionDetailResponse> {
+        return ApiResponse.success(
+            transactionService.updateTransactionShares(
+                userId = authUser.userId,
+                tripId = tripId,
+                transactionId = transactionId,
+                request = request,
+            )
+        )
     }
 
-    @Operation(summary = "공동경비 잔액 조회", description = "여행의 공동경비 충전 금액, 사용 금액, 잔액을 조회합니다.")
     @GetMapping("/common-fund-balance")
-    fun getCommonFundBalance(
+    @RequireActiveTripParticipant
+    override fun getCommonFundBalance(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-    ) {
+    ): ApiResponse<CommonFundBalanceResponse> {
+        return ApiResponse.success(
+            transactionService.getCommonFundBalance(
+                userId = authUser.userId,
+                tripId = tripId,
+            )
+        )
     }
 
-    @Operation(summary = "거래 통계 조회", description = "여행의 카테고리별, 참여자별 거래 통계를 조회합니다.")
     @GetMapping("/transaction-statistics")
-    fun getTransactionStatistics(
+    @RequireActiveTripParticipant
+    override fun getTransactionStatistics(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @RequestParam(required = false) from: String?,
         @RequestParam(required = false) to: String?,
         @RequestParam(required = false) groupBy: String?,
-    ) {
+    ): ApiResponse<TransactionStatisticsResponse> {
+        return ApiResponse.success(
+            transactionService.getTransactionStatistics(
+                userId = authUser.userId,
+                tripId = tripId,
+                from = from,
+                to = to,
+                groupBy = groupBy,
+            )
+        )
     }
 }

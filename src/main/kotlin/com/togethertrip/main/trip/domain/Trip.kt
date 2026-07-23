@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.time.Instant
 import java.time.LocalDate
 
@@ -51,4 +52,52 @@ class Trip(
     @Column(name = "settled_at")
     var settledAt: Instant? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    @Version
+    @Column(nullable = false)
+    var version: Long = 0
+
+    fun updateBasicInfo(
+        title: String?,
+        defaultCurrency: String?,
+        exchangeRateBaseDate: LocalDate?,
+        startDate: LocalDate?,
+        endDate: LocalDate?,
+        updatedAt: Instant = Instant.now(),
+    ) {
+        if (title != null) {
+            this.title = title
+        }
+
+        if (defaultCurrency != null) {
+            this.defaultCurrency = defaultCurrency
+        }
+
+        this.exchangeRateBaseDate = exchangeRateBaseDate
+        this.startDate = startDate
+        this.endDate = endDate
+        this.updatedAt = updatedAt
+    }
+
+    fun markSettled(settledAt: Instant = Instant.now()) {
+        settlementStatus = TripSettlementStatus.SETTLED
+        this.settledAt = settledAt
+        updatedAt = settledAt
+    }
+
+    fun markSettlementInProgress(startedAt: Instant = Instant.now()) {
+        settlementStatus = TripSettlementStatus.IN_PROGRESS
+        settledAt = null
+        updatedAt = startedAt
+    }
+
+    fun canChangeTransactions(): Boolean {
+        return settlementStatus == TripSettlementStatus.NOT_STARTED
+    }
+
+    fun advanceExpenseVersion(): Long {
+        expenseVersion += 1
+        return expenseVersion
+    }
+}

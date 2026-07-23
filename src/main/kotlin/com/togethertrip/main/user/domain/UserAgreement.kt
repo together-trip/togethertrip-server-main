@@ -26,10 +26,31 @@ class UserAgreement(
     @Column(nullable = false)
     var agreed: Boolean,
 
+    @Column(name = "term_version", nullable = false, length = 20)
+    var termVersion: String,
+
     @Column(name = "agreed_at")
     var agreedAt: Instant? = null,
 
     @Column(name = "revoked_at")
     var revokedAt: Instant? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun agree(
+        termVersion: String,
+        now: Instant = Instant.now(),
+    ) {
+        this.agreed = true
+        this.termVersion = termVersion
+        this.agreedAt = now
+        this.revokedAt = null
+        this.updatedAt = now
+    }
+
+    fun revoke(now: Instant = Instant.now()) {
+        this.agreed = false
+        this.revokedAt = now
+        this.updatedAt = now
+    }
+}

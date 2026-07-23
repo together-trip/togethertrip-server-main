@@ -10,10 +10,12 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.SQLRestriction
 import java.time.Instant
 
 @Entity
 @Table(name = "trip_invitations")
+@SQLRestriction("deleted_at IS NULL")
 class TripInvitation(
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -23,8 +25,15 @@ class TripInvitation(
     @Column(nullable = false, length = 100)
     var token: String,
 
+    @Column(length = 20)
+    var code: String? = null,
+
     @Column(name = "invite_url", nullable = false, length = 1000)
     var inviteUrl: String,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "invitation_type", nullable = false, length = 20)
+    var invitationType: TripInvitationType,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id", nullable = false)
@@ -44,4 +53,24 @@ class TripInvitation(
     @Column(name = "used_at")
     var usedAt: Instant? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun isExpired(now: Instant): Boolean {
+        return expiresAt?.let { it <= now } ?: false
+    }
+
+    fun markExpired(now: Instant) {
+        invitationStatus = TripInvitationStatus.EXPIRED
+        updatedAt = now
+    }
+
+    fun markUsed(
+        user: User,
+        now: Instant,
+    ) {
+        usedBy = user
+        usedAt = now
+        invitationStatus = TripInvitationStatus.USED
+        updatedAt = now
+    }
+}

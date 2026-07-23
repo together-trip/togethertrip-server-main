@@ -1,6 +1,8 @@
 package com.togethertrip.main.trip.domain
 
+import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.domain.BaseEntity
+import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.user.domain.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -10,10 +12,12 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.SQLRestriction
 import java.time.Instant
 
 @Entity
 @Table(name = "trip_participants")
+@SQLRestriction("deleted_at IS NULL")
 class TripParticipant(
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -44,4 +48,50 @@ class TripParticipant(
     @Column(name = "left_at")
     var leftAt: Instant? = null,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun updateTemporaryProfile(
+        patch: TripParticipantProfilePatch,
+        updatedAt: Instant,
+    ) {
+        if (user != null) {
+            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_PROFILE_EDIT_DENIED)
+        }
+        patch.displayName?.let {
+            this.displayName = it
+        }
+        when (val profileImageUrl = patch.profileImageUrl) {
+            is FieldChange.Changed -> this.profileImageUrl = profileImageUrl.value
+            FieldChange.Unchanged -> Unit
+        }
+        this.updatedAt = updatedAt
+    }
+
+    fun remove(
+        tripOwnerUserId: Long,
+        removedAt: Instant,
+    ) {
+        if (participantRole == TripParticipantRole.LEADER || user?.id == tripOwnerUserId) {
+            throw BusinessException(TripErrorCode.TRIP_LEADER_REMOVE_DENIED)
+        }
+
+        participantStatus = TripParticipantStatus.REMOVED
+        leftAt = removedAt
+        markDeleted(removedAt)
+    }
+
+    fun linkUser(
+        user: User,
+        linkedAt: Instant,
+    ) {
+        if (this.user != null) {
+            throw BusinessException(TripErrorCode.TRIP_PARTICIPANT_ALREADY_LINKED)
+        }
+
+        this.user = user
+        displayName = user.nickname
+        profileImageUrl = user.profileImageUrl
+        joinedAt = linkedAt
+        updatedAt = linkedAt
+    }
+}

@@ -1,9 +1,166 @@
 spring:
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:classpath:.env[.properties]
+
   application:
     name: main
 
-  profiles:
-    default: local
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/together_trip}
+    username: ${SPRING_DATASOURCE_USERNAME:together_trip}
+    password: ${SPRING_DATASOURCE_PASSWORD:together_trip}
+    driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:127.0.0.1}
+      port: ${SPRING_REDIS_PORT:6379}
+      password: ${SPRING_REDIS_PASSWORD:}
+
+  batch:
+    job:
+      enabled: false
+
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
+    baseline-on-migrate: true
+    baseline-version: 1
+
+  sql:
+    init:
+      mode: never
+
+  servlet:
+    multipart:
+      max-file-size: ${POST_ATTACHMENT_MAX_FILE_SIZE:10MB}
+      max-request-size: ${POST_ATTACHMENT_MAX_REQUEST_SIZE:50MB}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: ${JPA_SHOW_SQL:false}
+
+jwt:
+  secret: ${JWT_SECRET:local-dev-jwt-secret-key-must-be-at-least-32-bytes}
+  issuer: ${JWT_ISSUER:together-trip}
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1800}
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:1209600}
+
+phone:
+  hash:
+    key: ${PHONE_HASH_KEY:local-dev-phone-hash-key-must-be-at-least-32-bytes}
+    version: ${PHONE_HASH_VERSION:v1}
+  encryption:
+    key: ${PHONE_ENCRYPTION_KEY:local-dev-phone-encryption-key-must-be-at-least-32-bytes}
+    version: ${PHONE_ENCRYPTION_VERSION:v1}
+
+auth:
+  local-test:
+    enabled: ${AUTH_LOCAL_TEST_ENABLED:false}
+
+sms:
+  solapi:
+    base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
+    api-key: ${SOLAPI_API_KEY:}
+    api-secret: ${SOLAPI_API_SECRET:}
+    from: ${SOLAPI_FROM:}
+
+springdoc:
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
+    path: /swagger-ui.html
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
+    path: /v3/api-docs
+
+openapi:
+  server:
+    url: ${OPENAPI_SERVER_URL:http://localhost:8080}
+
+post:
+  attachments:
+    local-storage-path: ${POST_ATTACHMENT_LOCAL_STORAGE_PATH:./uploads/post-attachments}
+    public-url-prefix: ${POST_ATTACHMENT_PUBLIC_URL_PREFIX:/uploads/post-attachments}
+
+place:
+  google:
+    places-base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com}
+    geocoding-base-url: ${GOOGLE_GEOCODING_BASE_URL:https://maps.googleapis.com}
+    api-key: ${GOOGLE_MAPS_WEB_SERVICE_API_KEY:}
+    timeout: ${GOOGLE_PLACES_TIMEOUT:5s}
+
+user:
+  profile-images:
+    local-storage-path: ${USER_PROFILE_IMAGE_LOCAL_STORAGE_PATH:./uploads/user-profile-images}
+    public-url-prefix: ${USER_PROFILE_IMAGE_PUBLIC_URL_PREFIX:/uploads/user-profile-images}
+
+trip:
+  invite:
+    base-url: ${TRIP_INVITE_BASE_URL:http://localhost:8080/trips/invites}
+
+trip-recap:
+  ai:
+    provider: ${TRIP_RECAP_AI_PROVIDER:stub}
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      api-key: ${OPENAI_API_KEY:}
+      model: ${OPENAI_IMAGE_MODEL:gpt-image-2}
+      output-profile: ${OPENAI_IMAGE_OUTPUT_PROFILE:ECONOMY}
+      size: ${OPENAI_IMAGE_SIZE:1152x2048}
+      quality: ${OPENAI_IMAGE_QUALITY:medium}
+      timeout: ${OPENAI_IMAGE_TIMEOUT:3m}
+      max-reference-images: ${OPENAI_MAX_REFERENCE_IMAGES:1}
+      max-reference-dimension: ${OPENAI_MAX_REFERENCE_DIMENSION:1024}
+      max-reference-image-bytes: ${OPENAI_MAX_REFERENCE_IMAGE_BYTES:10485760}
+      cache-enabled: ${OPENAI_IMAGE_CACHE_ENABLED:true}
+      cache-ttl: ${OPENAI_IMAGE_CACHE_TTL:15m}
+      cache-lock-wait: ${OPENAI_IMAGE_CACHE_LOCK_WAIT:6m}
+  images:
+    storage-dir: ${TRIP_RECAP_IMAGE_STORAGE_DIR:./uploads/trip-recaps}
+    public-url-prefix: ${TRIP_RECAP_IMAGE_PUBLIC_URL_PREFIX:/uploads/trip-recaps}
+
+exchange-rate:
+  korea-exim:
+    base-url: ${KOREA_EXIM_EXCHANGE_RATE_BASE_URL:https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON}
+    auth-key: ${KOREA_EXIM_EXCHANGE_RATE_AUTH_KEY:}
+    data-code: ${KOREA_EXIM_EXCHANGE_RATE_DATA_CODE:AP01}
+    timeout: ${KOREA_EXIM_EXCHANGE_RATE_TIMEOUT:10s}
+  import-validation:
+    minimum-row-count: ${EXCHANGE_RATE_IMPORT_MINIMUM_ROW_COUNT:20}
+    required-currencies: ${EXCHANGE_RATE_IMPORT_REQUIRED_CURRENCIES:USD,JPY,EUR}
+    skip-weekends: ${EXCHANGE_RATE_IMPORT_SKIP_WEEKENDS:true}
+  scheduler:
+    enabled: ${EXCHANGE_RATE_SCHEDULER_ENABLED:false}
+    cron: ${EXCHANGE_RATE_SCHEDULER_CRON:0 30 11 * * *}
+    catch-up-days: ${EXCHANGE_RATE_SCHEDULER_CATCH_UP_DAYS:7}
+  backfill:
+    enabled: ${EXCHANGE_RATE_BACKFILL_ENABLED:false}
+    from: ${EXCHANGE_RATE_BACKFILL_FROM:}
+    to: ${EXCHANGE_RATE_BACKFILL_TO:}
+    pause-between-requests: ${EXCHANGE_RATE_BACKFILL_PAUSE_BETWEEN_REQUESTS:300ms}
+  lock:
+    name: ${EXCHANGE_RATE_LOCK_NAME:exchange-rate:import:korea-exim}
+    wait-time: ${EXCHANGE_RATE_LOCK_WAIT_TIME:0s}
+    lease-time: ${EXCHANGE_RATE_LOCK_LEASE_TIME:10m}
+
+notification:
+  sqs:
+    queue-url: ${NOTIFICATION_SQS_QUEUE_URL:${NOTIFICATION_QUEUE_URL:}}
+    region: ${AWS_REGION:ap-northeast-2}
+    enabled: ${NOTIFICATION_SQS_SENDER_ENABLED:true}
+    access-key-id: ${AWS_ACCESS_KEY_ID:}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+    session-token: ${AWS_SESSION_TOKEN:}
+
+outbox:
+  dispatch:
+    enabled: ${OUTBOX_DISPATCH_ENABLED:true}
+    fixed-delay: ${OUTBOX_DISPATCH_FIXED_DELAY:PT3S}
+    limit: ${OUTBOX_DISPATCH_LIMIT:50}
+    max-attempts: ${OUTBOX_DISPATCH_MAX_ATTEMPTS:5}
 
 server:
-  port: 8081
+  port: ${SERVER_PORT:8080}

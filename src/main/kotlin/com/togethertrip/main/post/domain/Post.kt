@@ -12,6 +12,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import org.hibernate.annotations.SQLRestriction
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -20,6 +21,7 @@ import java.time.Instant
  */
 @Entity
 @Table(name = "posts")
+@SQLRestriction("deleted_at IS NULL")
 class Post(
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -63,4 +65,36 @@ class Post(
     @Column(name = "comment_count", nullable = false)
     var commentCount: Int = 0,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun update(
+        title: String?,
+        category: String?,
+        content: String?,
+        occurredAt: Instant?,
+        placeName: String?,
+        latitude: BigDecimal?,
+        longitude: BigDecimal?,
+    ) {
+        this.title = title
+        this.category = category
+        this.content = content
+        this.occurredAt = occurredAt
+        this.placeName = placeName
+        this.latitude = latitude
+        this.longitude = longitude
+        updatedAt = Instant.now()
+    }
+
+    fun increaseCommentCount() {
+        commentCount += 1
+        updatedAt = Instant.now()
+    }
+
+    fun decreaseCommentCount() {
+        if (commentCount > 0) {
+            commentCount -= 1
+        }
+        updatedAt = Instant.now()
+    }
+}

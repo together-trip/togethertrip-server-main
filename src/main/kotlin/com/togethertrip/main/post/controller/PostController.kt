@@ -1,16 +1,24 @@
 package com.togethertrip.main.post.controller
 
+import com.togethertrip.main.global.response.ApiResponse
+import com.togethertrip.main.global.response.CursorResponse
+import com.togethertrip.main.global.security.principal.AuthUser
+import com.togethertrip.main.post.controller.spec.PostApiSpec
 import com.togethertrip.main.post.dto.request.CreatePostCommentRequest
 import com.togethertrip.main.post.dto.request.CreatePostRequest
 import com.togethertrip.main.post.dto.request.UpdatePostRequest
+import com.togethertrip.main.post.dto.response.PostCommentResponse
+import com.togethertrip.main.post.dto.response.PostDetailResponse
+import com.togethertrip.main.post.dto.response.PostSummaryResponse
+import com.togethertrip.main.post.service.PostDeleteService
 import com.togethertrip.main.post.service.PostService
-import com.togethertrip.main.global.security.principal.AuthUser
-import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.security.SecurityRequirement
-import io.swagger.v3.oas.annotations.tags.Tag
+import com.togethertrip.main.trip.security.RequireActiveTripParticipant
+import jakarta.validation.Valid
+import org.springframework.http.MediaType
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -19,89 +27,150 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-@Tag(name = "Post", description = "여행 커뮤니티 게시글 API")
-@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/trips/{tripId}/posts")
 class PostController(
     private val tripPostService: PostService,
-) {
+    private val postDeleteService: PostDeleteService,
+) : PostApiSpec {
 
-    @Operation(summary = "게시글 작성", description = "거래 기반 기록 또는 일반 여행 기록을 작성합니다. 첨부 파일을 함께 등록할 수 있습니다.")
-    @PostMapping
-    fun createPost(
+    @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @RequireActiveTripParticipant
+    override fun createPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
-        @RequestBody request: CreatePostRequest,
-    ) {
+        @Valid @ModelAttribute request: CreatePostRequest,
+    ): ApiResponse<PostDetailResponse> {
+        return ApiResponse.success(
+            tripPostService.createPost(
+                userId = authUser.userId,
+                tripId = tripId,
+                request = request,
+            )
+        )
     }
 
-    @Operation(summary = "게시글 목록 조회", description = "여행방의 게시글 목록을 최신순으로 조회합니다. 게시글 유형으로 필터링할 수 있습니다.")
     @GetMapping
-    fun getPosts(
+    @RequireActiveTripParticipant
+    override fun getPosts(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @RequestParam(required = false) postType: String?,
-        @RequestParam(required = false) page: Int?,
+        @RequestParam(required = false) cursor: String?,
         @RequestParam(required = false) size: Int?,
-    ) {
+    ): ApiResponse<CursorResponse<PostSummaryResponse>> {
+        return ApiResponse.success(
+            tripPostService.getPosts(
+                tripId = tripId,
+                postType = postType,
+                cursor = cursor,
+                size = size,
+            )
+        )
     }
 
-    @Operation(summary = "게시글 상세 조회", description = "게시글 본문, 첨부 파일, 댓글을 조회합니다.")
     @GetMapping("/{postId}")
-    fun getPost(
+    @RequireActiveTripParticipant
+    override fun getPost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-    ) {
+    ): ApiResponse<PostDetailResponse> {
+        return ApiResponse.success(
+            tripPostService.getPost(
+                tripId = tripId,
+                postId = postId,
+            )
+        )
     }
 
-    @Operation(summary = "게시글 수정", description = "게시글 제목, 카테고리, 본문을 수정합니다.")
-    @PatchMapping("/{postId}")
-    fun updatePost(
+    @PatchMapping("/{postId}", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @RequireActiveTripParticipant
+    override fun updatePost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-        @RequestBody request: UpdatePostRequest,
-    ) {
+        @Valid @ModelAttribute request: UpdatePostRequest,
+    ): ApiResponse<PostDetailResponse> {
+        return ApiResponse.success(
+            tripPostService.updatePost(
+                userId = authUser.userId,
+                tripId = tripId,
+                postId = postId,
+                request = request,
+            )
+        )
     }
 
-    @Operation(summary = "게시글 삭제", description = "게시글을 소프트 삭제합니다.")
     @DeleteMapping("/{postId}")
-    fun deletePost(
+    @RequireActiveTripParticipant
+    override fun deletePost(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-    ) {
+    ): ApiResponse<Unit> {
+        postDeleteService.deletePost(
+            userId = authUser.userId,
+            tripId = tripId,
+            postId = postId,
+        )
+
+        return ApiResponse.success()
     }
 
-    @Operation(summary = "댓글 작성", description = "게시글에 댓글을 작성합니다.")
     @PostMapping("/{postId}/comments")
-    fun createComment(
+    @RequireActiveTripParticipant
+    override fun createComment(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-        @RequestBody request: CreatePostCommentRequest,
-    ) {
+        @Valid @RequestBody request: CreatePostCommentRequest,
+    ): ApiResponse<PostCommentResponse> {
+        return ApiResponse.success(
+            tripPostService.createComment(
+                userId = authUser.userId,
+                tripId = tripId,
+                postId = postId,
+                request = request,
+            )
+        )
     }
 
-    @Operation(summary = "댓글 목록 조회", description = "게시글의 댓글 목록을 작성순으로 조회합니다.")
     @GetMapping("/{postId}/comments")
-    fun getComments(
+    @RequireActiveTripParticipant
+    override fun getComments(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
-    ) {
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(required = false) size: Int?,
+    ): ApiResponse<CursorResponse<PostCommentResponse>> {
+        return ApiResponse.success(
+            tripPostService.getComments(
+                tripId = tripId,
+                postId = postId,
+                cursor = cursor,
+                size = size,
+            )
+        )
     }
 
-    @Operation(summary = "댓글 삭제", description = "댓글을 소프트 삭제합니다.")
     @DeleteMapping("/{postId}/comments/{commentId}")
-    fun deleteComment(
+    @RequireActiveTripParticipant
+    override fun deleteComment(
         @AuthenticationPrincipal authUser: AuthUser,
         @PathVariable tripId: Long,
         @PathVariable postId: Long,
         @PathVariable commentId: Long,
-    ) {
+    ): ApiResponse<Unit> {
+        tripPostService.deleteComment(
+            userId = authUser.userId,
+            tripId = tripId,
+            postId = postId,
+            commentId = commentId,
+        )
+
+        return ApiResponse.success()
     }
 
 }

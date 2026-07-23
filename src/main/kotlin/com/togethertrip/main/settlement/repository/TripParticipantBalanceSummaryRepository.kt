@@ -5,9 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository
 
 interface TripParticipantBalanceSummaryRepository : JpaRepository<TripParticipantBalanceSummary, Long> {
 
-    fun findByTripId(tripId: Long): List<TripParticipantBalanceSummary>
+    fun findByTripIdAndDeletedAtIsNull(tripId: Long): List<TripParticipantBalanceSummary>
 
-    fun findByTripIdAndTripParticipantId(
+    fun findByTripIdAndTripParticipantIdAndDeletedAtIsNull(
         tripId: Long,
         tripParticipantId: Long,
     ): TripParticipantBalanceSummary?

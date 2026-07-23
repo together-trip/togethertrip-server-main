@@ -39,3 +39,15 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+### env ###
+.env
+src/main/resources/secret.yml
+
+### Local uploads ###
+uploads/
+
+### Agent Notes ###
+.agent-notes/
+.agents/plugins/marketplace.json
+plugins/togethertrip/

@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import java.time.Instant
 
 @Entity
 @Table(name = "trip_countries")
@@ -25,4 +26,20 @@ class TripCountry(
     @Column(name = "sort_order", nullable = false)
     var sortOrder: Int,
 
-) : BaseEntity()
+) : BaseEntity() {
+
+    fun update(
+        countryName: String,
+        sortOrder: Int,
+        updatedAt: Instant,
+    ) {
+        this.countryName = countryName
+        this.sortOrder = sortOrder
+        this.updatedAt = updatedAt
+    }
+
+    fun restore(restoredAt: Instant) {
+        deletedAt = null
+        updatedAt = restoredAt
+    }
+}

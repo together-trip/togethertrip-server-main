@@ -5,22 +5,35 @@
 ## 작업 원칙
 
 - 문서와 산출물은 한국어로 작성한다. 명령어, 코드 식별자, 파일 경로, 라이브러리명은 원문을 유지한다.
+- Kotlin 코드는 IntelliJ Kotlin style guide를 기본 코드 스타일로 따른다.
 - 구현 전에는 기획, 도메인 정책, 권한 규칙, 기존 코드 구조를 먼저 확인한다.
-- feature-based hexagonal architecture를 기본으로 하고, domain/application/adapter 경계를 지킨다.
+- feature-based MVC 패턴을 기본으로 하고, 기능별 `controller/service/repository/domain/dto` 구조를 따른다.
 - 사용자 개인정보, 인증, 여행/정산 권한, 정산 금액 무결성은 보안 검토 대상으로 본다.
 - 실패한 빌드나 테스트는 로그를 기준으로 최소 수정한다.
 
 ## 산출물 위치
 
-- 작업 계획: `docs/work-plans/`
-- 리뷰 리포트: `docs/reviews/`
-- 검증 리포트: `docs/verifications/`
-- 인수인계: `docs/handoffs/`
-- 아키텍처 결정: `docs/adr/`
+공용 디렉터리(`docs/work-plans/`, `docs/reviews/`, `docs/verifications/`, `docs/handoffs/`)에 직접 산출물을 남기지 않는다. 작업자별 네임스페이스가 붙은 디렉터리를 사용한다.
+
+- 작업 계획: `docs/work-plans-<owner>/`
+- 리뷰 리포트: `docs/reviews-<owner>/`
+- 검증 리포트: `docs/verifications-<owner>/`
+- 인수인계: `docs/handoffs-<owner>/`
+- 아키텍처 결정: `docs/adr-<owner>/`
+
+`<owner>`는 작업자 이름, GitHub 핸들, 팀명 등 충돌을 피할 수 있는 짧은 식별자로 정한다. 이미 해당 작업에서 사용 중인 owner 디렉터리가 있으면 그 디렉터리를 계속 사용한다.
 
 ## 기본 검증
 
 - `./gradlew test`
+
+## Git 운영 규칙
+
+- 작업을 시작하기 전에 GitHub Issue를 먼저 생성하고, 작업 계획/브랜치/PR에 이슈 번호를 연결한다. 사용자가 명시적으로 생략을 지시하거나 GitHub 접근이 불가능하면 산출물에 사유를 남긴다.
+- 커밋 메시지는 반드시 `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:` 같은 prefix를 붙이고, prefix 뒤의 설명은 한국어로 작성한다.
+- 브랜치 이름은 `feature/api-build`, `chore/agent-setup`처럼 `작업성격/작업명` 형식으로 작성한다.
+- PR은 항상 작업 브랜치에서 `develop` 브랜치로 생성한다.
+- `main` 대상 PR이나 직접 push는 사용자가 명시적으로 요청한 경우에만 진행한다.
 
 ## 에이전트 역할
 
@@ -50,4 +63,3 @@
 - `/togethertrip:verify-agent`
 - `/togethertrip:refactor-cleaner`
 - `/togethertrip:doc-updater`
-

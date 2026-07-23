@@ -1,0 +1,70 @@
+package com.togethertrip.main.global.exception
+
+import org.junit.jupiter.api.Test
+import org.springframework.http.HttpStatus
+import org.springframework.http.HttpMethod
+import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.orm.ObjectOptimisticLockingFailureException
+import org.springframework.transaction.TransactionSystemException
+import org.springframework.web.servlet.resource.NoResourceFoundException
+import kotlin.test.assertEquals
+
+class GlobalExceptionHandlerTest {
+
+    @Test
+    fun `optimistic lock 충돌은 409로 응답한다`() {
+        val handler = GlobalExceptionHandler()
+
+        val response = handler.handleConcurrentModificationException(
+            ObjectOptimisticLockingFailureException("Trip", 10L)
+        )
+
+        assertEquals(HttpStatus.CONFLICT, response.statusCode)
+        assertEquals(CommonErrorCode.CONCURRENT_MODIFICATION.code, response.body?.code)
+    }
+
+    @Test
+    fun `트랜잭션 커밋 시점에 감싸진 optimistic lock 충돌도 409로 응답한다`() {
+        val handler = GlobalExceptionHandler()
+
+        val response = handler.handleTransactionSystemException(
+            TransactionSystemException(
+                "Could not commit transaction",
+                ObjectOptimisticLockingFailureException("Trip", 10L),
+            )
+        )
+
+        assertEquals(HttpStatus.CONFLICT, response.statusCode)
+        assertEquals(CommonErrorCode.CONCURRENT_MODIFICATION.code, response.body?.code)
+    }
+
+    @Test
+    fun `transaction event version 유니크 충돌은 409로 응답한다`() {
+        val handler = GlobalExceptionHandler()
+
+        val response = handler.handleDataIntegrityViolationException(
+            DataIntegrityViolationException(
+                "duplicate key value violates unique constraint \"uk_transaction_events_version\"",
+            )
+        )
+
+        assertEquals(HttpStatus.CONFLICT, response.statusCode)
+        assertEquals(CommonErrorCode.CONCURRENT_MODIFICATION.code, response.body?.code)
+    }
+
+    @Test
+    fun `정적 리소스가 없으면 에러 로그 대상이 아닌 404로 응답한다`() {
+        val handler = GlobalExceptionHandler()
+
+        val response = handler.handleNoResourceFoundException(
+            NoResourceFoundException(
+                HttpMethod.GET,
+                "/uploads/user-profile-images/missing.jpg",
+                "missing.jpg",
+            )
+        )
+
+        assertEquals(HttpStatus.NOT_FOUND, response.statusCode)
+        assertEquals(null, response.body)
+    }
+}

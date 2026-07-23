@@ -11,7 +11,6 @@ data class KakaoUserInfoResponse(
     val properties: KakaoProperties? = null,
 ) {
     data class KakaoAccount(
-        val email: String? = null,
         val profile: KakaoProfile? = null,
     )
 
