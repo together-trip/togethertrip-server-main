@@ -1,14 +1,18 @@
 package com.togethertrip.main.auth.service
 
+import com.togethertrip.main.auth.client.AppleIdentityTokenVerifier
+import com.togethertrip.main.auth.client.AppleOAuthClient
 import com.togethertrip.main.auth.client.KakaoOAuthClient
 import com.togethertrip.main.auth.domain.OAuthAccount
 import com.togethertrip.main.auth.dto.OAuthUserInfo
 import com.togethertrip.main.auth.dto.TokenResponse
+import com.togethertrip.main.auth.dto.request.AppleLoginRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
 import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.response.AuthResponse
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
+import com.togethertrip.main.auth.service.apple.AppleTokenCipher
 import com.togethertrip.main.auth.service.oauth.OAuthSignupLock
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
@@ -26,6 +30,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 class AuthService(
     private val kakaoOAuthClient: KakaoOAuthClient,
+    private val appleIdentityTokenVerifier: AppleIdentityTokenVerifier,
+    private val appleOAuthClient: AppleOAuthClient,
+    private val appleTokenCipher: AppleTokenCipher,
     private val oauthAccountRepository: OAuthAccountRepository,
     private val userRepository: UserRepository,
     private val jwtTokenProvider: JwtTokenProvider,
@@ -40,6 +47,26 @@ class AuthService(
             kakaoOAuthClient.getUserInfo(request.accessToken)
         )
 
+        return login(oauthUserInfo)
+    }
+
+    @Transactional
+    fun loginWithApple(request: AppleLoginRequest): AuthResponse {
+        val appleTokens = appleOAuthClient.exchangeAuthorizationCode(request.authorizationCode)
+        val oauthUserInfo = appleIdentityTokenVerifier.verify(
+            identityToken = appleTokens.idToken ?: request.identityToken,
+            rawNonce = request.rawNonce,
+            nickname = appleNickname(request),
+        )
+        val encryptedRefreshToken = appleTokens.refreshToken?.let(appleTokenCipher::encrypt)
+
+        return login(oauthUserInfo, encryptedRefreshToken)
+    }
+
+    private fun login(
+        oauthUserInfo: OAuthUserInfo,
+        encryptedRefreshToken: String? = null,
+    ): AuthResponse {
         return oauthSignupLock.withLock(
             provider = oauthUserInfo.provider,
             providerUserId = oauthUserInfo.providerUserId,
@@ -49,8 +76,11 @@ class AuthService(
                 providerUserId = oauthUserInfo.providerUserId,
             )
             val user = if (oauthAccount == null) {
-                registerNewUser(oauthUserInfo)
+                registerNewUser(oauthUserInfo, encryptedRefreshToken)
             } else {
+                if (encryptedRefreshToken != null) {
+                    oauthAccount.encryptedRefreshToken = encryptedRefreshToken
+                }
                 resolveOAuthAccountUser(oauthAccount)
             }
 
@@ -117,7 +147,10 @@ class AuthService(
         return user
     }
 
-    private fun registerNewUser(oauthUserInfo: OAuthUserInfo): User {
+    private fun registerNewUser(
+        oauthUserInfo: OAuthUserInfo,
+        encryptedRefreshToken: String?,
+    ): User {
         val user = userRepository.save(
             User(
                 nickname = "",
@@ -132,6 +165,7 @@ class AuthService(
                 providerUserId = oauthUserInfo.providerUserId,
                 nickname = oauthUserInfo.nickname,
                 profileImageUrl = oauthUserInfo.profileImageUrl,
+                encryptedRefreshToken = encryptedRefreshToken,
             )
         )
         return user
@@ -185,5 +219,18 @@ class AuthService(
         return oauthUserInfo.copy(
             profileImageUrl = profileImageUrlPolicy.sanitize(oauthUserInfo.profileImageUrl)
         )
+    }
+
+    private fun appleNickname(request: AppleLoginRequest): String? {
+        return listOfNotNull(
+            request.familyName?.trim()?.takeIf(String::isNotBlank),
+            request.givenName?.trim()?.takeIf(String::isNotBlank),
+        ).joinToString(" ")
+            .takeIf(String::isNotBlank)
+            ?.take(MAX_OAUTH_NICKNAME_LENGTH)
+    }
+
+    companion object {
+        private const val MAX_OAUTH_NICKNAME_LENGTH = 50
     }
 }

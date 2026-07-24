@@ -1,5 +1,6 @@
 package com.togethertrip.main.user.service
 
+import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
@@ -31,6 +32,7 @@ class UserService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val userProfileImageStorage: UserProfileImageStorage,
     private val profileImageUrlPolicy: ProfileImageUrlPolicy,
+    private val oauthAccountRevoker: OAuthAccountRevoker = OAuthAccountRevoker.NoOp,
 ) {
 
     @Transactional(readOnly = true)
@@ -98,6 +100,7 @@ class UserService(
 
         // 회원 탈퇴 처리
         user.withdraw()
+        oauthAccountRevoker.revokeForUser(userId)
     }
 
     @Transactional(readOnly = true)
