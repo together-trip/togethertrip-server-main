@@ -1,13 +1,18 @@
 package com.togethertrip.main.auth.service
 
+import com.togethertrip.main.auth.client.AppleIdentityTokenVerifier
+import com.togethertrip.main.auth.client.AppleOAuthClient
 import com.togethertrip.main.auth.client.KakaoOAuthClient
 import com.togethertrip.main.auth.domain.OAuthAccount
 import com.togethertrip.main.auth.domain.OAuthProvider
 import com.togethertrip.main.auth.dto.OAuthUserInfo
+import com.togethertrip.main.auth.dto.AppleTokenResponse
+import com.togethertrip.main.auth.dto.request.AppleLoginRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
 import com.togethertrip.main.auth.dto.response.AuthStatus
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
 import com.togethertrip.main.auth.service.oauth.OAuthSignupLock
+import com.togethertrip.main.auth.service.apple.AppleTokenCipher
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
@@ -29,6 +34,9 @@ import kotlin.test.assertNull
 class AuthServiceTest {
 
     private lateinit var kakaoOAuthClient: KakaoOAuthClient
+    private lateinit var appleIdentityTokenVerifier: AppleIdentityTokenVerifier
+    private lateinit var appleOAuthClient: AppleOAuthClient
+    private lateinit var appleTokenCipher: AppleTokenCipher
     private lateinit var oauthAccountRepository: OAuthAccountRepository
     private lateinit var userRepository: UserRepository
     private lateinit var jwtTokenProvider: JwtTokenProvider
@@ -39,6 +47,9 @@ class AuthServiceTest {
     @BeforeEach
     fun setUp() {
         kakaoOAuthClient = mock(KakaoOAuthClient::class.java)
+        appleIdentityTokenVerifier = mock(AppleIdentityTokenVerifier::class.java)
+        appleOAuthClient = mock(AppleOAuthClient::class.java)
+        appleTokenCipher = mock(AppleTokenCipher::class.java)
         oauthAccountRepository = mock(OAuthAccountRepository::class.java)
         userRepository = mock(UserRepository::class.java) { invocation ->
             if (invocation.method.name == "save") {
@@ -52,6 +63,9 @@ class AuthServiceTest {
         signupLock = CapturingOAuthSignupLock()
         authService = AuthService(
             kakaoOAuthClient = kakaoOAuthClient,
+            appleIdentityTokenVerifier = appleIdentityTokenVerifier,
+            appleOAuthClient = appleOAuthClient,
+            appleTokenCipher = appleTokenCipher,
             oauthAccountRepository = oauthAccountRepository,
             userRepository = userRepository,
             jwtTokenProvider = jwtTokenProvider,
@@ -61,6 +75,39 @@ class AuthServiceTest {
                 userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
             ),
         )
+    }
+
+    @Test
+    fun `신규 Apple 사용자는 최초 이름과 암호화 refresh token을 저장한다`() {
+        val request = AppleLoginRequest(
+            authorizationCode = "authorization-code",
+            identityToken = "identity-token",
+            rawNonce = "12345678901234567890123456789012",
+            givenName = "재완",
+            familyName = "주",
+        )
+        `when`(
+            appleIdentityTokenVerifier.verify(
+                request.identityToken,
+                request.rawNonce,
+                "주 재완",
+            )
+        ).thenReturn(
+            OAuthUserInfo(OAuthProvider.APPLE, "apple-user", "주 재완", null)
+        )
+        `when`(appleOAuthClient.exchangeAuthorizationCode(request.authorizationCode))
+            .thenReturn(AppleTokenResponse(refreshToken = "apple-refresh-token"))
+        `when`(appleTokenCipher.encrypt("apple-refresh-token"))
+            .thenReturn("encrypted-token")
+        stubTokens(userId = 1L)
+
+        val response = authService.loginWithApple(request)
+
+        assertEquals(AuthStatus.PROFILE_REQUIRED, response.status)
+        assertEquals(OAuthProvider.APPLE, savedOAuthAccount().provider)
+        assertEquals("apple-user", savedOAuthAccount().providerUserId)
+        assertEquals("주 재완", savedOAuthAccount().nickname)
+        assertEquals("encrypted-token", savedOAuthAccount().encryptedRefreshToken)
     }
 
     @Test

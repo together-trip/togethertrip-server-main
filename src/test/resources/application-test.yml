@@ -33,6 +33,8 @@ jwt:
 auth:
   local-test:
     enabled: false
+  apple:
+    enabled: false
 
 springdoc:
   swagger-ui:

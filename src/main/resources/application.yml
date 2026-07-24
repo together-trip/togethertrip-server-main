@@ -52,6 +52,17 @@ jwt:
 auth:
   local-test:
     enabled: ${AUTH_LOCAL_TEST_ENABLED:false}
+  apple:
+    enabled: ${APPLE_AUTH_ENABLED:false}
+    client-id: ${APPLE_CLIENT_ID:}
+    team-id: ${APPLE_TEAM_ID:}
+    key-id: ${APPLE_KEY_ID:}
+    private-key: ${APPLE_PRIVATE_KEY:}
+    token-encryption-key: ${APPLE_TOKEN_ENCRYPTION_KEY:}
+    issuer: ${APPLE_ISSUER:https://appleid.apple.com}
+    jwks-url: ${APPLE_JWKS_URL:https://appleid.apple.com/auth/keys}
+    token-url: ${APPLE_TOKEN_URL:https://appleid.apple.com/auth/token}
+    revoke-url: ${APPLE_REVOKE_URL:https://appleid.apple.com/auth/revoke}
 
 springdoc:
   swagger-ui:

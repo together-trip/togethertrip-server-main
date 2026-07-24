@@ -40,6 +40,7 @@ class SecurityConfig(
 
                 it.requestMatchers(
                     "/api/auth/oauth/kakao",
+                    "/api/auth/oauth/apple",
                     "/api/auth/refresh",
                     "/api/local-test/**",
                     "/api/users/nicknames/availability",

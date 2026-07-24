@@ -32,4 +32,7 @@ class OAuthAccount(
     @Column(name = "profile_image_url", nullable = true, length = 500)
     var profileImageUrl: String? = null,
 
+    @Column(name = "encrypted_refresh_token", nullable = true, length = 2000)
+    var encryptedRefreshToken: String? = null,
+
 ) : BaseEntity()

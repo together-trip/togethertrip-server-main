@@ -38,6 +38,24 @@ enum class AuthErrorCode(
         "OAuth 사용자 정보 조회에 실패했습니다.",
     ),
 
+    INVALID_APPLE_IDENTITY_TOKEN(
+        HttpStatus.UNAUTHORIZED,
+        "INVALID_APPLE_IDENTITY_TOKEN",
+        "유효하지 않은 Apple identity token입니다.",
+    ),
+
+    APPLE_NONCE_REUSED(
+        HttpStatus.UNAUTHORIZED,
+        "APPLE_NONCE_REUSED",
+        "이미 사용된 Apple 로그인 요청입니다.",
+    ),
+
+    APPLE_AUTHORIZATION_FAILED(
+        HttpStatus.BAD_GATEWAY,
+        "APPLE_AUTHORIZATION_FAILED",
+        "Apple 인증 서버와 통신하지 못했습니다.",
+    ),
+
     SIGNUP_CONFIRMATION_IN_PROGRESS(
         HttpStatus.CONFLICT,
         "SIGNUP_CONFIRMATION_IN_PROGRESS",

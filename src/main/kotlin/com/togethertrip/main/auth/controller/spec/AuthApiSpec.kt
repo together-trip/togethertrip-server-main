@@ -1,6 +1,7 @@
 package com.togethertrip.main.auth.controller.spec
 
 import com.togethertrip.main.auth.dto.response.AuthResponse
+import com.togethertrip.main.auth.dto.request.AppleLoginRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
 import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
@@ -21,6 +22,15 @@ interface AuthApiSpec {
     @SecurityRequirements
     fun loginWithKakao(
         request: KakaoLoginRequest,
+    ): ApiResponse<AuthResponse>
+
+    @Operation(
+        summary = "Apple 로그인",
+        description = "Sign in with Apple의 authorization code, identity token, nonce를 검증해 로그인합니다.",
+    )
+    @SecurityRequirements
+    fun loginWithApple(
+        request: AppleLoginRequest,
     ): ApiResponse<AuthResponse>
 
     @Operation(summary = "토큰 갱신", description = "리프레시 토큰으로 새 액세스 토큰을 발급합니다.")

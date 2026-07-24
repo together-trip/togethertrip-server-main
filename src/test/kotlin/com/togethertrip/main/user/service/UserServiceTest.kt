@@ -1,5 +1,6 @@
 package com.togethertrip.main.user.service
 
+import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
@@ -36,6 +37,7 @@ class UserServiceTest {
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var userProfileImageStorage: UserProfileImageStorage
     private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
+    private lateinit var oauthAccountRevoker: OAuthAccountRevoker
     private lateinit var userService: UserService
 
     @BeforeEach
@@ -46,11 +48,13 @@ class UserServiceTest {
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
         )
+        oauthAccountRevoker = mock(OAuthAccountRevoker::class.java)
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
             userProfileImageStorage = userProfileImageStorage,
             profileImageUrlPolicy = profileImageUrlPolicy,
+            oauthAccountRevoker = oauthAccountRevoker,
         )
     }
 
@@ -352,6 +356,7 @@ class UserServiceTest {
 
         assertEquals(UserStatus.WITHDRAWN, user.status)
         assertNotNull(user.deletedAt)
+        verify(oauthAccountRevoker).revokeForUser(1L)
     }
 
     @Test

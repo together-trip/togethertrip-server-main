@@ -81,6 +81,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    implementation("com.nimbusds:nimbus-jose-jwt:10.5")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("org.springframework.boot:spring-boot-flyway")
     implementation("org.flywaydb:flyway-core")

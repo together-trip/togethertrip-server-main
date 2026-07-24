@@ -38,7 +38,20 @@ class TestcontainersInfrastructureTest @Autowired constructor(
         assertEquals(postgisContainer.jdbcUrl, connectedJdbcUrl)
         assertNotNull(postgisVersion)
         assertTrue(postgisVersion.isNotBlank())
-        assertEquals("22", flyway.info().current()?.version?.version)
+        assertEquals("23", flyway.info().current()?.version?.version)
+        assertEquals(
+            1,
+            jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'oauth_accounts'
+                  and column_name = 'encrypted_refresh_token'
+                """.trimIndent(),
+                Int::class.java,
+            )
+        )
         assertEquals(
             0,
             jdbcTemplate.queryForObject(

@@ -2,6 +2,7 @@ package com.togethertrip.main.auth.controller
 
 import com.togethertrip.main.auth.controller.spec.AuthApiSpec
 import com.togethertrip.main.auth.dto.TokenResponse
+import com.togethertrip.main.auth.dto.request.AppleLoginRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
 import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.response.AuthResponse
@@ -27,6 +28,15 @@ class AuthController(
     ): ApiResponse<AuthResponse> {
         return ApiResponse.success(
             authService.loginWithKakao(request)
+        )
+    }
+
+    @PostMapping("/oauth/apple")
+    override fun loginWithApple(
+        @Valid @RequestBody request: AppleLoginRequest,
+    ): ApiResponse<AuthResponse> {
+        return ApiResponse.success(
+            authService.loginWithApple(request)
         )
     }
 
