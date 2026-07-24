@@ -1,50 +1,38 @@
 -- Local Swagger sample data.
 -- Suggested tokens:
---   local-test:verified:hana
---   local-test:verified:minseo
---   local-test:verified:joon
---   local-test:unverified:yuri
+--   local-test:hana
+--   local-test:minseo
+--   local-test:joon
+-- Legacy aliases such as local-test:verified:hana remain accepted locally.
 --   local-test:admin
 
 MERGE INTO users AS u
 USING (
     VALUES
-        ('로컬 admin', NULL, NULL, NULL, 'v1:AAAAAAAAAAAAAAAB:cPIdEt7BDh8WjIhKty5ZBY6IJ+JFLgngB//u2Y8=', 'v1', '010-****-4463', '3e2edec33184e8f112051ac1eb0876c0c65676a1ef96ca0d4f7e098a6818dfff', 'v1', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', 'ADMIN', 'ACTIVE', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', NULL::timestamptz),
-        ('로컬 verified hana', 'FEMALE', DATE '1993-04-12', '/uploads/user-profile-images/local-hana.jpg', 'v1:AAAAAAAAAAAAAAAC:rTrCzBM/YaOylQHtHw+eT6EVzufrE9HfbmhhGNQ=', 'v1', '010-****-1860', 'd09113b049cb3640e4d64db43331d68f325b18f0b3be9dfdd1e6d503c8b3bc58', 'v1', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-20T13:10:00+09:00', NULL::timestamptz),
-        ('로컬 verified minseo', 'FEMALE', DATE '1994-11-03', '/uploads/user-profile-images/local-minseo.jpg', 'v1:AAAAAAAAAAAAAAAD:HdR0nEl9e0E6vr9r0AxF+W0y1Ar7i8StEDotK78=', 'v1', '010-****-8861', '4a14f641c38bb900c4e582fea7f760b5485d1e5abb74216fc72cef86046b4382', 'v1', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-20T13:12:00+09:00', NULL::timestamptz),
-        ('로컬 verified joon', 'MALE', DATE '1991-08-27', '/uploads/user-profile-images/local-joon.jpg', 'v1:AAAAAAAAAAAAAAAE:Ljx4x3KyJDhuaFkoxAdJx+2yWInvo5arv012mLI=', 'v1', '010-****-4940', '613c01f3d2e2305b882ecdfcc6a9bfe517f7f19d7096354fa3f49dac585dc52c', 'v1', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-20T13:15:00+09:00', NULL::timestamptz),
-        ('로컬 unverified yuri', 'FEMALE', DATE '1996-02-18', '/uploads/user-profile-images/local-yuri.jpg', NULL, NULL, NULL, NULL, NULL, NULL::timestamptz, 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-20T13:17:00+09:00', NULL::timestamptz),
-        ('정우 휴면계정', 'MALE', DATE '1989-12-09', NULL, 'v1:AAAAAAAAAAAAAAAF:HIgTOEbhocXLirDc48frlkNlwDE+v/ulw8QnAqc=', 'v1', '010-****-9354', '737fc8c881aaefda9ba78d5587ad0fade3003336620fc49b06b08e0a4ef955e9', 'v1', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', 'USER', 'SUSPENDED', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
-        ('탈퇴한 수아', 'FEMALE', DATE '1995-07-21', NULL, 'v1:AAAAAAAAAAAAAAAG:VohT09sh7p3FFRM5QZBl4rp3f5Pj3sOVHlxqKhw=', 'v1', '010-****-0428', '2b79da0b34f7e4b6bd98093f57d11ffb00615f825961654d4d28066d3cfcc502', 'v1', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', 'USER', 'WITHDRAWN', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00')
-) AS sample(nickname, gender, birth_date, profile_image_url, phone_number_encrypted, phone_number_encryption_version, phone_number_masked, phone_number_hash, phone_number_hash_version, phone_verified_at, role, status, created_at, updated_at, deleted_at)
+        ('로컬 admin', NULL, NULL, NULL, 'ADMIN', 'ACTIVE', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', TIMESTAMPTZ '2026-05-01T08:55:00+09:00', NULL::timestamptz),
+        ('로컬 verified hana', 'FEMALE', DATE '1993-04-12', '/uploads/user-profile-images/local-hana.jpg', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:00:00+09:00', TIMESTAMPTZ '2026-05-20T13:10:00+09:00', NULL::timestamptz),
+        ('로컬 verified minseo', 'FEMALE', DATE '1994-11-03', '/uploads/user-profile-images/local-minseo.jpg', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:05:00+09:00', TIMESTAMPTZ '2026-05-20T13:12:00+09:00', NULL::timestamptz),
+        ('로컬 verified joon', 'MALE', DATE '1991-08-27', '/uploads/user-profile-images/local-joon.jpg', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:10:00+09:00', TIMESTAMPTZ '2026-05-20T13:15:00+09:00', NULL::timestamptz),
+        ('로컬 unverified yuri', 'FEMALE', DATE '1996-02-18', '/uploads/user-profile-images/local-yuri.jpg', 'USER', 'ACTIVE', TIMESTAMPTZ '2026-05-01T09:15:00+09:00', TIMESTAMPTZ '2026-05-20T13:17:00+09:00', NULL::timestamptz),
+        ('정우 휴면계정', 'MALE', DATE '1989-12-09', NULL, 'USER', 'SUSPENDED', TIMESTAMPTZ '2026-04-01T10:00:00+09:00', TIMESTAMPTZ '2026-05-10T08:00:00+09:00', NULL::timestamptz),
+        ('탈퇴한 수아', 'FEMALE', DATE '1995-07-21', NULL, 'USER', 'WITHDRAWN', TIMESTAMPTZ '2026-03-19T11:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00', TIMESTAMPTZ '2026-05-18T20:00:00+09:00')
+) AS sample(nickname, gender, birth_date, profile_image_url, role, status, created_at, updated_at, deleted_at)
 ON u.nickname = sample.nickname
 WHEN MATCHED THEN
     UPDATE SET
         gender = sample.gender,
         birth_date = sample.birth_date,
         profile_image_url = sample.profile_image_url,
-        phone_number = NULL,
-        phone_number_encrypted = sample.phone_number_encrypted,
-        phone_number_encryption_version = sample.phone_number_encryption_version,
-        phone_number_masked = sample.phone_number_masked,
-        phone_number_hash = sample.phone_number_hash,
-        phone_number_hash_version = sample.phone_number_hash_version,
-        phone_verified_at = sample.phone_verified_at,
         role = sample.role,
         status = sample.status,
         updated_at = sample.updated_at,
         deleted_at = sample.deleted_at
 WHEN NOT MATCHED THEN
     INSERT (
-        nickname, gender, birth_date, profile_image_url,
-        phone_number_encrypted, phone_number_encryption_version, phone_number_masked,
-        phone_number_hash, phone_number_hash_version, phone_verified_at,
-        role, status, created_at, updated_at, deleted_at
+        nickname, gender, birth_date, profile_image_url, role, status, created_at, updated_at, deleted_at
     )
     VALUES (
         sample.nickname, sample.gender, sample.birth_date, sample.profile_image_url,
-        sample.phone_number_encrypted, sample.phone_number_encryption_version, sample.phone_number_masked,
-        sample.phone_number_hash, sample.phone_number_hash_version, sample.phone_verified_at,
         sample.role, sample.status, sample.created_at, sample.updated_at, sample.deleted_at
     );
 

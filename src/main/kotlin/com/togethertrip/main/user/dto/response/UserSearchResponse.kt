@@ -2,11 +2,11 @@ package com.togethertrip.main.user.dto.response
 
 data class UserSearchResponse(
     val found: Boolean,
-    val user: PhoneUserSummaryResponse?,
+    val user: UserSummaryResponse?,
 ) {
 
     companion object {
-        fun found(user: PhoneUserSummaryResponse): UserSearchResponse {
+        fun found(user: UserSummaryResponse): UserSearchResponse {
             return UserSearchResponse(
                 found = true,
                 user = user,

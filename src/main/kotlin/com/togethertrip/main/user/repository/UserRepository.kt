@@ -15,10 +15,6 @@ interface UserRepository : JpaRepository<User, Long> {
     @Query("select u from User u where u.id = :id and u.deletedAt is null")
     fun findLockedByIdAndDeletedAtIsNull(@Param("id") id: Long): User?
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select u from User u where u.id = :id")
-    fun findLockedByIdIncludingDeleted(@Param("id") id: Long): User?
-
     fun findByNicknameAndDeletedAtIsNull(nickname: String): User?
 
     fun findByNicknameAndStatusAndDeletedAtIsNull(
@@ -33,15 +29,4 @@ interface UserRepository : JpaRepository<User, Long> {
         id: Long,
     ): Boolean
 
-    fun existsByPhoneNumberHashAndDeletedAtIsNull(phoneNumberHash: String): Boolean
-
-    fun existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
-        phoneNumberHash: String,
-        id: Long,
-    ): Boolean
-
-    fun findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-        phoneNumberHash: String,
-        status: UserStatus,
-    ): User?
 }

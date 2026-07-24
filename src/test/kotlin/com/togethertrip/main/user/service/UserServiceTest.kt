@@ -1,10 +1,7 @@
 package com.togethertrip.main.user.service
 
-import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
-import com.togethertrip.main.global.phone.PhoneNumberHasher
-import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
@@ -15,7 +12,6 @@ import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
-import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
@@ -38,8 +34,6 @@ class UserServiceTest {
 
     private lateinit var userRepository: UserRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
-    private lateinit var phoneNumberNormalizer: PhoneNumberNormalizer
-    private lateinit var phoneNumberHasher: PhoneNumberHasher
     private lateinit var userProfileImageStorage: UserProfileImageStorage
     private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
     private lateinit var userService: UserService
@@ -48,11 +42,6 @@ class UserServiceTest {
     fun setUp() {
         userRepository = mock(UserRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
-        phoneNumberNormalizer = PhoneNumberNormalizer()
-        phoneNumberHasher = PhoneNumberHasher(
-            key = "test-phone-hash-key-must-be-at-least-32-bytes",
-            version = "v1",
-        )
         userProfileImageStorage = mock(UserProfileImageStorage::class.java)
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
@@ -60,8 +49,6 @@ class UserServiceTest {
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
-            phoneNumberNormalizer = phoneNumberNormalizer,
-            phoneNumberHasher = phoneNumberHasher,
             userProfileImageStorage = userProfileImageStorage,
             profileImageUrlPolicy = profileImageUrlPolicy,
         )
@@ -425,44 +412,6 @@ class UserServiceTest {
     }
 
     @Test
-    fun `전화번호로 인증 완료 활성 사용자를 검색한다`() {
-        val authUser = createUser().apply {
-            verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash("+821011112222"),
-                phoneNumberHashVersion = phoneNumberHasher.version,
-            )
-        }
-        val targetUser = createUser().apply {
-            id = 2L
-            nickname = "동행자"
-            verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
-                phoneNumberHashVersion = phoneNumberHasher.version,
-            )
-        }
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(authUser)
-        `when`(
-            userRepository.findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
-                status = UserStatus.ACTIVE,
-            )
-        ).thenReturn(targetUser)
-
-        val response = userService.searchByPhoneNumber(
-            authUserId = 1L,
-            request = SearchUserByPhoneRequest(
-                phoneNumber = "010-3333-4444",
-            ),
-        )
-
-        assertEquals(true, response.found)
-        assertEquals(2L, response.user?.userId)
-        assertEquals("동행자", response.user?.nickname)
-    }
-
-    @Test
     fun `닉네임으로 활성 사용자를 검색한다`() {
         val authUser = createUser()
         val targetUser = createUser().apply {
@@ -513,54 +462,6 @@ class UserServiceTest {
 
         assertEquals(false, response.found)
         assertEquals(null, response.user)
-    }
-
-    @Test
-    fun `전화번호 검색 결과가 없으면 found false를 반환한다`() {
-        val authUser = createUser().apply {
-            verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash("+821011112222"),
-                phoneNumberHashVersion = phoneNumberHasher.version,
-            )
-        }
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(authUser)
-        `when`(
-            userRepository.findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
-                status = UserStatus.ACTIVE,
-            )
-        ).thenReturn(null)
-
-        val response = userService.searchByPhoneNumber(
-            authUserId = 1L,
-            request = SearchUserByPhoneRequest(
-                phoneNumber = "+821033334444",
-            ),
-        )
-
-        assertEquals(false, response.found)
-        assertEquals(null, response.user)
-    }
-
-    @Test
-    fun `전화번호 미인증 사용자는 전화번호 검색에 실패한다`() {
-        val authUser = createUser()
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(authUser)
-
-        val exception = assertBusinessException {
-            userService.searchByPhoneNumber(
-                authUserId = 1L,
-                request = SearchUserByPhoneRequest(
-                    phoneNumber = "01033334444",
-                ),
-            )
-        }
-
-        assertEquals(AuthErrorCode.PHONE_VERIFICATION_REQUIRED, exception.errorCode)
     }
 
     private fun createUser(

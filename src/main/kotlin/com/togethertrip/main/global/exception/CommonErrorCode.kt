@@ -25,12 +25,6 @@ enum class CommonErrorCode(
         "잘못된 입력입니다.",
     ),
 
-    INVALID_PHONE_NUMBER(
-        HttpStatus.BAD_REQUEST,
-        "INVALID_PHONE_NUMBER",
-        "유효하지 않은 전화번호입니다.",
-    ),
-
     CONCURRENT_MODIFICATION(
         HttpStatus.CONFLICT,
         "CONCURRENT_MODIFICATION",

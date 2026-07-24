@@ -1,5 +1,6 @@
 package com.togethertrip.main.auth.service.oauth
 
+import com.togethertrip.main.auth.domain.OAuthProvider
 import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.global.exception.BusinessException
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -16,11 +17,12 @@ class RedisOAuthSignupLock(
 ) : OAuthSignupLock {
 
     override fun <T> withLock(
-        session: OAuthTemporarySession,
+        provider: OAuthProvider,
+        providerUserId: String,
         block: () -> T,
     ): T {
         // 가입 잠금 key와 token 생성
-        val key = getKey(session)
+        val key = getKey(provider, providerUserId)
         val lockToken = UUID.randomUUID().toString()
 
         // 가입 잠금 획득
@@ -68,9 +70,11 @@ class RedisOAuthSignupLock(
         )
     }
 
-    private fun getKey(session: OAuthTemporarySession): String {
-        // OAuth 가입 잠금 key
-        return "auth:oauth-signup-lock:${session.provider}:${session.providerUserId}"
+    private fun getKey(
+        provider: OAuthProvider,
+        providerUserId: String,
+    ): String {
+        return "auth:oauth-signup-lock:$provider:$providerUserId"
     }
 
     companion object {

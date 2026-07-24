@@ -1,8 +1,6 @@
 package com.togethertrip.main.user.controller
 
 import com.togethertrip.main.global.security.principal.AuthUser
-import com.togethertrip.main.global.phone.PhoneNumberHasher
-import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.UserRole
@@ -73,11 +71,6 @@ class UserControllerTest {
     private class CapturingUserService : UserService(
         userRepository = mock(UserRepository::class.java),
         tripParticipantRepository = mock(TripParticipantRepository::class.java),
-        phoneNumberNormalizer = PhoneNumberNormalizer(),
-        phoneNumberHasher = PhoneNumberHasher(
-            key = "test-phone-hash-key-must-be-at-least-32-bytes",
-            version = "v1",
-        ),
         userProfileImageStorage = mock(UserProfileImageStorage::class.java),
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
@@ -102,9 +95,6 @@ class UserControllerTest {
                 gender = request.gender,
                 birthDate = request.birthDate,
                 profileImageUrl = "/uploads/user-profile-images/stored-profile.jpg",
-                phoneVerifiedAt = null,
-                phoneNumberMasked = null,
-                phoneVerified = false,
                 role = UserRole.USER,
                 status = UserStatus.ACTIVE,
             )
