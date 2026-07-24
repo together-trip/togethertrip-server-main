@@ -49,24 +49,9 @@ jwt:
   access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1800}
   refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:1209600}
 
-phone:
-  hash:
-    key: ${PHONE_HASH_KEY:local-dev-phone-hash-key-must-be-at-least-32-bytes}
-    version: ${PHONE_HASH_VERSION:v1}
-  encryption:
-    key: ${PHONE_ENCRYPTION_KEY:local-dev-phone-encryption-key-must-be-at-least-32-bytes}
-    version: ${PHONE_ENCRYPTION_VERSION:v1}
-
 auth:
   local-test:
     enabled: ${AUTH_LOCAL_TEST_ENABLED:false}
-
-sms:
-  solapi:
-    base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
-    api-key: ${SOLAPI_API_KEY:}
-    api-secret: ${SOLAPI_API_SECRET:}
-    from: ${SOLAPI_FROM:}
 
 springdoc:
   swagger-ui:

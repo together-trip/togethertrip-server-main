@@ -25,27 +25,6 @@ class User(
     @Column(name = "profile_image_url", nullable = true, length = 500)
     var profileImageUrl: String? = null,
 
-    @Column(name = "phone_number", length = 30)
-    var phoneNumber: String? = null,
-
-    @Column(name = "phone_number_encrypted", columnDefinition = "TEXT")
-    var phoneNumberEncrypted: String? = null,
-
-    @Column(name = "phone_number_encryption_version", length = 30)
-    var phoneNumberEncryptionVersion: String? = null,
-
-    @Column(name = "phone_number_masked", length = 30)
-    var phoneNumberMasked: String? = null,
-
-    @Column(name = "phone_number_hash", length = 64)
-    var phoneNumberHash: String? = null,
-
-    @Column(name = "phone_number_hash_version", length = 30)
-    var phoneNumberHashVersion: String? = null,
-
-    @Column(name = "phone_verified_at")
-    var phoneVerifiedAt: Instant? = null,
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     var role: UserRole = UserRole.USER,
@@ -96,38 +75,10 @@ class User(
         // 재가입 상태 초기화
         status = UserStatus.ACTIVE
         deletedAt = null
-        phoneNumber = null
-        phoneNumberEncrypted = null
-        phoneNumberEncryptionVersion = null
-        phoneNumberMasked = null
-        phoneNumberHash = null
-        phoneNumberHashVersion = null
-        phoneVerifiedAt = null
         updatedAt = now
     }
 
-    fun verifyPhoneNumberHash(
-        phoneNumberHash: String,
-        phoneNumberHashVersion: String,
-        phoneNumberEncrypted: String? = null,
-        phoneNumberEncryptionVersion: String? = null,
-        phoneNumberMasked: String? = null,
-        verifiedAt: Instant = Instant.now(),
-    ) {
-        // 전화번호 인증 정보 저장
-        this.phoneNumber = null
-        this.phoneNumberEncrypted = phoneNumberEncrypted
-        this.phoneNumberEncryptionVersion = phoneNumberEncryptionVersion
-        this.phoneNumberMasked = phoneNumberMasked
-        this.phoneNumberHash = phoneNumberHash
-        this.phoneNumberHashVersion = phoneNumberHashVersion
-
-        // 전화번호 인증 시각 갱신
-        phoneVerifiedAt = verifiedAt
-        updatedAt = verifiedAt
-    }
-
     fun isProfileCompleted(): Boolean {
-        return nickname.isNotBlank() && gender != null && birthDate != null
+        return nickname.isNotBlank()
     }
 }
