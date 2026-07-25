@@ -13,6 +13,7 @@ import com.togethertrip.main.moderation.exception.ModerationErrorCode
 import com.togethertrip.main.moderation.pagination.ModerationReportCursor
 import com.togethertrip.main.moderation.repository.ModerationReportAuditRepository
 import com.togethertrip.main.moderation.repository.ModerationReportRepository
+import com.togethertrip.main.moderation.repository.ModerationReportSearchCondition
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.post.domain.PostComment
@@ -37,7 +38,6 @@ import java.util.Optional
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import org.springframework.data.domain.PageRequest
 
 class AdminModerationServiceTest {
     private val reports = mock(ModerationReportRepository::class.java)
@@ -250,10 +250,12 @@ class AdminModerationServiceTest {
             createdAt = Instant.parse("2026-07-25T00:00:02Z")
         }
         `when`(reports.findReports(
-            ModerationReportStatus.PENDING, true,
-            ModerationTargetType.POST, true,
-            null, null, false,
-            PageRequest.of(0, 3),
+            ModerationReportSearchCondition(
+                status = ModerationReportStatus.PENDING,
+                targetType = ModerationTargetType.POST,
+                cursor = null,
+            ),
+            3,
         )).thenReturn(listOf(first, second, extra))
 
         val result = service.getReports(
@@ -273,9 +275,12 @@ class AdminModerationServiceTest {
     fun `관리자 신고 목록은 커서와 크기 상한을 저장소 조건으로 전달한다`() {
         val cursor = ModerationReportCursor(Instant.parse("2026-07-25T00:00:00Z"), 30)
         `when`(reports.findReports(
-            null, false, null, false,
-            cursor.createdAt, cursor.id, true,
-            PageRequest.of(0, 101),
+            ModerationReportSearchCondition(
+                status = null,
+                targetType = null,
+                cursor = cursor,
+            ),
+            101,
         )).thenReturn(emptyList())
 
         val result = service.getReports(9, null, null, cursor.encode(), 999)

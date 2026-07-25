@@ -13,6 +13,7 @@ import com.togethertrip.main.moderation.exception.ModerationErrorCode
 import com.togethertrip.main.moderation.pagination.ModerationReportCursor
 import com.togethertrip.main.moderation.repository.ModerationReportAuditRepository
 import com.togethertrip.main.moderation.repository.ModerationReportRepository
+import com.togethertrip.main.moderation.repository.ModerationReportSearchCondition
 import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.post.repository.PostCommentRepository
 import com.togethertrip.main.post.repository.PostRepository
@@ -20,7 +21,6 @@ import com.togethertrip.main.triprecap.repository.TripRecapRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserRole
 import com.togethertrip.main.user.repository.UserRepository
-import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -47,14 +47,12 @@ class AdminModerationService(
         val requestedSize = (size ?: DEFAULT_PAGE_SIZE).coerceIn(1, MAX_PAGE_SIZE)
         val parsedCursor = cursor?.let(::parseCursor)
         val reports = moderationReportRepository.findReports(
-            status = status,
-            statusFilterEnabled = status != null,
-            targetType = targetType,
-            targetTypeFilterEnabled = targetType != null,
-            cursorCreatedAt = parsedCursor?.createdAt,
-            cursorId = parsedCursor?.id,
-            cursorFilterEnabled = parsedCursor != null,
-            pageable = PageRequest.of(0, requestedSize + 1),
+            condition = ModerationReportSearchCondition(
+                status = status,
+                targetType = targetType,
+                cursor = parsedCursor,
+            ),
+            limit = requestedSize + 1,
         )
         val responseItems = reports.take(requestedSize)
         val hasNext = reports.size > requestedSize

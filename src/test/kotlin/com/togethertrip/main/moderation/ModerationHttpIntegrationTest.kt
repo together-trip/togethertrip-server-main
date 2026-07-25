@@ -6,7 +6,9 @@ import com.togethertrip.main.moderation.domain.ModerationReport
 import com.togethertrip.main.moderation.domain.ModerationReportReason
 import com.togethertrip.main.moderation.domain.ModerationReportStatus
 import com.togethertrip.main.moderation.domain.ModerationTargetType
+import com.togethertrip.main.moderation.pagination.ModerationReportCursor
 import com.togethertrip.main.moderation.repository.ModerationReportRepository
+import com.togethertrip.main.moderation.repository.ModerationReportSearchCondition
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostAttachmentType
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.dao.InvalidDataAccessApiUsageException
 import org.springframework.data.domain.PageRequest
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
@@ -36,6 +39,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 @MainIntegrationTest
 @AutoConfigureMockMvc
@@ -115,28 +119,59 @@ class ModerationHttpIntegrationTest @Autowired constructor(
         })
 
         val firstPage = moderationReportRepository.findReports(
-            status = ModerationReportStatus.REJECTED,
-            statusFilterEnabled = true,
-            targetType = ModerationTargetType.TRIP_RECAP,
-            targetTypeFilterEnabled = true,
-            cursorCreatedAt = Instant.parse("2099-12-31T23:59:59Z"),
-            cursorId = 0,
-            cursorFilterEnabled = true,
-            pageable = PageRequest.of(0, 2),
+            condition = ModerationReportSearchCondition(
+                status = ModerationReportStatus.REJECTED,
+                targetType = ModerationTargetType.TRIP_RECAP,
+                cursor = ModerationReportCursor(Instant.parse("2099-12-31T23:59:59Z"), 0),
+            ),
+            limit = 2,
         )
         val secondPage = moderationReportRepository.findReports(
-            status = ModerationReportStatus.REJECTED,
-            statusFilterEnabled = true,
-            targetType = ModerationTargetType.TRIP_RECAP,
-            targetTypeFilterEnabled = true,
-            cursorCreatedAt = firstPage.last().createdAt,
-            cursorId = firstPage.last().id,
-            cursorFilterEnabled = true,
-            pageable = PageRequest.of(0, 2),
+            condition = ModerationReportSearchCondition(
+                status = ModerationReportStatus.REJECTED,
+                targetType = ModerationTargetType.TRIP_RECAP,
+                cursor = ModerationReportCursor(firstPage.last().createdAt, firstPage.last().id),
+            ),
+            limit = 2,
         )
 
         assertEquals(reportIds.take(2), firstPage.map { it.id })
         assertEquals(reportIds.drop(2), secondPage.map { it.id })
+
+        val withoutCursor = moderationReportRepository.findReports(
+            condition = ModerationReportSearchCondition(
+                status = ModerationReportStatus.REJECTED,
+                targetType = ModerationTargetType.TRIP_RECAP,
+                cursor = null,
+            ),
+            limit = 10,
+        )
+        val withStatusOnly = moderationReportRepository.findReports(
+            condition = ModerationReportSearchCondition(
+                status = ModerationReportStatus.REJECTED,
+                targetType = null,
+                cursor = ModerationReportCursor(Instant.parse("2099-12-31T23:59:59Z"), 0),
+            ),
+            limit = 10,
+        )
+        val withTargetTypeOnly = moderationReportRepository.findReports(
+            condition = ModerationReportSearchCondition(
+                status = null,
+                targetType = ModerationTargetType.TRIP_RECAP,
+                cursor = ModerationReportCursor(Instant.parse("2099-12-31T23:59:59Z"), 0),
+            ),
+            limit = 10,
+        )
+
+        assertEquals(reportIds, withoutCursor.map { it.id })
+        assertEquals(reportIds, withStatusOnly.map { it.id })
+        assertEquals(reportIds, withTargetTypeOnly.map { it.id })
+        assertFailsWith<InvalidDataAccessApiUsageException> {
+            moderationReportRepository.findReports(
+                condition = ModerationReportSearchCondition(null, null, null),
+                limit = 0,
+            )
+        }
     }
 
     @Test
