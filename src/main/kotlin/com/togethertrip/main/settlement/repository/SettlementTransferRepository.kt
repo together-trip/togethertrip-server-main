@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.Instant
 
-interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long> {
+interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>, SettlementTransferQueryRepository {
 
     fun findByIdAndDeletedAtIsNull(id: Long): SettlementTransfer?
 
@@ -87,57 +87,6 @@ interface SettlementTransferRepository : JpaRepository<SettlementTransfer, Long>
     )
     fun findTransferRowsBySettlementId(
         @Param("settlementId") settlementId: Long,
-    ): List<SettlementTransferRow>
-
-    @Query(
-        value = """
-        select transfer.id as "id",
-               settlement.id as "settlementId",
-               trip.title as "tripName",
-               transfer.sender_participant_id as "senderParticipantId",
-               sender.user_id as "senderUserId",
-               sender.display_name as "senderDisplayName",
-               sender_user.status as "senderUserStatus",
-               transfer.receiver_participant_id as "receiverParticipantId",
-               receiver.user_id as "receiverUserId",
-               receiver.display_name as "receiverDisplayName",
-               receiver_user.status as "receiverUserStatus",
-               transfer.amount as "amount",
-               transfer.currency as "currency",
-               transfer.status as "status",
-               transfer.sender_confirmed_at as "senderConfirmedAt",
-               transfer.receiver_confirmed_at as "receiverConfirmedAt",
-               transfer.completed_at as "completedAt",
-               transfer.auto_confirmed as "autoConfirmed"
-        from settlement_transfers transfer
-        join settlements settlement on settlement.id = transfer.settlement_id
-        join trips trip on trip.id = settlement.trip_id
-        join trip_participants sender on sender.id = transfer.sender_participant_id
-        join trip_participants receiver on receiver.id = transfer.receiver_participant_id
-        left join users sender_user on sender_user.id = sender.user_id
-        left join users receiver_user on receiver_user.id = receiver.user_id
-        where transfer.deleted_at is null
-          and settlement.deleted_at is null
-          and settlement.trip_id = :tripId
-          and (:settlementFilterEnabled = false or settlement.id = :settlementId)
-          and (
-            :participantFilterEnabled = false
-            or transfer.sender_participant_id = :participantId
-            or transfer.receiver_participant_id = :participantId
-          )
-          and (:statusFilterEnabled = false or transfer.status = :status)
-        order by transfer.id asc
-        """,
-        nativeQuery = true
-    )
-    fun findTransferRows(
-        @Param("tripId") tripId: Long,
-        @Param("settlementFilterEnabled") settlementFilterEnabled: Boolean,
-        @Param("settlementId") settlementId: Long,
-        @Param("participantFilterEnabled") participantFilterEnabled: Boolean,
-        @Param("participantId") participantId: Long,
-        @Param("statusFilterEnabled") statusFilterEnabled: Boolean,
-        @Param("status") status: String,
     ): List<SettlementTransferRow>
 
     @Query(

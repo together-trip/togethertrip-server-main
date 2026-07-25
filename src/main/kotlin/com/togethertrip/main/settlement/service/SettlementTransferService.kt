@@ -13,6 +13,7 @@ import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.settlement.dto.response.SettlementTransferResponse
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
+import com.togethertrip.main.settlement.repository.SettlementTransferSearchCondition
 import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
 import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationResult
 import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationProcessor
@@ -48,13 +49,12 @@ class SettlementTransferService(
         val requestedStatus = status?.let(::parseTransferStatus)
         val requestedDirection = SettlementTransferDirection.parse(direction)
         val transfers = settlementTransferRepository.findTransferRows(
-            tripId = tripId,
-            settlementFilterEnabled = settlementId != null,
-            settlementId = settlementId ?: UNUSED_FILTER_ID,
-            participantFilterEnabled = participantId != null,
-            participantId = participantId ?: UNUSED_FILTER_ID,
-            statusFilterEnabled = requestedStatus != null,
-            status = requestedStatus?.name ?: UNUSED_FILTER_VALUE,
+            condition = SettlementTransferSearchCondition(
+                tripId = tripId,
+                settlementId = settlementId,
+                participantId = participantId,
+                status = requestedStatus,
+            ),
         )
 
         return transfers
@@ -228,7 +228,5 @@ class SettlementTransferService(
     }
 
     private companion object {
-        private const val UNUSED_FILTER_ID = 0L
-        private const val UNUSED_FILTER_VALUE = ""
     }
 }

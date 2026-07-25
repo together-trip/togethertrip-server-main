@@ -1,14 +1,14 @@
 package com.togethertrip.main.moderation.repository
 
 import com.togethertrip.main.moderation.domain.ModerationReport
-import com.togethertrip.main.moderation.domain.ModerationReportStatus
-import com.togethertrip.main.moderation.domain.ModerationTargetType
+import com.linecorp.kotlinjdsl.dsl.jpql.jpql
+import com.linecorp.kotlinjdsl.render.jpql.JpqlRenderContext
+import com.linecorp.kotlinjdsl.support.spring.data.jpa.extension.createQuery
 import jakarta.persistence.EntityManager
-import jakarta.persistence.criteria.Predicate
-import java.time.Instant
 
 class ModerationReportQueryRepositoryImpl(
     private val entityManager: EntityManager,
+    private val jpqlRenderContext: JpqlRenderContext,
 ) : ModerationReportQueryRepository {
     override fun findReports(
         condition: ModerationReportSearchCondition,
@@ -16,38 +16,31 @@ class ModerationReportQueryRepositoryImpl(
     ): List<ModerationReport> {
         require(limit > 0) { "limit must be positive" }
 
-        val criteriaBuilder = entityManager.criteriaBuilder
-        val query = criteriaBuilder.createQuery(ModerationReport::class.java)
-        val report = query.from(ModerationReport::class.java)
-        val predicates = mutableListOf<Predicate>(
-            criteriaBuilder.isNull(report.get<Instant?>("deletedAt"))
-        )
-
-        condition.status?.let {
-            predicates += criteriaBuilder.equal(report.get<ModerationReportStatus>("status"), it)
+        val query = jpql {
+            select(entity(ModerationReport::class))
+                .from(entity(ModerationReport::class))
+                .whereAnd(
+                    path(ModerationReport::deletedAt).isNull(),
+                    condition.status?.let { path(ModerationReport::status).eq(it) },
+                    condition.targetType?.let { path(ModerationReport::targetType).eq(it) },
+                    condition.cursor?.let { cursor ->
+                        path(ModerationReport::createdAt).ge(cursor.createdAt)
+                            .and(
+                                path(ModerationReport::createdAt).gt(cursor.createdAt)
+                                    .or(
+                                        path(ModerationReport::createdAt).eq(cursor.createdAt)
+                                            .and(path(ModerationReport::id).gt(cursor.id))
+                                    )
+                            )
+                    },
+                )
+                .orderBy(
+                    path(ModerationReport::createdAt).asc(),
+                    path(ModerationReport::id).asc(),
+                )
         }
-        condition.targetType?.let {
-            predicates += criteriaBuilder.equal(report.get<ModerationTargetType>("targetType"), it)
-        }
-        condition.cursor?.let { cursor ->
-            val createdAt = report.get<Instant>("createdAt")
-            val id = report.get<Long>("id")
-            predicates += criteriaBuilder.or(
-                criteriaBuilder.greaterThan(createdAt, cursor.createdAt),
-                criteriaBuilder.and(
-                    criteriaBuilder.equal(createdAt, cursor.createdAt),
-                    criteriaBuilder.greaterThan(id, cursor.id),
-                ),
-            )
-        }
 
-        val createdAt = report.get<Instant>("createdAt")
-        val id = report.get<Long>("id")
-        query.select(report)
-            .where(*predicates.toTypedArray())
-            .orderBy(criteriaBuilder.asc(createdAt), criteriaBuilder.asc(id))
-
-        return entityManager.createQuery(query)
+        return entityManager.createQuery(query, jpqlRenderContext)
             .setMaxResults(limit)
             .resultList
     }

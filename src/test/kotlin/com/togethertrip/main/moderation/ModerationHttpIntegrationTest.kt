@@ -14,6 +14,7 @@ import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostAttachmentType
 import com.togethertrip.main.post.domain.PostType
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.repository.PostSearchCondition
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -259,7 +260,10 @@ class ModerationHttpIntegrationTest @Autowired constructor(
 
     private fun visiblePostIds(): List<Long> {
         entityManager.clear()
-        return postRepository.findPosts(fixture.tripId, PageRequest.of(0, 20), fixture.viewer.id).map { it.id }
+        return postRepository.findPosts(
+            PostSearchCondition(fixture.tripId, null, fixture.viewer.id, null, null),
+            PageRequest.of(0, 20),
+        ).map { it.id }
     }
 
     private fun insertBlock(blockerId: Long, blockedId: Long) {
