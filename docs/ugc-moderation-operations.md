@@ -9,7 +9,8 @@
   - `description`: 선택, 최대 1,000자
 - 사용자 차단/해제: `POST`, `DELETE /api/users/{userId}/blocks`
 - 내 차단 목록: `GET /api/users/me/blocks`
-- 운영자 신고 큐: `GET /api/admin/moderation/reports`
+- 운영자 신고 큐: `GET /api/admin/moderation/reports?status=&targetType=&cursor=&size=`
+  - `(createdAt, id)` 오름차순 커서로 오래된 신고부터 안정적으로 조회한다.
 - 운영자 처리: `PATCH /api/admin/moderation/reports/{reportId}`
 
 신고자는 해당 여행의 활성 참여자여야 하고 대상도 같은 여행에 속해야 한다. `USER`의 `targetId`는 `userId`이며 임시 참여자는 신고·차단할 수 없다. 자기 신고·차단과 처리 중인 중복 신고는 거부한다.

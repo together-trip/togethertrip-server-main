@@ -1,5 +1,6 @@
 package com.togethertrip.main.moderation.controller
 
+import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.moderation.domain.ModerationAction
 import com.togethertrip.main.moderation.domain.ModerationReportReason
@@ -18,7 +19,6 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
-import org.springframework.data.domain.Page
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -57,10 +57,13 @@ class ModerationControllerTest {
         val request = HandleModerationReportRequest(
             ModerationReportStatus.RESOLVED, ModerationAction.HIDE, "확인", null
         )
-        `when`(adminService.getReports(9, ModerationReportStatus.PENDING, null, 0, 20))
-            .thenReturn(Page.empty())
+        `when`(adminService.getReports(9, ModerationReportStatus.PENDING, null, null, 20))
+            .thenReturn(CursorResponse(emptyList(), null, false, 0))
         `when`(adminService.handle(9, 30, request)).thenReturn(reportResponse())
-        assertTrue(adminController.getReports(admin, ModerationReportStatus.PENDING, null, 0, 20).data?.isEmpty == true)
+        assertTrue(
+            adminController.getReports(admin, ModerationReportStatus.PENDING, null, null, 20)
+                .data?.items?.isEmpty() == true
+        )
         assertEquals(30, adminController.handle(admin, 30, request).data?.id)
     }
 

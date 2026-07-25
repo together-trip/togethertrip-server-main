@@ -10,6 +10,7 @@ import com.togethertrip.main.moderation.domain.ModerationReportStatus
 import com.togethertrip.main.moderation.domain.ModerationTargetType
 import com.togethertrip.main.moderation.dto.request.HandleModerationReportRequest
 import com.togethertrip.main.moderation.exception.ModerationErrorCode
+import com.togethertrip.main.moderation.pagination.ModerationReportCursor
 import com.togethertrip.main.moderation.repository.ModerationReportAuditRepository
 import com.togethertrip.main.moderation.repository.ModerationReportRepository
 import com.togethertrip.main.post.domain.Post
@@ -36,9 +37,7 @@ import java.util.Optional
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Sort
 
 class AdminModerationServiceTest {
     private val reports = mock(ModerationReportRepository::class.java)
@@ -237,21 +236,61 @@ class AdminModerationServiceTest {
     }
 
     @Test
-    fun `관리자 신고 목록은 status와 target 조합 네 가지를 조회한다`() {
-        val page = PageImpl(listOf(fixture(PostType.RECORD).report))
-        val normalPageable = PageRequest.of(0, 20, Sort.by("createdAt").ascending())
-        val coercedPageable = PageRequest.of(0, 100, Sort.by("createdAt").ascending())
-        `when`(reports.findAllByStatusAndTargetTypeAndDeletedAtIsNull(
-            ModerationReportStatus.PENDING, ModerationTargetType.POST, normalPageable)).thenReturn(page)
-        `when`(reports.findAllByStatusAndDeletedAtIsNull(
-            ModerationReportStatus.PENDING, normalPageable)).thenReturn(page)
-        `when`(reports.findAllByTargetTypeAndDeletedAtIsNull(
-            ModerationTargetType.POST, normalPageable)).thenReturn(page)
-        `when`(reports.findAllByDeletedAtIsNull(coercedPageable)).thenReturn(page)
-        assertEquals(1, service.getReports(9, ModerationReportStatus.PENDING, ModerationTargetType.POST, 0, 20).totalElements)
-        assertEquals(1, service.getReports(9, ModerationReportStatus.PENDING, null, 0, 20).totalElements)
-        assertEquals(1, service.getReports(9, null, ModerationTargetType.POST, 0, 20).totalElements)
-        assertEquals(1, service.getReports(9, null, null, -1, 999).totalElements)
+    fun `관리자 신고 목록은 생성 시각과 id 커서로 오래된 순서부터 조회한다`() {
+        val first = fixture(PostType.RECORD).report.apply {
+            id = 30
+            createdAt = Instant.parse("2026-07-25T00:00:00Z")
+        }
+        val second = fixture(PostType.RECORD).report.apply {
+            id = 31
+            createdAt = Instant.parse("2026-07-25T00:00:01Z")
+        }
+        val extra = fixture(PostType.RECORD).report.apply {
+            id = 32
+            createdAt = Instant.parse("2026-07-25T00:00:02Z")
+        }
+        `when`(reports.findReports(
+            ModerationReportStatus.PENDING, true,
+            ModerationTargetType.POST, true,
+            null, null, false,
+            PageRequest.of(0, 3),
+        )).thenReturn(listOf(first, second, extra))
+
+        val result = service.getReports(
+            9, ModerationReportStatus.PENDING, ModerationTargetType.POST, null, 2
+        )
+
+        assertEquals(listOf(30L, 31L), result.items.map { it.id })
+        assertEquals(true, result.hasNext)
+        assertEquals(2, result.size)
+        assertEquals(
+            ModerationReportCursor(second.createdAt, second.id),
+            ModerationReportCursor.decode(requireNotNull(result.nextCursor)),
+        )
+    }
+
+    @Test
+    fun `관리자 신고 목록은 커서와 크기 상한을 저장소 조건으로 전달한다`() {
+        val cursor = ModerationReportCursor(Instant.parse("2026-07-25T00:00:00Z"), 30)
+        `when`(reports.findReports(
+            null, false, null, false,
+            cursor.createdAt, cursor.id, true,
+            PageRequest.of(0, 101),
+        )).thenReturn(emptyList())
+
+        val result = service.getReports(9, null, null, cursor.encode(), 999)
+
+        assertEquals(emptyList(), result.items)
+        assertEquals(false, result.hasNext)
+        assertEquals(null, result.nextCursor)
+    }
+
+    @Test
+    fun `관리자 신고 목록은 잘못된 커서를 거부한다`() {
+        assertEquals(
+            CommonErrorCode.INVALID_INPUT,
+            assertBusinessException { service.getReports(9, null, null, "invalid", 20) }.errorCode,
+        )
     }
 
     private fun request(

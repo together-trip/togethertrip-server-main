@@ -2,6 +2,7 @@ package com.togethertrip.main.moderation.service
 
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.moderation.domain.ModerationAction
 import com.togethertrip.main.moderation.domain.ModerationReportAudit
 import com.togethertrip.main.moderation.domain.ModerationReportStatus
@@ -9,6 +10,7 @@ import com.togethertrip.main.moderation.domain.ModerationTargetType
 import com.togethertrip.main.moderation.dto.request.HandleModerationReportRequest
 import com.togethertrip.main.moderation.dto.response.ModerationReportResponse
 import com.togethertrip.main.moderation.exception.ModerationErrorCode
+import com.togethertrip.main.moderation.pagination.ModerationReportCursor
 import com.togethertrip.main.moderation.repository.ModerationReportAuditRepository
 import com.togethertrip.main.moderation.repository.ModerationReportRepository
 import com.togethertrip.main.post.domain.PostType
@@ -18,9 +20,7 @@ import com.togethertrip.main.triprecap.repository.TripRecapRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserRole
 import com.togethertrip.main.user.repository.UserRepository
-import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -40,19 +40,35 @@ class AdminModerationService(
         adminUserId: Long,
         status: ModerationReportStatus?,
         targetType: ModerationTargetType?,
-        page: Int,
-        size: Int,
-    ): Page<ModerationReportResponse> {
+        cursor: String?,
+        size: Int?,
+    ): CursorResponse<ModerationReportResponse> {
         requireAdmin(adminUserId)
-        val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, 100), Sort.by("createdAt").ascending())
-        val reports = when {
-            status != null && targetType != null -> moderationReportRepository
-                .findAllByStatusAndTargetTypeAndDeletedAtIsNull(status, targetType, pageable)
-            status != null -> moderationReportRepository.findAllByStatusAndDeletedAtIsNull(status, pageable)
-            targetType != null -> moderationReportRepository.findAllByTargetTypeAndDeletedAtIsNull(targetType, pageable)
-            else -> moderationReportRepository.findAllByDeletedAtIsNull(pageable)
+        val requestedSize = (size ?: DEFAULT_PAGE_SIZE).coerceIn(1, MAX_PAGE_SIZE)
+        val parsedCursor = cursor?.let(::parseCursor)
+        val reports = moderationReportRepository.findReports(
+            status = status,
+            statusFilterEnabled = status != null,
+            targetType = targetType,
+            targetTypeFilterEnabled = targetType != null,
+            cursorCreatedAt = parsedCursor?.createdAt,
+            cursorId = parsedCursor?.id,
+            cursorFilterEnabled = parsedCursor != null,
+            pageable = PageRequest.of(0, requestedSize + 1),
+        )
+        val responseItems = reports.take(requestedSize)
+        val hasNext = reports.size > requestedSize
+        val nextCursor = if (hasNext && responseItems.isNotEmpty()) {
+            responseItems.last().let { ModerationReportCursor(it.createdAt, it.id).encode() }
+        } else {
+            null
         }
-        return reports.map(ModerationReportResponse::from)
+        return CursorResponse(
+            items = responseItems.map(ModerationReportResponse::from),
+            nextCursor = nextCursor,
+            hasNext = hasNext,
+            size = responseItems.size,
+        )
     }
 
     @Transactional
@@ -151,10 +167,23 @@ class AdminModerationService(
     private fun getRecap(id: Long) = tripRecapRepository.findByIdAndDeletedAtIsNull(id)
         ?: throw BusinessException(ModerationErrorCode.TARGET_NOT_FOUND)
     private fun invalidAction(): Nothing = throw BusinessException(ModerationErrorCode.INVALID_ACTION)
+    private fun parseCursor(cursor: String): ModerationReportCursor {
+        return try {
+            ModerationReportCursor.decode(cursor)
+        } catch (_: RuntimeException) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+    }
+
     private fun requireAdmin(id: Long): User {
         val user = userRepository.findByIdAndDeletedAtIsNull(id)
             ?: throw BusinessException(CommonErrorCode.ACCESS_DENIED)
         if (user.role != UserRole.ADMIN) throw BusinessException(CommonErrorCode.ACCESS_DENIED)
         return user
+    }
+
+    private companion object {
+        const val DEFAULT_PAGE_SIZE = 20
+        const val MAX_PAGE_SIZE = 100
     }
 }

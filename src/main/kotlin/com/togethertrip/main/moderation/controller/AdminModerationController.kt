@@ -1,6 +1,7 @@
 package com.togethertrip.main.moderation.controller
 
 import com.togethertrip.main.global.response.ApiResponse
+import com.togethertrip.main.global.response.CursorResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.moderation.domain.ModerationReportStatus
 import com.togethertrip.main.moderation.domain.ModerationTargetType
@@ -8,7 +9,6 @@ import com.togethertrip.main.moderation.dto.request.HandleModerationReportReques
 import com.togethertrip.main.moderation.dto.response.ModerationReportResponse
 import com.togethertrip.main.moderation.service.AdminModerationService
 import jakarta.validation.Valid
-import org.springframework.data.domain.Page
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -26,10 +26,10 @@ class AdminModerationController(private val adminModerationService: AdminModerat
         @AuthenticationPrincipal authUser: AuthUser,
         @RequestParam(required = false) status: ModerationReportStatus?,
         @RequestParam(required = false) targetType: ModerationTargetType?,
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int,
-    ): ApiResponse<Page<ModerationReportResponse>> {
-        return ApiResponse.success(adminModerationService.getReports(authUser.userId, status, targetType, page, size))
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(required = false) size: Int?,
+    ): ApiResponse<CursorResponse<ModerationReportResponse>> {
+        return ApiResponse.success(adminModerationService.getReports(authUser.userId, status, targetType, cursor, size))
     }
 
     @PatchMapping("/{reportId}")

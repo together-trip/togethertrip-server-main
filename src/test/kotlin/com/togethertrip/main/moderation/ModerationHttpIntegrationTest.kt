@@ -2,6 +2,11 @@ package com.togethertrip.main.moderation
 
 import com.togethertrip.main.global.config.MainIntegrationTest
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
+import com.togethertrip.main.moderation.domain.ModerationReport
+import com.togethertrip.main.moderation.domain.ModerationReportReason
+import com.togethertrip.main.moderation.domain.ModerationReportStatus
+import com.togethertrip.main.moderation.domain.ModerationTargetType
+import com.togethertrip.main.moderation.repository.ModerationReportRepository
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostAttachmentType
@@ -29,6 +34,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
+import java.time.Instant
 import kotlin.test.assertEquals
 
 @MainIntegrationTest
@@ -37,6 +43,7 @@ class ModerationHttpIntegrationTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val jwtTokenProvider: JwtTokenProvider,
     private val postRepository: PostRepository,
+    private val moderationReportRepository: ModerationReportRepository,
     private val jdbcTemplate: JdbcTemplate,
     private val entityManager: EntityManager,
     private val transactionTemplate: TransactionTemplate,
@@ -86,6 +93,50 @@ class ModerationHttpIntegrationTest @Autowired constructor(
         )
         insertBlock(fixture.author.id, fixture.viewer.id)
         assertEquals(listOf(fixture.expensePostId), visiblePostIds())
+    }
+
+    @Test
+    fun `운영자 신고 목록은 같은 생성 시각에서도 id 커서로 누락 없이 이어진다`() {
+        val createdAt = Instant.parse("2100-01-01T00:00:00Z")
+        val reportIds = requireNotNull(transactionTemplate.execute {
+            (1L..3L).map { sequence ->
+                persist(
+                    ModerationReport(
+                        trip = entityManager.getReference(Trip::class.java, fixture.tripId),
+                        reporter = entityManager.getReference(User::class.java, fixture.viewer.id),
+                        targetType = ModerationTargetType.TRIP_RECAP,
+                        targetId = 9_000L + sequence,
+                        targetUser = entityManager.getReference(User::class.java, fixture.author.id),
+                        reason = ModerationReportReason.OTHER,
+                        status = ModerationReportStatus.REJECTED,
+                    ).apply { this.createdAt = createdAt }
+                ).id
+            }.also { entityManager.flush() }
+        })
+
+        val firstPage = moderationReportRepository.findReports(
+            status = ModerationReportStatus.REJECTED,
+            statusFilterEnabled = true,
+            targetType = ModerationTargetType.TRIP_RECAP,
+            targetTypeFilterEnabled = true,
+            cursorCreatedAt = Instant.parse("2099-12-31T23:59:59Z"),
+            cursorId = 0,
+            cursorFilterEnabled = true,
+            pageable = PageRequest.of(0, 2),
+        )
+        val secondPage = moderationReportRepository.findReports(
+            status = ModerationReportStatus.REJECTED,
+            statusFilterEnabled = true,
+            targetType = ModerationTargetType.TRIP_RECAP,
+            targetTypeFilterEnabled = true,
+            cursorCreatedAt = firstPage.last().createdAt,
+            cursorId = firstPage.last().id,
+            cursorFilterEnabled = true,
+            pageable = PageRequest.of(0, 2),
+        )
+
+        assertEquals(reportIds.take(2), firstPage.map { it.id })
+        assertEquals(reportIds.drop(2), secondPage.map { it.id })
     }
 
     @Test
