@@ -13,24 +13,11 @@ import java.time.Instant
 class TransactionStatisticsQueryRepository(
     private val entityManager: EntityManager,
 ) {
-
     fun findCommonFundBalance(
         tripId: Long,
         status: TransactionStatus = TransactionStatus.ACTIVE,
     ): CommonFundBalanceRow {
-        // 공동경비 충전과 사용 거래만 잔액 계산 대상으로 집계한다.
-        val row = entityManager.createNativeQuery(
-            """
-            select min(tx.base_currency) as base_currency,
-                   coalesce(sum(case when tx.transaction_type = 'FUND_CHARGE' then tx.base_amount else 0 end), 0) as charged_base_amount,
-                   coalesce(sum(case when tx.transaction_type = 'FUND_USE' then tx.base_amount else 0 end), 0) as used_base_amount
-            from transactions tx
-            where tx.deleted_at is null
-              and tx.trip_id = :tripId
-              and tx.status = :status
-              and tx.transaction_type in ('FUND_CHARGE', 'FUND_USE')
-            """.trimIndent()
-        )
+        val row = entityManager.createNativeQuery(COMMON_FUND_QUERY)
             .setParameter("tripId", tripId)
             .setParameter("status", status.name)
             .singleResult as Array<*>
@@ -47,213 +34,76 @@ class TransactionStatisticsQueryRepository(
         from: Instant?,
         toExclusive: Instant?,
         status: TransactionStatus = TransactionStatus.ACTIVE,
-    ): List<TransactionStatisticsRow> {
-        if (from == null && toExclusive == null) {
-            return findTypeStatisticsWithoutPeriod(
-                tripId = tripId,
-                status = status,
-            )
-        }
-
-        // 거래 유형별 통계는 거래 원장의 기준 통화 금액을 합산한다.
-        return entityManager.createNativeQuery(
-            """
-            select tx.transaction_type as item_key,
-                   tx.transaction_type as item_label,
-                   count(tx.id) as transaction_count,
-                   coalesce(sum(tx.base_amount), 0) as total_base_amount
-            from transactions tx
-            where tx.deleted_at is null
-              and tx.trip_id = :tripId
-              and tx.status = :status
-              and (:fromFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) >= :from)
-              and (:toFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) < :toExclusive)
-            group by tx.transaction_type
-            order by total_base_amount desc, item_key asc
-            """.trimIndent()
-        )
-            .setCommonParameters(
-                tripId = tripId,
-                status = status,
-                from = from,
-                toExclusive = toExclusive,
-            )
-            .resultList
-            .map(::toStatisticsRow)
-    }
+    ): List<TransactionStatisticsRow> = findStatistics(
+        baseSql = TYPE_STATISTICS_QUERY,
+        tripId = tripId,
+        from = from,
+        toExclusive = toExclusive,
+        status = status,
+    )
 
     fun findCategoryStatistics(
         tripId: Long,
         from: Instant?,
         toExclusive: Instant?,
         status: TransactionStatus = TransactionStatus.ACTIVE,
-    ): List<TransactionStatisticsRow> {
-        if (from == null && toExclusive == null) {
-            return findCategoryStatisticsWithoutPeriod(
-                tripId = tripId,
-                status = status,
-            )
-        }
-
-        // 카테고리와 발생일은 거래 원장에 저장된 통계 스냅샷을 사용한다.
-        return entityManager.createNativeQuery(
-            """
-            select coalesce(tx.category, 'UNCATEGORIZED') as item_key,
-                   coalesce(tx.category, 'UNCATEGORIZED') as item_label,
-                   count(*) as transaction_count,
-                   coalesce(sum(tx.base_amount), 0) as total_base_amount
-            from transactions tx
-            where tx.deleted_at is null
-              and tx.trip_id = :tripId
-              and tx.status = :status
-              and (:fromFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) >= :from)
-              and (:toFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) < :toExclusive)
-            group by tx.category
-            order by total_base_amount desc, item_key asc
-            """.trimIndent()
-        )
-            .setCommonParameters(
-                tripId = tripId,
-                status = status,
-                from = from,
-                toExclusive = toExclusive,
-            )
-            .resultList
-            .map(::toStatisticsRow)
-    }
+    ): List<TransactionStatisticsRow> = findStatistics(
+        baseSql = CATEGORY_STATISTICS_QUERY,
+        tripId = tripId,
+        from = from,
+        toExclusive = toExclusive,
+        status = status,
+    )
 
     fun findParticipantShareStatistics(
         tripId: Long,
         from: Instant?,
         toExclusive: Instant?,
         status: TransactionStatus = TransactionStatus.ACTIVE,
-    ): List<TransactionStatisticsRow> {
-        if (from == null && toExclusive == null) {
-            return findParticipantShareStatisticsWithoutPeriod(
-                tripId = tripId,
-                status = status,
-            )
-        }
+    ): List<TransactionStatisticsRow> = findStatistics(
+        baseSql = PARTICIPANT_STATISTICS_QUERY,
+        tripId = tripId,
+        from = from,
+        toExclusive = toExclusive,
+        status = status,
+    )
 
-        // 참여자 통계는 정산 관점에 맞춰 부담자 share 기준으로 집계한다.
-        return entityManager.createNativeQuery(
-            """
-            select cast(participant.id as varchar) as item_key,
-                   participant.display_name as item_label,
-                   count(distinct tx.id) as transaction_count,
-                   coalesce(sum(share.base_share_amount), 0) as total_base_amount
-            from transaction_shares share
-            join transactions tx on tx.id = share.transaction_id
-            join trip_participants participant on participant.id = share.trip_participant_id
-            where share.deleted_at is null
-              and tx.deleted_at is null
-              and tx.trip_id = :tripId
-              and tx.status = :status
-              and (:fromFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) >= :from)
-              and (:toFilterEnabled = false or coalesce(tx.occurred_at, tx.created_at) < :toExclusive)
-            group by participant.id, participant.display_name
-            order by total_base_amount desc, participant.id asc
-            """.trimIndent()
-        )
-            .setCommonParameters(
-                tripId = tripId,
-                status = status,
-                from = from,
-                toExclusive = toExclusive,
-            )
-            .resultList
-            .map(::toStatisticsRow)
-    }
-
-    private fun findTypeStatisticsWithoutPeriod(
+    private fun findStatistics(
+        baseSql: String,
         tripId: Long,
-        status: TransactionStatus,
-    ): List<TransactionStatisticsRow> {
-        return entityManager.createNativeQuery(
-            """
-            select tx.transaction_type as item_key,
-                   tx.transaction_type as item_label,
-                   count(tx.id) as transaction_count,
-                   coalesce(sum(tx.base_amount), 0) as total_base_amount
-            from transactions tx
-            where tx.deleted_at is null
-              and tx.trip_id = :tripId
-              and tx.status = :status
-            group by tx.transaction_type
-            order by total_base_amount desc, item_key asc
-            """.trimIndent()
-        )
-            .setParameter("tripId", tripId)
-            .setParameter("status", status.name)
-            .resultList
-            .map(::toStatisticsRow)
-    }
-
-    private fun findParticipantShareStatisticsWithoutPeriod(
-        tripId: Long,
-        status: TransactionStatus,
-    ): List<TransactionStatisticsRow> {
-        return entityManager.createNativeQuery(
-            """
-            select cast(participant.id as varchar) as item_key,
-                   participant.display_name as item_label,
-                   count(distinct tx.id) as transaction_count,
-                   coalesce(sum(share.base_share_amount), 0) as total_base_amount
-            from transaction_shares share
-            join transactions tx on tx.id = share.transaction_id
-            join trip_participants participant on participant.id = share.trip_participant_id
-            where share.deleted_at is null
-              and tx.deleted_at is null
-              and tx.trip_id = :tripId
-              and tx.status = :status
-            group by participant.id, participant.display_name
-            order by total_base_amount desc, participant.id asc
-            """.trimIndent()
-        )
-            .setParameter("tripId", tripId)
-            .setParameter("status", status.name)
-            .resultList
-            .map(::toStatisticsRow)
-    }
-
-    private fun findCategoryStatisticsWithoutPeriod(
-        tripId: Long,
-        status: TransactionStatus,
-    ): List<TransactionStatisticsRow> {
-        return entityManager.createNativeQuery(
-            """
-            select coalesce(tx.category, 'UNCATEGORIZED') as item_key,
-                   coalesce(tx.category, 'UNCATEGORIZED') as item_label,
-                   count(*) as transaction_count,
-                   coalesce(sum(tx.base_amount), 0) as total_base_amount
-            from transactions tx
-            where tx.deleted_at is null
-              and tx.trip_id = :tripId
-              and tx.status = :status
-            group by tx.category
-            order by total_base_amount desc, item_key asc
-            """.trimIndent()
-        )
-            .setParameter("tripId", tripId)
-            .setParameter("status", status.name)
-            .resultList
-            .map(::toStatisticsRow)
-    }
-
-    private fun Query.setCommonParameters(
-        tripId: Long,
-        status: TransactionStatus,
         from: Instant?,
         toExclusive: Instant?,
-    ): Query {
-        // null 기간 조건은 boolean 파라미터로 비활성화한다.
-        return this
+        status: TransactionStatus,
+    ): List<TransactionStatisticsRow> {
+        val query = entityManager.createNativeQuery(addPeriodShape(baseSql, from, toExclusive))
             .setParameter("tripId", tripId)
             .setParameter("status", status.name)
-            .setParameter("fromFilterEnabled", from != null)
-            .setParameter("from", from ?: Instant.EPOCH)
-            .setParameter("toFilterEnabled", toExclusive != null)
-            .setParameter("toExclusive", toExclusive ?: Instant.EPOCH)
+            .setPeriodParameters(from, toExclusive)
+
+        return query.resultList.map(::toStatisticsRow)
+    }
+
+    private fun addPeriodShape(baseSql: String, from: Instant?, toExclusive: Instant?): String {
+        val predicates = buildList {
+            if (from != null) {
+                add("(tx.occurred_at >= :from or (tx.occurred_at is null and tx.created_at >= :from))")
+            }
+            if (toExclusive != null) {
+                add("(tx.occurred_at < :toExclusive or (tx.occurred_at is null and tx.created_at < :toExclusive))")
+            }
+        }
+        val periodSql = if (predicates.isEmpty()) {
+            ""
+        } else {
+            predicates.joinToString(separator = " and ", prefix = " and ")
+        }
+        return baseSql.replace(PERIOD_MARKER, periodSql)
+    }
+
+    private fun Query.setPeriodParameters(from: Instant?, toExclusive: Instant?): Query {
+        from?.let { setParameter("from", it) }
+        toExclusive?.let { setParameter("toExclusive", it) }
+        return this
     }
 
     private fun toStatisticsRow(row: Any?): TransactionStatisticsRow {
@@ -264,5 +114,65 @@ class TransactionStatisticsQueryRepository(
             transactionCount = (values[2] as Number).toLong(),
             totalBaseAmount = values[3] as BigDecimal,
         )
+    }
+
+    private companion object {
+        const val PERIOD_MARKER = "/* period predicates */"
+
+        val COMMON_FUND_QUERY = """
+            select min(tx.base_currency) as base_currency,
+                   coalesce(sum(case when tx.transaction_type = 'FUND_CHARGE' then tx.base_amount else 0 end), 0) as charged_base_amount,
+                   coalesce(sum(case when tx.transaction_type = 'FUND_USE' then tx.base_amount else 0 end), 0) as used_base_amount
+            from transactions tx
+            where tx.deleted_at is null
+              and tx.trip_id = :tripId
+              and tx.status = :status
+              and tx.transaction_type in ('FUND_CHARGE', 'FUND_USE')
+        """.trimIndent()
+
+        val TYPE_STATISTICS_QUERY = """
+            select tx.transaction_type as item_key,
+                   tx.transaction_type as item_label,
+                   count(tx.id) as transaction_count,
+                   coalesce(sum(tx.base_amount), 0) as total_base_amount
+            from transactions tx
+            where tx.deleted_at is null
+              and tx.trip_id = :tripId
+              and tx.status = :status
+              $PERIOD_MARKER
+            group by tx.transaction_type
+            order by total_base_amount desc, item_key asc
+        """.trimIndent()
+
+        val CATEGORY_STATISTICS_QUERY = """
+            select coalesce(tx.category, 'UNCATEGORIZED') as item_key,
+                   coalesce(tx.category, 'UNCATEGORIZED') as item_label,
+                   count(*) as transaction_count,
+                   coalesce(sum(tx.base_amount), 0) as total_base_amount
+            from transactions tx
+            where tx.deleted_at is null
+              and tx.trip_id = :tripId
+              and tx.status = :status
+              $PERIOD_MARKER
+            group by tx.category
+            order by total_base_amount desc, item_key asc
+        """.trimIndent()
+
+        val PARTICIPANT_STATISTICS_QUERY = """
+            select cast(participant.id as varchar) as item_key,
+                   participant.display_name as item_label,
+                   count(distinct tx.id) as transaction_count,
+                   coalesce(sum(share.base_share_amount), 0) as total_base_amount
+            from transaction_shares share
+            join transactions tx on tx.id = share.transaction_id
+            join trip_participants participant on participant.id = share.trip_participant_id
+            where share.deleted_at is null
+              and tx.deleted_at is null
+              and tx.trip_id = :tripId
+              and tx.status = :status
+              $PERIOD_MARKER
+            group by participant.id, participant.display_name
+            order by total_base_amount desc, participant.id asc
+        """.trimIndent()
     }
 }

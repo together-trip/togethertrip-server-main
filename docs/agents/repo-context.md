@@ -33,6 +33,9 @@
 - Service가 트랜잭션 경계를 가진다. 클래스 기본값은 `@Transactional(readOnly = true)`, 쓰기 메서드는 별도 `@Transactional`을 사용한다.
 - Service는 비즈니스 규칙과 권한 판단을 담당한다. 여러 Service 조합이 반복될 때만 Facade 도입을 검토한다.
 - Repository는 Entity 조회/저장 책임만 가진다. DTO 반환, 권한 판단, 업무 흐름 조합을 Repository에 두지 않는다.
+- 선택 조건이 있는 JPQL 조회는 Kotlin JDSL 기반 `*QueryRepository`와 `*SearchCondition`을 기본으로 사용한다.
+- 단순 CRUD와 고정 조건은 Spring Data JPA 메서드 쿼리를 유지하고, PostgreSQL 전용 집계·잠금·bulk update는 native SQL을 유지한다.
+- null 선택 조건은 생성 SQL에서 제외하며 boolean enable flag, sentinel, `:param IS NULL OR ...` 우회 패턴을 사용하지 않는다.
 - soft delete 대상 Entity는 기본적으로 `@SQLRestriction("deleted_at IS NULL")`을 적용한다.
 - soft delete 대상 조회는 `@SQLRestriction`을 기본 안전장치로 두고, 명시성이 필요한 Repository 메서드는 `DeletedAtIsNull` 조건을 포함한다.
 - `findById()` 직접 사용은 `@SQLRestriction` 적용 Entity에서만 허용한다. 삭제 데이터 포함 조회가 필요한 경우는 별도 명시 쿼리로 분리한다.

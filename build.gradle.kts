@@ -68,6 +68,9 @@ dependencies {
     implementation(platform("org.springframework.ai:spring-ai-bom:2.0.0"))
     implementation("org.springframework.ai:spring-ai-openai")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation(libs.kotlinJdslJpqlDsl)
+    implementation(libs.kotlinJdslJpqlRender)
+    implementation(libs.kotlinJdslSpringDataJpaBoot4Support)
     implementation("org.hibernate.orm:hibernate-spatial")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-security")
@@ -125,6 +128,34 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+val verifyQueryConventions = tasks.register("verifyQueryConventions") {
+    description = "Rejects repository query patterns that keep disabled optional predicates in SQL."
+    group = "verification"
+
+    val repositorySources = fileTree("src/main/kotlin") {
+        include("**/repository/**/*.kt")
+    }
+    inputs.files(repositorySources)
+
+    doLast {
+        val forbiddenPatterns = linkedMapOf(
+            "nullable bind OR" to Regex(":\\w+\\s+is\\s+null\\s+or", RegexOption.IGNORE_CASE),
+            "filter enabled flag" to Regex("filterEnabled", RegexOption.IGNORE_CASE),
+            "unused filter sentinel" to Regex("UNUSED_FILTER", RegexOption.IGNORE_CASE),
+            "bind COALESCE bypass" to Regex("coalesce\\s*\\(\\s*:\\w+", RegexOption.IGNORE_CASE),
+        )
+        val violations = repositorySources.files.flatMap { source ->
+            source.readLines().mapIndexedNotNull { index, line ->
+                forbiddenPatterns.entries.firstOrNull { (_, pattern) -> pattern.containsMatchIn(line) }
+                    ?.let { (name, _) -> "${source.relativeTo(projectDir)}:${index + 1}: $name" }
+            }
+        }
+        check(violations.isEmpty()) {
+            "Forbidden repository query patterns found:\n${violations.joinToString("\n")}"
+        }
+    }
 }
 
 tasks.test {
@@ -190,7 +221,12 @@ tasks.jacocoTestCoverageVerification {
 }
 
 tasks.check {
-    dependsOn(integrationTest, tasks.jacocoTestCoverageVerification, tasks.named("pitest"))
+    dependsOn(
+        integrationTest,
+        tasks.jacocoTestCoverageVerification,
+        tasks.named("pitest"),
+        verifyQueryConventions,
+    )
 }
 
 tasks.named("sonar") {

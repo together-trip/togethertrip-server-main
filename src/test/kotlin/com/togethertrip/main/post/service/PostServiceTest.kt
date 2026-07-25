@@ -25,7 +25,9 @@ import com.togethertrip.main.post.pagination.PostCommentCursor
 import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
+import com.togethertrip.main.post.repository.PostCommentSearchCondition
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.repository.PostSearchCondition
 import com.togethertrip.main.post.repository.PostCommentCountProjection
 import com.togethertrip.main.post.service.storage.PostAttachmentStorage
 import com.togethertrip.main.post.service.storage.StoredPostAttachment
@@ -593,7 +595,7 @@ class PostServiceTest {
 
         `when`(
             postRepository.findPosts(
-                tripId = 10L,
+                condition = PostSearchCondition(10L, null, null, null, null),
                 pageable = PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(first, second, extra))
@@ -637,9 +639,8 @@ class PostServiceTest {
 
         `when`(
             postRepository.findPosts(
-                tripId = 10L,
+                condition = PostSearchCondition(10L, null, 1L, null, null),
                 pageable = PageRequest.of(0, 2),
-                viewerUserId = 1L,
             )
         ).thenReturn(listOf(post))
         `when`(
@@ -675,11 +676,14 @@ class PostServiceTest {
         )
 
         `when`(
-            postRepository.findPostsByTypeAndCursor(
-                tripId = 10L,
-                postType = PostType.RECORD,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
+            postRepository.findPosts(
+                condition = PostSearchCondition(
+                    tripId = 10L,
+                    postType = PostType.RECORD,
+                    viewerUserId = null,
+                    cursorCreatedAt = cursor.createdAt,
+                    cursorId = cursor.id,
+                ),
                 pageable = PageRequest.of(0, 21),
             )
         ).thenReturn(emptyList())
@@ -1231,7 +1235,7 @@ class PostServiceTest {
         ).thenReturn(post)
         `when`(
             postCommentRepository.findRootComments(
-                postId = 300L,
+                condition = PostCommentSearchCondition(300L, null, null, null),
                 pageable = PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(first, second, extra))
@@ -1267,10 +1271,13 @@ class PostServiceTest {
             )
         ).thenReturn(post)
         `when`(
-            postCommentRepository.findRootCommentsByCursor(
-                postId = 300L,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
+            postCommentRepository.findRootComments(
+                condition = PostCommentSearchCondition(
+                    postId = 300L,
+                    viewerUserId = null,
+                    cursorCreatedAt = cursor.createdAt,
+                    cursorId = cursor.id,
+                ),
                 pageable = PageRequest.of(0, 21),
             )
         ).thenReturn(emptyList())

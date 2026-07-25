@@ -34,6 +34,7 @@ import com.togethertrip.main.trip.pagination.TripCursor
 import com.togethertrip.main.trip.repository.TripCountryRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.repository.TripSearchCondition
 import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
@@ -119,21 +120,15 @@ class TripService(
         val pageable = PageRequest.of(0, requestedSize + 1)
         val tripStatus = status?.let(::parseTripStatus)
         val tripCursor = cursor?.let(::parseTripCursor)
-        val trips = if (tripCursor == null) {
-            tripRepository.findAccessibleTrips(
+        val trips = tripRepository.findAccessibleTrips(
+            condition = TripSearchCondition(
                 userId = userId,
                 status = tripStatus,
-                pageable = pageable,
-            )
-        } else {
-            tripRepository.findAccessibleTripsAfterCursor(
-                userId = userId,
-                status = tripStatus,
-                cursorCreatedAt = tripCursor.createdAt,
-                cursorId = tripCursor.id,
-                pageable = pageable,
-            )
-        }
+                cursorCreatedAt = tripCursor?.createdAt,
+                cursorId = tripCursor?.id,
+            ),
+            pageable = pageable,
+        )
         val hasNext = trips.size > requestedSize
         val visibleTrips = if (hasNext) trips.take(requestedSize) else trips
 

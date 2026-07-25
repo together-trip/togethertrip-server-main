@@ -11,6 +11,15 @@
 - 사용자 개인정보, 인증, 여행/정산 권한, 정산 금액 무결성은 보안 검토 대상으로 본다.
 - 실패한 빌드나 테스트는 로그를 기준으로 최소 수정한다.
 
+## 동적 조회 원칙
+
+- 선택 조건은 값이 있을 때만 Predicate를 생성한다. `:param IS NULL OR ...`, `FilterEnabled`, sentinel 값으로 SQL 조건을 비활성화하지 않는다.
+- 조회 조건을 필수 조건, 선택 조건, 검색 경로 결정 조건으로 먼저 분류한다.
+- 선택 조건이 있는 Entity/DTO 조회는 Kotlin JDSL 기반 도메인별 `*QueryRepository`와 `*SearchCondition`을 기본으로 한다.
+- PostgreSQL 전용 집계, 잠금, bulk update는 native SQL을 유지할 수 있으며, 동적 조건은 사전에 정의한 고정 fragment와 bind parameter로만 조립한다.
+- `OR`, `NOT IN`, `DISTINCT`, fetch join은 문법만 보고 변경하지 않는다. 접근 경로가 달라지는 경우 SQL Shape와 실행계획을 비교한다.
+- 인덱스 변경에는 지원하는 SQL Shape와 `EXPLAIN (ANALYZE, BUFFERS)` 근거를 함께 남긴다.
+
 ## 산출물 위치
 
 공용 디렉터리(`docs/work-plans/`, `docs/reviews/`, `docs/verifications/`, `docs/handoffs/`)에 직접 산출물을 남기지 않는다. 작업자별 네임스페이스가 붙은 디렉터리를 사용한다.

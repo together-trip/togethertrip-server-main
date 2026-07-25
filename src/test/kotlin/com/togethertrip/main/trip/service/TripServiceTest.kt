@@ -27,6 +27,7 @@ import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripCountryRepository
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.trip.repository.TripRepository
+import com.togethertrip.main.trip.repository.TripSearchCondition
 import com.togethertrip.main.trip.service.support.TripNotificationRecipientResolver
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
@@ -290,8 +291,7 @@ class TripServiceTest {
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
         `when`(
             tripRepository.findAccessibleTrips(
-                1L,
-                TripStatus.ONGOING,
+                TripSearchCondition(1L, TripStatus.ONGOING, null, null),
                 PageRequest.of(0, 21),
             )
         ).thenReturn(listOf(trip))
@@ -322,8 +322,7 @@ class TripServiceTest {
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
         `when`(
             tripRepository.findAccessibleTrips(
-                1L,
-                null,
+                TripSearchCondition(1L, null, null, null),
                 PageRequest.of(0, 21),
             )
         ).thenReturn(listOf(trip))
@@ -349,8 +348,7 @@ class TripServiceTest {
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
         `when`(
             tripRepository.findAccessibleTrips(
-                1L,
-                null,
+                TripSearchCondition(1L, null, null, null),
                 PageRequest.of(0, 21),
             )
         ).thenReturn(listOf(trip))
@@ -446,11 +444,13 @@ class TripServiceTest {
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
         `when`(
-            tripRepository.findAccessibleTripsAfterCursor(
-                1L,
-                null,
-                Instant.parse("2026-06-05T13:00:00Z"),
-                20L,
+            tripRepository.findAccessibleTrips(
+                TripSearchCondition(
+                    1L,
+                    null,
+                    Instant.parse("2026-06-05T13:00:00Z"),
+                    20L,
+                ),
                 PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(firstTrip, secondTrip, extraTrip))
@@ -659,7 +659,12 @@ class TripServiceTest {
             }
         }
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
-        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 21))).thenReturn(trips)
+        `when`(
+            tripRepository.findAccessibleTrips(
+                TripSearchCondition(1L, null, null, null),
+                PageRequest.of(0, 21),
+            )
+        ).thenReturn(trips)
         `when`(settlementTransferRepository.findCompletionSummariesByTripIds(trips.map { it.id }))
             .thenReturn(emptyList())
 
@@ -679,9 +684,12 @@ class TripServiceTest {
     fun `목록 크기는 기본값과 최소 최대 범위로 보정된다`() {
         val user = createUser()
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
-        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 21))).thenReturn(emptyList())
-        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 2))).thenReturn(emptyList())
-        `when`(tripRepository.findAccessibleTrips(1L, null, PageRequest.of(0, 101))).thenReturn(emptyList())
+        `when`(tripRepository.findAccessibleTrips(TripSearchCondition(1L, null, null, null), PageRequest.of(0, 21)))
+            .thenReturn(emptyList())
+        `when`(tripRepository.findAccessibleTrips(TripSearchCondition(1L, null, null, null), PageRequest.of(0, 2)))
+            .thenReturn(emptyList())
+        `when`(tripRepository.findAccessibleTrips(TripSearchCondition(1L, null, null, null), PageRequest.of(0, 101)))
+            .thenReturn(emptyList())
 
         val defaultSize = tripService.getTrips(1L, null, null, null)
         val minimumSize = tripService.getTrips(1L, null, null, 0)

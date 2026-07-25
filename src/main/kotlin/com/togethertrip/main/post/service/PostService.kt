@@ -29,7 +29,9 @@ import com.togethertrip.main.post.pagination.PostCommentCursor
 import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
+import com.togethertrip.main.post.repository.PostCommentSearchCondition
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.repository.PostSearchCondition
 import com.togethertrip.main.post.service.storage.PostAttachmentStorage
 import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.post.service.storage.StoredPostAttachmentFile
@@ -291,37 +293,16 @@ class PostService(
         pageable: PageRequest,
         viewerUserId: Long?,
     ): List<Post> {
-        return when {
-            postType != null && cursor != null -> postRepository.findPostsByTypeAndCursor(
+        return postRepository.findPosts(
+            condition = PostSearchCondition(
                 tripId = tripId,
                 postType = postType,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
-                pageable = pageable,
                 viewerUserId = viewerUserId,
-            )
-
-            postType != null -> postRepository.findPostsByType(
-                tripId = tripId,
-                postType = postType,
-                pageable = pageable,
-                viewerUserId = viewerUserId,
-            )
-
-            cursor != null -> postRepository.findPostsByCursor(
-                tripId = tripId,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
-                pageable = pageable,
-                viewerUserId = viewerUserId,
-            )
-
-            else -> postRepository.findPosts(
-                tripId = tripId,
-                pageable = pageable,
-                viewerUserId = viewerUserId,
-            )
-        }
+                cursorCreatedAt = cursor?.createdAt,
+                cursorId = cursor?.id,
+            ),
+            pageable = pageable,
+        )
     }
 
     @Transactional(readOnly = true)
@@ -466,21 +447,15 @@ class PostService(
         val requestedSize = size?.coerceIn(1, MAX_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
         val pageable = PageRequest.of(0, requestedSize + 1)
         val parsedCursor = cursor?.let(::parseCommentCursor)
-        val comments = if (parsedCursor == null) {
-            postCommentRepository.findRootComments(
+        val comments = postCommentRepository.findRootComments(
+            condition = PostCommentSearchCondition(
                 postId = postId,
-                pageable = pageable,
                 viewerUserId = userId,
-            )
-        } else {
-            postCommentRepository.findRootCommentsByCursor(
-                postId = postId,
-                cursorCreatedAt = parsedCursor.createdAt,
-                cursorId = parsedCursor.id,
-                pageable = pageable,
-                viewerUserId = userId,
-            )
-        }
+                cursorCreatedAt = parsedCursor?.createdAt,
+                cursorId = parsedCursor?.id,
+            ),
+            pageable = pageable,
+        )
         val responseItems = comments.take(requestedSize)
         val hasNext = comments.size > requestedSize
         val nextCursor = if (hasNext && responseItems.isNotEmpty()) {

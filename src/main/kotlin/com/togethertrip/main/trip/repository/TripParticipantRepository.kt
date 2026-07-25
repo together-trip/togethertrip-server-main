@@ -15,13 +15,17 @@ interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
         where p1.trip.id = p2.trip.id
           and p1.user.id = :firstUserId
           and p2.user.id = :secondUserId
-          and p1.participantStatus = com.togethertrip.main.trip.domain.TripParticipantStatus.ACTIVE
-          and p2.participantStatus = com.togethertrip.main.trip.domain.TripParticipantStatus.ACTIVE
+          and p1.participantStatus = :participantStatus
+          and p2.participantStatus = :participantStatus
           and p1.deletedAt is null
           and p2.deletedAt is null
         """
     )
-    fun existsSharedActiveTrip(firstUserId: Long, secondUserId: Long): Boolean
+    fun existsSharedActiveTrip(
+        firstUserId: Long,
+        secondUserId: Long,
+        @Param("participantStatus") participantStatus: TripParticipantStatus = TripParticipantStatus.ACTIVE,
+    ): Boolean
 
     fun findByTripIdAndUserIdAndDeletedAtIsNull(
         tripId: Long,

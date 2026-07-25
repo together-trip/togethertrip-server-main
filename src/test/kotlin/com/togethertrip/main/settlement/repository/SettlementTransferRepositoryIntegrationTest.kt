@@ -5,6 +5,7 @@ import com.togethertrip.main.settlement.domain.Settlement
 import com.togethertrip.main.settlement.domain.SettlementStatus
 import com.togethertrip.main.settlement.domain.SettlementTransfer
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
+import com.togethertrip.main.settlement.repository.SettlementTransferSearchCondition
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -90,16 +91,24 @@ class SettlementTransferRepositoryIntegrationTest @Autowired constructor(
         entityManager.flush()
 
         val rows = repository.findTransferRows(
-            tripId = fixture.trip.id,
-            settlementFilterEnabled = true,
-            settlementId = fixture.settlement.id,
-            participantFilterEnabled = true,
-            participantId = fixture.sender.id,
-            statusFilterEnabled = true,
-            status = SettlementTransferStatus.PENDING.name,
+            SettlementTransferSearchCondition(
+                tripId = fixture.trip.id,
+                settlementId = fixture.settlement.id,
+                participantId = fixture.sender.id,
+                status = SettlementTransferStatus.PENDING,
+            ),
+        )
+        val unfilteredRows = repository.findTransferRows(
+            SettlementTransferSearchCondition(
+                tripId = fixture.trip.id,
+                settlementId = null,
+                participantId = null,
+                status = null,
+            ),
         )
 
         assertEquals(listOf(pending.id), rows.map { it.getId() })
+        assertEquals(2, unfilteredRows.size)
     }
 
     @Test

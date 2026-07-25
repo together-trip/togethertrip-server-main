@@ -6,6 +6,15 @@
 ./gradlew check
 ```
 
+쿼리 변경은 다음 항목을 추가로 확인한다.
+
+- `./gradlew verifyQueryConventions`로 금지된 nullable 조건 우회 패턴이 없는지 검사한다.
+- 선택 조건의 null/단일/복합 조합별 Repository 통합 테스트를 실행한다.
+- Hibernate가 생성한 SQL에서 null 조건의 Predicate가 실제 제외되는지 확인한다.
+- DTO 변환까지 포함한 DB Call 수가 결과 건수에 비례하지 않는지 확인한다.
+- 대표 SQL Shape의 `EXPLAIN (ANALYZE, BUFFERS)`를 비교하고 인덱스 추가·유지 근거를 기록한다.
+- keyset pagination 정렬 마지막에 PK를 포함하고 커서 동률의 중복·누락을 검증한다.
+
 `check`는 빠른 단위 테스트, Docker 기반 통합 테스트, JaCoCo 커버리지, 핵심 로직 PIT mutation gate를 함께 실행한다. PostgreSQL/PostGIS와 Redis는 Testcontainers가 시작하므로 Docker 실행 환경이 필요하다.
 
 빠른 feedback만 필요하면 Docker 없이 단위 테스트를 실행한다.
