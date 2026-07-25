@@ -38,7 +38,7 @@ class TestcontainersInfrastructureTest @Autowired constructor(
         assertEquals(postgisContainer.jdbcUrl, connectedJdbcUrl)
         assertNotNull(postgisVersion)
         assertTrue(postgisVersion.isNotBlank())
-        assertEquals("23", flyway.info().current()?.version?.version)
+        assertEquals("24", flyway.info().current()?.version?.version)
         assertEquals(
             1,
             jdbcTemplate.queryForObject(
@@ -69,6 +69,18 @@ class TestcontainersInfrastructureTest @Autowired constructor(
                     'phone_number_hash_version',
                     'phone_verified_at'
                   )
+                """.trimIndent(),
+                Int::class.java,
+            )
+        )
+        assertEquals(
+            3,
+            jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from information_schema.tables
+                where table_schema = 'public'
+                  and table_name in ('moderation_reports', 'moderation_report_audits', 'user_blocks')
                 """.trimIndent(),
                 Int::class.java,
             )

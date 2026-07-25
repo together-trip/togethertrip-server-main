@@ -12,6 +12,7 @@ import com.togethertrip.main.post.dto.response.PostSummaryResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.http.ResponseEntity
 
 @Tag(name = "Post", description = "여행 커뮤니티 게시글 API")
 @SecurityRequirement(name = "bearerAuth")
@@ -45,6 +46,14 @@ interface PostApiSpec {
         tripId: Long,
         postId: Long,
     ): ApiResponse<PostDetailResponse>
+
+    @Operation(summary = "게시글 첨부 조회", description = "여행 접근 권한과 신고·차단 노출 정책을 확인한 뒤 첨부를 반환합니다.")
+    fun getAttachment(
+        authUser: AuthUser,
+        tripId: Long,
+        postId: Long,
+        attachmentId: Long,
+    ): ResponseEntity<ByteArray>
 
     @Operation(
         summary = "게시글 수정",

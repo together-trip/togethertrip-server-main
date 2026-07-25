@@ -2,6 +2,8 @@ package com.togethertrip.main.global.security.jwt
 
 import com.togethertrip.main.global.security.local.LocalTestAuthenticationService
 import com.togethertrip.main.global.security.principal.AuthUser
+import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.repository.UserRepository
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -14,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 class JwtAuthenticationFilter(
     private val jwtTokenProvider: JwtTokenProvider,
     private val localTestAuthenticationService: LocalTestAuthenticationService,
+    private val userRepository: UserRepository,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -49,6 +52,10 @@ class JwtAuthenticationFilter(
     }
 
     private fun authenticate(authUser: AuthUser) {
+        val user = userRepository.findByIdAndDeletedAtIsNull(authUser.userId) ?: return
+        if (user.status != UserStatus.ACTIVE) {
+            return
+        }
         val authentication = UsernamePasswordAuthenticationToken(
             authUser,
             null,

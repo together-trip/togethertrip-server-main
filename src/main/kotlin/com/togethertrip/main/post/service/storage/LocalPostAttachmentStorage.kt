@@ -6,6 +6,7 @@ import com.togethertrip.main.global.storage.UploadFileType
 import com.togethertrip.main.global.storage.UploadFileTypeDetector
 import com.togethertrip.main.global.storage.UploadMediaKind
 import com.togethertrip.main.post.domain.PostAttachmentType
+import com.togethertrip.main.post.domain.PostAttachment
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.multipart.MultipartFile
@@ -69,6 +70,33 @@ class LocalPostAttachmentStorage(
         }
     }
 
+    override fun load(attachment: PostAttachment): StoredPostAttachmentFile {
+        val storageKey = extractStorageKey(attachment.fileUrl)
+        val storageDirectory = Path.of(storagePath).toAbsolutePath().normalize()
+        val targetPath = storageDirectory.resolve(storageKey).normalize()
+        if (!targetPath.startsWith(storageDirectory) || !Files.isRegularFile(targetPath)) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+        return StoredPostAttachmentFile(
+            bytes = Files.readAllBytes(targetPath),
+            contentType = attachment.mimeType ?: "application/octet-stream",
+        )
+    }
+
+    private fun extractStorageKey(fileUrl: String): String {
+        val normalizedPrefix = publicUrlPrefix.trimEnd('/')
+        val prefixedPath = "$normalizedPrefix/"
+        val storageKey = when {
+            fileUrl.startsWith(prefixedPath) -> fileUrl.removePrefix(prefixedPath)
+            !fileUrl.contains('/') && !fileUrl.contains('\\') -> fileUrl
+            else -> throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+        if (!SAFE_BASENAME_PATTERN.matches(storageKey) || Path.of(storageKey).isAbsolute) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
+        return storageKey
+    }
+
     private fun resolveAttachmentType(fileType: UploadFileType): PostAttachmentType {
         return when (fileType.mediaKind) {
             UploadMediaKind.IMAGE -> PostAttachmentType.IMAGE
@@ -78,5 +106,9 @@ class LocalPostAttachmentStorage(
 
     private fun createStoredFileName(fileType: UploadFileType): String {
         return "${UUID.randomUUID()}.${fileType.extension}"
+    }
+
+    private companion object {
+        val SAFE_BASENAME_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*\\.(jpg|jpeg|png|mp4)$")
     }
 }

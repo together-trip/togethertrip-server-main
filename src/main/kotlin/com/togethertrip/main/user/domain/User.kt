@@ -33,6 +33,15 @@ class User(
     @Column(nullable = false, length = 20)
     var status: UserStatus = UserStatus.ACTIVE,
 
+    @Column(name = "moderation_restricted_at")
+    var moderationRestrictedAt: Instant? = null,
+
+    @Column(name = "moderation_restricted_until")
+    var moderationRestrictedUntil: Instant? = null,
+
+    @Column(name = "moderation_restriction_reason", length = 500)
+    var moderationRestrictionReason: String? = null,
+
 ) : BaseEntity() {
 
     fun updateProfile(
@@ -80,5 +89,25 @@ class User(
 
     fun isProfileCompleted(): Boolean {
         return nickname.isNotBlank()
+    }
+
+    fun restrictModeration(reason: String?, until: Instant?, now: Instant) {
+        moderationRestrictedAt = now
+        moderationRestrictedUntil = until
+        moderationRestrictionReason = reason?.take(500)
+        updatedAt = now
+    }
+
+    fun clearModerationRestriction(now: Instant) {
+        moderationRestrictedAt = null
+        moderationRestrictedUntil = null
+        moderationRestrictionReason = null
+        updatedAt = now
+    }
+
+    fun isModerationRestricted(now: Instant): Boolean {
+        val restrictedAt = moderationRestrictedAt ?: return false
+        val until = moderationRestrictedUntil
+        return restrictedAt <= now && (until == null || until > now)
     }
 }

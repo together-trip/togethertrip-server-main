@@ -15,12 +15,22 @@ interface PostRepository : JpaRepository<Post, Long> {
         FROM Post p
         WHERE p.trip.id = :tripId
           AND p.deletedAt IS NULL
+          AND (p.postType = com.togethertrip.main.post.domain.PostType.EXPENSE OR (
+            p.moderationHiddenAt IS NULL AND p.moderationDeletedAt IS NULL
+            AND (:viewerUserId IS NULL OR NOT EXISTS (
+              SELECT b.id FROM UserBlock b
+              WHERE b.deletedAt IS NULL
+                AND ((b.blocker.id = :viewerUserId AND b.blocked.id = p.author.user.id)
+                  OR (b.blocker.id = p.author.user.id AND b.blocked.id = :viewerUserId))
+            ))
+          ))
         ORDER BY p.createdAt DESC, p.id DESC
         """
     )
     fun findPosts(
         tripId: Long,
         pageable: Pageable,
+        viewerUserId: Long? = null,
     ): List<Post>
 
     @Query(
@@ -30,6 +40,15 @@ interface PostRepository : JpaRepository<Post, Long> {
         WHERE p.trip.id = :tripId
           AND p.deletedAt IS NULL
           AND p.postType = :postType
+          AND (p.postType = com.togethertrip.main.post.domain.PostType.EXPENSE OR (
+            p.moderationHiddenAt IS NULL AND p.moderationDeletedAt IS NULL
+            AND (:viewerUserId IS NULL OR NOT EXISTS (
+              SELECT b.id FROM UserBlock b
+              WHERE b.deletedAt IS NULL
+                AND ((b.blocker.id = :viewerUserId AND b.blocked.id = p.author.user.id)
+                  OR (b.blocker.id = p.author.user.id AND b.blocked.id = :viewerUserId))
+            ))
+          ))
         ORDER BY p.createdAt DESC, p.id DESC
         """
     )
@@ -37,6 +56,7 @@ interface PostRepository : JpaRepository<Post, Long> {
         tripId: Long,
         postType: PostType,
         pageable: Pageable,
+        viewerUserId: Long? = null,
     ): List<Post>
 
     @Query(
@@ -45,6 +65,15 @@ interface PostRepository : JpaRepository<Post, Long> {
         FROM Post p
         WHERE p.trip.id = :tripId
           AND p.deletedAt IS NULL
+          AND (p.postType = com.togethertrip.main.post.domain.PostType.EXPENSE OR (
+            p.moderationHiddenAt IS NULL AND p.moderationDeletedAt IS NULL
+            AND (:viewerUserId IS NULL OR NOT EXISTS (
+              SELECT b.id FROM UserBlock b
+              WHERE b.deletedAt IS NULL
+                AND ((b.blocker.id = :viewerUserId AND b.blocked.id = p.author.user.id)
+                  OR (b.blocker.id = p.author.user.id AND b.blocked.id = :viewerUserId))
+            ))
+          ))
           AND (
             p.createdAt < :cursorCreatedAt
             OR (p.createdAt = :cursorCreatedAt AND p.id < :cursorId)
@@ -57,6 +86,7 @@ interface PostRepository : JpaRepository<Post, Long> {
         cursorCreatedAt: Instant,
         cursorId: Long,
         pageable: Pageable,
+        viewerUserId: Long? = null,
     ): List<Post>
 
     @Query(
@@ -66,6 +96,15 @@ interface PostRepository : JpaRepository<Post, Long> {
         WHERE p.trip.id = :tripId
           AND p.deletedAt IS NULL
           AND p.postType = :postType
+          AND (p.postType = com.togethertrip.main.post.domain.PostType.EXPENSE OR (
+            p.moderationHiddenAt IS NULL AND p.moderationDeletedAt IS NULL
+            AND (:viewerUserId IS NULL OR NOT EXISTS (
+              SELECT b.id FROM UserBlock b
+              WHERE b.deletedAt IS NULL
+                AND ((b.blocker.id = :viewerUserId AND b.blocked.id = p.author.user.id)
+                  OR (b.blocker.id = p.author.user.id AND b.blocked.id = :viewerUserId))
+            ))
+          ))
           AND (
             p.createdAt < :cursorCreatedAt
             OR (p.createdAt = :cursorCreatedAt AND p.id < :cursorId)
@@ -79,6 +118,7 @@ interface PostRepository : JpaRepository<Post, Long> {
         cursorCreatedAt: Instant,
         cursorId: Long,
         pageable: Pageable,
+        viewerUserId: Long? = null,
     ): List<Post>
 
     fun findByIdAndTripIdAndDeletedAtIsNull(

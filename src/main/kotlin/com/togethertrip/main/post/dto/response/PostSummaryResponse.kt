@@ -12,6 +12,7 @@ data class PostSummaryResponse(
     val tripId: Long,
     val transactionId: Long?,
     val authorParticipantId: Long,
+    val authorUserId: Long?,
     val authorDisplayName: String,
     val postType: PostType,
     val title: String?,
@@ -32,12 +33,14 @@ data class PostSummaryResponse(
         fun from(
             post: Post,
             attachments: List<PostAttachment> = emptyList(),
+            commentCount: Int = post.commentCount,
         ): PostSummaryResponse {
             return PostSummaryResponse(
                 id = post.id,
                 tripId = post.trip.id,
                 transactionId = post.transaction?.id,
                 authorParticipantId = post.author.id,
+                authorUserId = post.author.user?.id,
                 authorDisplayName = TripParticipantDisplay.displayName(post.author),
                 postType = post.postType,
                 title = post.title,
@@ -47,7 +50,7 @@ data class PostSummaryResponse(
                 placeName = post.placeName,
                 latitude = post.latitude,
                 longitude = post.longitude,
-                commentCount = post.commentCount,
+                commentCount = commentCount,
                 attachments = attachments.map(PostAttachmentResponse::from),
                 createdAt = post.createdAt,
                 updatedAt = post.updatedAt,
