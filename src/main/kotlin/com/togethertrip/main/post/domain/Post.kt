@@ -65,6 +65,12 @@ class Post(
     @Column(name = "comment_count", nullable = false)
     var commentCount: Int = 0,
 
+    @Column(name = "moderation_hidden_at")
+    var moderationHiddenAt: Instant? = null,
+
+    @Column(name = "moderation_deleted_at")
+    var moderationDeletedAt: Instant? = null,
+
 ) : BaseEntity() {
 
     fun update(
@@ -96,5 +102,22 @@ class Post(
             commentCount -= 1
         }
         updatedAt = Instant.now()
+    }
+
+    fun hideByModeration(now: Instant) {
+        require(postType == PostType.RECORD) { "Expense posts cannot be hidden by moderation" }
+        moderationHiddenAt = now
+        updatedAt = now
+    }
+
+    fun deleteByModeration(now: Instant) {
+        require(postType == PostType.RECORD) { "Expense posts cannot be deleted by moderation" }
+        moderationDeletedAt = now
+        moderationHiddenAt = now
+        updatedAt = now
+    }
+
+    fun isVisibleByModeration(): Boolean {
+        return postType == PostType.EXPENSE || (moderationHiddenAt == null && moderationDeletedAt == null)
     }
 }

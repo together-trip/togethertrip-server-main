@@ -14,6 +14,7 @@ import com.togethertrip.main.triprecap.repository.TripRecapRepository
 import com.togethertrip.main.triprecap.repository.TripRecapSceneRepository
 import com.togethertrip.main.triprecap.service.storage.TripRecapImageStorage
 import com.togethertrip.main.triprecap.service.storage.TripRecapStoredImageFile
+import com.togethertrip.main.moderation.service.ModerationPolicy
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -27,6 +28,7 @@ class TripRecapService(
     private val tripRecapAvailabilityPolicy: TripRecapAvailabilityPolicy,
     private val tripRecapGenerationJobLauncher: TripRecapGenerationJobLauncher,
     private val tripRecapImageStorage: TripRecapImageStorage,
+    private val moderationPolicy: ModerationPolicy = ModerationPolicy.NOOP,
 ) {
 
     fun getStatus(
@@ -45,6 +47,10 @@ class TripRecapService(
         val recap = tripRecapRepository.findByTripIdAndDeletedAtIsNull(trip.id)
             ?: return TripRecapStatusResponse.none()
 
+        if (!recap.isVisibleByModeration()) {
+            return TripRecapStatusResponse.none()
+        }
+
         return TripRecapStatusResponse.from(
             recapId = recap.id,
             status = recap.status,
@@ -58,6 +64,7 @@ class TripRecapService(
         tripId: Long,
         style: TripRecapStyle,
     ): TripRecapCreateResponse {
+        moderationPolicy.validateUserCanWrite(userId)
         val user = tripAccessResolver.getActiveUser(userId)
         val trip = tripAccessResolver.getAccessibleTrip(
             userId = userId,
@@ -88,6 +95,7 @@ class TripRecapService(
         tripId: Long,
         style: TripRecapStyle,
     ): TripRecapCreateResponse {
+        moderationPolicy.validateUserCanWrite(userId)
         val user = tripAccessResolver.getActiveUser(userId)
         val trip = tripAccessResolver.getAccessibleTrip(
             userId = userId,
@@ -97,6 +105,10 @@ class TripRecapService(
 
         val recap = tripRecapRepository.findByTripIdAndDeletedAtIsNull(trip.id)
             ?: throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND)
+
+        if (!recap.isVisibleByModeration()) {
+            throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND)
+        }
 
         if (!recap.isFailed()) {
             throw BusinessException(TripRecapErrorCode.TRIP_RECAP_RETRY_NOT_ALLOWED)
@@ -128,6 +140,10 @@ class TripRecapService(
         val recap = tripRecapRepository.findByTripIdAndDeletedAtIsNull(trip.id)
             ?: throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND)
 
+        if (!recap.isVisibleByModeration()) {
+            throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND)
+        }
+
         if (recap.status != TripRecapStatus.COMPLETED) {
             throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_COMPLETED)
         }
@@ -151,6 +167,10 @@ class TripRecapService(
         )
         val recap = tripRecapRepository.findByTripIdAndDeletedAtIsNull(trip.id)
             ?: throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND)
+
+        if (!recap.isVisibleByModeration()) {
+            throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_FOUND)
+        }
 
         if (recap.status != TripRecapStatus.COMPLETED) {
             throw BusinessException(TripRecapErrorCode.TRIP_RECAP_NOT_COMPLETED)

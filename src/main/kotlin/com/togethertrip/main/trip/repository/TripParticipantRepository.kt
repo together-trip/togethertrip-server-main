@@ -8,6 +8,21 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
 interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
+    @Query(
+        """
+        select case when count(p1) > 0 then true else false end
+        from TripParticipant p1, TripParticipant p2
+        where p1.trip.id = p2.trip.id
+          and p1.user.id = :firstUserId
+          and p2.user.id = :secondUserId
+          and p1.participantStatus = com.togethertrip.main.trip.domain.TripParticipantStatus.ACTIVE
+          and p2.participantStatus = com.togethertrip.main.trip.domain.TripParticipantStatus.ACTIVE
+          and p1.deletedAt is null
+          and p2.deletedAt is null
+        """
+    )
+    fun existsSharedActiveTrip(firstUserId: Long, secondUserId: Long): Boolean
+
     fun findByTripIdAndUserIdAndDeletedAtIsNull(
         tripId: Long,
         userId: Long,

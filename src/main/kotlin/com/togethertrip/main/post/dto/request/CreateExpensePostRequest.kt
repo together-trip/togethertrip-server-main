@@ -17,13 +17,18 @@ import java.time.Instant
 
 @ValidPlace
 data class CreateExpensePostRequest(
+    @field:Size(max = 100)
     val title: String? = null,
+    @field:Size(max = 30)
     val category: String? = null,
+    @field:Size(max = 5000)
     val content: String? = null,
     val occurredAt: Instant? = null,
+    @field:Size(max = 100)
     override val placeName: String? = null,
     override val latitude: BigDecimal? = null,
     override val longitude: BigDecimal? = null,
+    @field:Size(max = 10)
     val files: List<MultipartFile> = emptyList(),
     @field:NotNull
     val transactionType: TransactionType = TransactionType.EXPENSE,

@@ -47,6 +47,12 @@ class TripRecap(
     @Column(name = "completed_at")
     var completedAt: Instant? = null,
 
+    @Column(name = "moderation_hidden_at")
+    var moderationHiddenAt: Instant? = null,
+
+    @Column(name = "moderation_deleted_at")
+    var moderationDeletedAt: Instant? = null,
+
 ) : BaseEntity() {
 
     fun retry(
@@ -92,6 +98,19 @@ class TripRecap(
     fun isFailed(): Boolean {
         return status == TripRecapStatus.FAILED
     }
+
+    fun hideByModeration(now: Instant) {
+        moderationHiddenAt = now
+        updatedAt = now
+    }
+
+    fun deleteByModeration(now: Instant) {
+        moderationDeletedAt = now
+        moderationHiddenAt = now
+        updatedAt = now
+    }
+
+    fun isVisibleByModeration(): Boolean = moderationHiddenAt == null && moderationDeletedAt == null
 
     companion object {
         private const val MAX_FAILURE_REASON_LENGTH = 1000
