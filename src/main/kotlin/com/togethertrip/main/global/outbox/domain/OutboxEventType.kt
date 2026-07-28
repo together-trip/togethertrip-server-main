@@ -1,6 +1,7 @@
 package com.togethertrip.main.global.outbox.domain
 
 enum class OutboxEventType {
+    USER_ACCOUNT_DELETED,
     TRIP_PARTICIPANTS_ADDED,
     TRIP_PARTICIPANT_JOINED,
     TRIP_PARTICIPANT_REMOVED,

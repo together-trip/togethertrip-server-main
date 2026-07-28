@@ -51,7 +51,10 @@ interface UserApiSpec {
         request: UpdateUserMultipartRequest,
     ): ApiResponse<UserResponse>
 
-    @Operation(summary = "회원 탈퇴", description = "현재 사용자를 탈퇴 처리합니다.")
+    @Operation(
+        summary = "회원 탈퇴",
+        description = "현재 사용자의 개인정보와 인증 연결을 제거하고 정산·지출 원장은 익명화해 보존합니다.",
+    )
     fun deleteMe(
         authUser: AuthUser,
     ): ApiResponse<Unit>

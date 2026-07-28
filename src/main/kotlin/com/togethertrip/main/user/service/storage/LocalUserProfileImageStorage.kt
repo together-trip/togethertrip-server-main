@@ -64,6 +64,24 @@ class LocalUserProfileImageStorage(
         }
     }
 
+    override fun deleteByFileUrl(fileUrl: String) {
+        val normalizedPrefix = publicUrlPrefix.trimEnd('/')
+        val storedFileName = fileUrl
+            .takeIf { it.startsWith("$normalizedPrefix/") }
+            ?.removePrefix("$normalizedPrefix/")
+            ?.takeIf { STORED_FILE_NAME_PATTERN.matches(it) }
+            ?: return
+
+        delete(
+            StoredUserProfileImage(
+                storageKey = storedFileName,
+                fileUrl = fileUrl,
+                fileSize = null,
+                mimeType = null,
+            )
+        )
+    }
+
     private fun detectProfileImageType(fileBytes: ByteArray): UploadFileType {
         val fileType = uploadFileTypeDetector.detect(fileBytes)
 
@@ -76,5 +94,10 @@ class LocalUserProfileImageStorage(
 
     private fun createStoredFileName(fileType: UploadFileType): String {
         return "${UUID.randomUUID()}.${fileType.extension}"
+    }
+
+    companion object {
+        private val STORED_FILE_NAME_PATTERN =
+            Regex("[A-Za-z0-9][A-Za-z0-9._-]*\\.(jpg|jpeg|png)")
     }
 }

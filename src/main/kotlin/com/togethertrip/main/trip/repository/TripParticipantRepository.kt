@@ -4,10 +4,28 @@ import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantRow
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
 interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        value = """
+        update trip_participants
+        set display_name = :displayName,
+            profile_image_url = null,
+            updated_at = :updatedAt
+        where user_id = :userId
+        """,
+        nativeQuery = true,
+    )
+    fun anonymizeAllByUserIdIncludingDeleted(
+        @Param("userId") userId: Long,
+        @Param("displayName") displayName: String,
+        @Param("updatedAt") updatedAt: java.time.Instant,
+    ): Int
+
     @Query(
         """
         select case when count(p1) > 0 then true else false end

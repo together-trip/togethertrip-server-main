@@ -11,4 +11,6 @@ interface UserAgreementRepository : JpaRepository<UserAgreement, Long> {
     ): UserAgreement?
 
     fun findAllByUserIdAndDeletedAtIsNull(userId: Long): List<UserAgreement>
+
+    fun deleteAllByUserId(userId: Long)
 }

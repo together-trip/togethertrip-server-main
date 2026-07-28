@@ -35,6 +35,7 @@ auth:
     enabled: false
   apple:
     enabled: false
+    token-encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 
 springdoc:
   swagger-ui:

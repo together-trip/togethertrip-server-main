@@ -137,10 +137,6 @@ class AuthService(
 
     private fun resolveOAuthAccountUser(oauthAccount: OAuthAccount): User {
         val user = oauthAccount.user
-        if (user.status == UserStatus.WITHDRAWN) {
-            user.reactivateForSignup()
-            return user
-        }
         if (user.status != UserStatus.ACTIVE) {
             throw BusinessException(UserErrorCode.INACTIVE_USER)
         }

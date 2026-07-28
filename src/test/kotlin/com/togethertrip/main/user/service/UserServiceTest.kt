@@ -1,9 +1,15 @@
 package com.togethertrip.main.user.service
 
+import com.togethertrip.main.auth.repository.OAuthAccountRepository
+import com.togethertrip.main.auth.service.RefreshTokenService
 import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.user.UserAccountDeletedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -16,11 +22,13 @@ import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
+import com.togethertrip.main.user.repository.UserAgreementRepository
 import com.togethertrip.main.user.service.storage.StoredUserProfileImage
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
@@ -30,6 +38,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class UserServiceTest {
 
@@ -37,6 +47,10 @@ class UserServiceTest {
     private lateinit var tripParticipantRepository: TripParticipantRepository
     private lateinit var userProfileImageStorage: UserProfileImageStorage
     private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
+    private lateinit var oauthAccountRepository: OAuthAccountRepository
+    private lateinit var userAgreementRepository: UserAgreementRepository
+    private lateinit var refreshTokenService: RefreshTokenService
+    private lateinit var outboxEventPublisher: OutboxEventPublisher
     private lateinit var oauthAccountRevoker: OAuthAccountRevoker
     private lateinit var userService: UserService
 
@@ -49,11 +63,19 @@ class UserServiceTest {
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
         )
         oauthAccountRevoker = mock(OAuthAccountRevoker::class.java)
+        oauthAccountRepository = mock(OAuthAccountRepository::class.java)
+        userAgreementRepository = mock(UserAgreementRepository::class.java)
+        refreshTokenService = mock(RefreshTokenService::class.java)
+        outboxEventPublisher = mock(OutboxEventPublisher::class.java)
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
             userProfileImageStorage = userProfileImageStorage,
             profileImageUrlPolicy = profileImageUrlPolicy,
+            oauthAccountRepository = oauthAccountRepository,
+            userAgreementRepository = userAgreementRepository,
+            refreshTokenService = refreshTokenService,
+            outboxEventPublisher = outboxEventPublisher,
             oauthAccountRevoker = oauthAccountRevoker,
         )
     }
@@ -346,17 +368,80 @@ class UserServiceTest {
     }
 
     @Test
-    fun `회원 탈퇴는 soft delete로 처리한다`() {
-        val user = createUser()
+    fun `회원 탈퇴는 개인정보와 인증 연결을 제거하고 lifecycle 이벤트를 저장한다`() {
+        val user = createUser().apply {
+            gender = "MALE"
+            birthDate = LocalDate.of(1990, 1, 1)
+            profileImageUrl = "/uploads/user-profile-images/profile.jpg"
+        }
 
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+        `when`(userRepository.findLockedByIdAndDeletedAtIsNull(1L))
             .thenReturn(user)
 
-        userService.deleteMe(1L)
+        TransactionSynchronizationManager.initSynchronization()
+        TransactionSynchronizationManager.setActualTransactionActive(true)
+        try {
+            userService.deleteMe(1L)
 
-        assertEquals(UserStatus.WITHDRAWN, user.status)
-        assertNotNull(user.deletedAt)
-        verify(oauthAccountRevoker).revokeForUser(1L)
+            assertEquals(User.WITHDRAWN_USER_NICKNAME, user.nickname)
+            assertNull(user.gender)
+            assertNull(user.birthDate)
+            assertNull(user.profileImageUrl)
+            assertEquals(UserStatus.WITHDRAWN, user.status)
+            assertNotNull(user.deletedAt)
+            verify(oauthAccountRevoker).revokeForUser(1L)
+            verify(oauthAccountRepository).deleteAllByUserId(1L)
+            verify(userAgreementRepository).deleteAllByUserId(1L)
+            verifyNoInteractions(refreshTokenService)
+
+            val participantInvocation = mockingDetails(tripParticipantRepository).invocations
+                .single { it.method.name == "anonymizeAllByUserIdIncludingDeleted" }
+            assertEquals(1L, participantInvocation.arguments[0])
+            assertEquals(User.WITHDRAWN_USER_NICKNAME, participantInvocation.arguments[1])
+
+            val outboxInvocation = mockingDetails(outboxEventPublisher).invocations
+                .single { it.method.name == "publishLifecycle" }
+            assertEquals(OutboxAggregateType.USER, outboxInvocation.arguments[0])
+            assertEquals(1L, outboxInvocation.arguments[1])
+            assertEquals(OutboxEventType.USER_ACCOUNT_DELETED, outboxInvocation.arguments[2])
+            val payload = outboxInvocation.arguments[3] as UserAccountDeletedPayload
+            assertEquals(1, payload.eventVersion)
+            assertEquals(1L, payload.userId)
+
+            TransactionSynchronizationManager.getSynchronizations().forEach { it.afterCommit() }
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false)
+            TransactionSynchronizationManager.clearSynchronization()
+        }
+
+        verify(refreshTokenService).delete(1L)
+        verify(userProfileImageStorage)
+            .deleteByFileUrl("/uploads/user-profile-images/profile.jpg")
+    }
+
+    @Test
+    fun `회원 탈퇴 트랜잭션이 롤백되면 외부 저장소를 정리하지 않는다`() {
+        val user = createUser().apply {
+            profileImageUrl = "/uploads/user-profile-images/profile.jpg"
+        }
+        `when`(userRepository.findLockedByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+
+        TransactionSynchronizationManager.initSynchronization()
+        TransactionSynchronizationManager.setActualTransactionActive(true)
+        try {
+            userService.deleteMe(1L)
+            TransactionSynchronizationManager.getSynchronizations()
+                .forEach { it.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK) }
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false)
+            TransactionSynchronizationManager.clearSynchronization()
+        }
+
+        verifyNoInteractions(refreshTokenService)
+        assertTrue(
+            mockingDetails(userProfileImageStorage).invocations
+                .none { it.method.name == "deleteByFileUrl" }
+        )
     }
 
     @Test
