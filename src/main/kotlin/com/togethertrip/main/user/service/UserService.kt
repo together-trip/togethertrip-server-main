@@ -1,8 +1,14 @@
 package com.togethertrip.main.user.service
 
+import com.togethertrip.main.auth.repository.OAuthAccountRepository
+import com.togethertrip.main.auth.service.RefreshTokenService
 import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.user.UserAccountDeletedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
@@ -16,14 +22,17 @@ import com.togethertrip.main.user.dto.response.UserSearchResponse
 import com.togethertrip.main.user.dto.response.UserSummaryResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.exception.UserErrorCode
+import com.togethertrip.main.user.repository.UserAgreementRepository
 import com.togethertrip.main.user.repository.UserRepository
 import com.togethertrip.main.user.service.storage.StoredUserProfileImage
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.springframework.stereotype.Service
+import org.slf4j.LoggerFactory
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile
+import java.time.Instant
 import java.time.LocalDate
 
 @Service
@@ -32,6 +41,10 @@ class UserService(
     private val tripParticipantRepository: TripParticipantRepository,
     private val userProfileImageStorage: UserProfileImageStorage,
     private val profileImageUrlPolicy: ProfileImageUrlPolicy,
+    private val oauthAccountRepository: OAuthAccountRepository,
+    private val userAgreementRepository: UserAgreementRepository,
+    private val refreshTokenService: RefreshTokenService,
+    private val outboxEventPublisher: OutboxEventPublisher,
     private val oauthAccountRevoker: OAuthAccountRevoker = OAuthAccountRevoker.NoOp,
 ) {
 
@@ -96,11 +109,44 @@ class UserService(
 
     @Transactional
     fun deleteMe(userId: Long) {
-        val user = getActiveUser(userId)
+        val user = getLockedActiveUser(userId)
+        val deletedAt = Instant.now()
+        val profileImageUrl = user.profileImageUrl
 
-        // 회원 탈퇴 처리
-        user.withdraw()
+        // Apple token은 OAuth 계정 삭제 전에 읽고 커밋 후 폐기하도록 예약한다.
         oauthAccountRevoker.revokeForUser(userId)
+        tripParticipantRepository.anonymizeAllByUserIdIncludingDeleted(
+            userId = userId,
+            displayName = User.WITHDRAWN_USER_NICKNAME,
+            updatedAt = deletedAt,
+        )
+        oauthAccountRepository.deleteAllByUserId(userId)
+        userAgreementRepository.deleteAllByUserId(userId)
+        user.anonymizeAndWithdraw(deletedAt)
+        userRepository.save(user)
+
+        outboxEventPublisher.publishLifecycle(
+            aggregateType = OutboxAggregateType.USER,
+            aggregateId = userId,
+            eventType = OutboxEventType.USER_ACCOUNT_DELETED,
+            payload = UserAccountDeletedPayload(
+                userId = userId,
+                occurredAt = deletedAt,
+            ),
+        )
+
+        runAfterCommit {
+            runCatching { refreshTokenService.delete(userId) }
+                .onFailure {
+                    logger.warn("Refresh token cleanup failed after account deletion userId={}", userId, it)
+                }
+            profileImageUrl?.let { fileUrl ->
+                runCatching { userProfileImageStorage.deleteByFileUrl(fileUrl) }
+                    .onFailure {
+                        logger.warn("Profile image cleanup failed after account deletion userId={}", userId, it)
+                    }
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -150,6 +196,17 @@ class UserService(
         }
 
         // 활성 사용자 반환
+        return user
+    }
+
+    private fun getLockedActiveUser(userId: Long): User {
+        val user = userRepository.findLockedByIdAndDeletedAtIsNull(userId)
+            ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+
+        if (user.status != UserStatus.ACTIVE) {
+            throw BusinessException(UserErrorCode.INACTIVE_USER)
+        }
+
         return user
     }
 
@@ -209,6 +266,19 @@ class UserService(
         )
     }
 
+    private fun runAfterCommit(action: () -> Unit) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            action()
+            return
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCommit() = action()
+            }
+        )
+    }
+
     private fun validateNickname(nickname: String) {
         if (
             nickname.isBlank() ||
@@ -220,6 +290,7 @@ class UserService(
     }
 
     companion object {
+        private val logger = LoggerFactory.getLogger(UserService::class.java)
         private const val MIN_NICKNAME_LENGTH = 2
         private const val MAX_NICKNAME_LENGTH = 20
         private const val MAX_PROFILE_IMAGE_URL_LENGTH = 500

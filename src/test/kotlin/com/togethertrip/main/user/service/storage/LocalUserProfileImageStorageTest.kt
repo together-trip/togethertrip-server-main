@@ -83,6 +83,39 @@ class LocalUserProfileImageStorageTest {
     }
 
     @Test
+    fun `서버 생성 URL로 저장된 프로필 이미지를 삭제한다`() {
+        val storage = LocalUserProfileImageStorage(
+            storagePath = tempDir.toString(),
+            publicUrlPrefix = "/uploads/user-profile-images",
+            uploadFileTypeDetector = UploadFileTypeDetector(),
+        )
+        val stored = storage.store(
+            MockMultipartFile("profileImage", "profile.jpg", "image/jpeg", jpegBytes())
+        )
+
+        storage.deleteByFileUrl(stored.fileUrl)
+
+        assertEquals(0, Files.list(tempDir).use { it.count() })
+    }
+
+    @Test
+    fun `외부 URL과 경로 이탈 URL은 로컬 파일을 삭제하지 않는다`() {
+        val storage = LocalUserProfileImageStorage(
+            storagePath = tempDir.toString(),
+            publicUrlPrefix = "/uploads/user-profile-images",
+            uploadFileTypeDetector = UploadFileTypeDetector(),
+        )
+        storage.store(
+            MockMultipartFile("profileImage", "profile.jpg", "image/jpeg", jpegBytes())
+        )
+
+        storage.deleteByFileUrl("https://k.kakaocdn.net/profile.jpg")
+        storage.deleteByFileUrl("/uploads/user-profile-images/../profile.jpg")
+
+        assertEquals(1, Files.list(tempDir).use { it.count() })
+    }
+
+    @Test
     fun `이미지가 아닌 파일이면 실패한다`() {
         val storage = LocalUserProfileImageStorage(
             storagePath = tempDir.toString(),

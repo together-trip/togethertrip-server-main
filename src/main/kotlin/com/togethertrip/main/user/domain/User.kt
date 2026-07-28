@@ -74,17 +74,16 @@ class User(
         updatedAt = Instant.now()
     }
 
-    fun withdraw(now: Instant = Instant.now()) {
-        // 탈퇴 상태 변경
+    fun anonymizeAndWithdraw(now: Instant = Instant.now()) {
+        nickname = WITHDRAWN_USER_NICKNAME
+        gender = null
+        birthDate = null
+        profileImageUrl = null
+        moderationRestrictedAt = null
+        moderationRestrictedUntil = null
+        moderationRestrictionReason = null
         status = UserStatus.WITHDRAWN
         markDeleted(now)
-    }
-
-    fun reactivateForSignup(now: Instant = Instant.now()) {
-        // 재가입 상태 초기화
-        status = UserStatus.ACTIVE
-        deletedAt = null
-        updatedAt = now
     }
 
     fun isProfileCompleted(): Boolean {
@@ -109,5 +108,9 @@ class User(
         val restrictedAt = moderationRestrictedAt ?: return false
         val until = moderationRestrictedUntil
         return restrictedAt <= now && (until == null || until > now)
+    }
+
+    companion object {
+        const val WITHDRAWN_USER_NICKNAME = "탈퇴한 사용자"
     }
 }

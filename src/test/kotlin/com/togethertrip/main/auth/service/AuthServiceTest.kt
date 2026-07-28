@@ -172,17 +172,17 @@ class AuthServiceTest {
     }
 
     @Test
-    fun `탈퇴 사용자가 동일 카카오 계정으로 로그인하면 즉시 재활성화한다`() {
-        val user = existingUser(nickname = "여행자").apply { withdraw() }
+    fun `삭제되지 않은 OAuth 연결이 탈퇴 사용자를 가리키면 로그인에 실패한다`() {
+        val user = existingUser(nickname = "여행자").apply { anonymizeAndWithdraw() }
         stubExistingAccount(user)
         stubKakaoUser()
-        stubTokens(userId = user.id)
 
-        val response = authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
+        val exception = assertFailsWith<BusinessException> {
+            authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
+        }
 
-        assertEquals(AuthStatus.AUTHENTICATED, response.status)
-        assertEquals(UserStatus.ACTIVE, user.status)
-        assertNull(user.deletedAt)
+        assertEquals(UserErrorCode.INACTIVE_USER, exception.errorCode)
+        assertEquals(UserStatus.WITHDRAWN, user.status)
     }
 
     @Test

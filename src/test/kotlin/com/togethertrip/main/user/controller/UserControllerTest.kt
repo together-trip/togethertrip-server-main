@@ -1,5 +1,8 @@
 package com.togethertrip.main.user.controller
 
+import com.togethertrip.main.auth.repository.OAuthAccountRepository
+import com.togethertrip.main.auth.service.RefreshTokenService
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.repository.TripParticipantRepository
@@ -8,6 +11,7 @@ import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.repository.UserRepository
+import com.togethertrip.main.user.repository.UserAgreementRepository
 import com.togethertrip.main.user.service.UserService
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.junit.jupiter.api.Test
@@ -75,6 +79,10 @@ class UserControllerTest {
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
         ),
+        oauthAccountRepository = mock(OAuthAccountRepository::class.java),
+        userAgreementRepository = mock(UserAgreementRepository::class.java),
+        refreshTokenService = mock(RefreshTokenService::class.java),
+        outboxEventPublisher = mock(OutboxEventPublisher::class.java),
     ) {
         var capturedUserId: Long? = null
         lateinit var capturedRequest: UpdateUserRequest

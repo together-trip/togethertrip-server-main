@@ -6,11 +6,13 @@ import com.togethertrip.main.global.outbox.domain.OutboxEventType
 import com.togethertrip.main.global.outbox.domain.OutboxStatus
 import com.togethertrip.main.global.outbox.payload.common.DefaultOutboxRecipientPayload
 import com.togethertrip.main.global.outbox.payload.common.OutboxNotificationPayload
+import com.togethertrip.main.global.outbox.payload.common.OutboxLifecyclePayload
 import com.togethertrip.main.global.outbox.payload.settlement.SettlementConfirmedPayload
 import com.togethertrip.main.global.outbox.payload.settlement.SettlementConfirmedRecipientPayload
 import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferSummaryItemPayload
 import com.togethertrip.main.global.outbox.payload.settlement.SettlementTransferSummaryPayload
 import com.togethertrip.main.global.outbox.payload.trip.TripParticipantsAddedPayload
+import com.togethertrip.main.global.outbox.payload.user.UserAccountDeletedPayload
 import com.togethertrip.main.global.outbox.repository.OutboxEventRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -123,6 +125,31 @@ class OutboxEventPublisherTest {
     }
 
     @Test
+    fun `수신자 없는 계정 삭제 lifecycle 이벤트를 저장한다`() {
+        `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
+            invocation.arguments[0] as OutboxEvent
+        }
+
+        val event = publisher.publishLifecycle(
+            aggregateType = OutboxAggregateType.USER,
+            aggregateId = 7L,
+            eventType = OutboxEventType.USER_ACCOUNT_DELETED,
+            payload = UserAccountDeletedPayload(
+                userId = 7L,
+                occurredAt = Instant.parse("2026-07-28T12:00:00Z"),
+            ),
+        )
+
+        assertEquals("USER", event.aggregateType)
+        assertEquals("USER_ACCOUNT_DELETED", event.eventType)
+        val payload = jacksonObjectMapper().readTree(event.payload)
+        assertEquals(1, payload["eventVersion"].intValue())
+        assertEquals(7L, payload["userId"].longValue())
+        assertEquals("2026-07-28T12:00:00Z", payload["occurredAt"].stringValue())
+        assertNull(payload["recipients"])
+    }
+
+    @Test
     fun `정산 확정 payload는 중복 제거 후 첫 수신자의 송금 요약을 보존한다`() {
         `when`(outboxEventRepository.save(any(OutboxEvent::class.java))).thenAnswer { invocation ->
             invocation.arguments[0] as OutboxEvent
@@ -183,6 +210,17 @@ class OutboxEventPublisherTest {
 
         assertNotNull(transactional)
         assertEquals(Propagation.MANDATORY, transactional.propagation)
+
+        val lifecycleMethod = OutboxEventPublisher::class.java.getMethod(
+            "publishLifecycle",
+            OutboxAggregateType::class.java,
+            java.lang.Long.TYPE,
+            OutboxEventType::class.java,
+            OutboxLifecyclePayload::class.java,
+        )
+        val lifecycleTransactional = lifecycleMethod.getAnnotation(Transactional::class.java)
+        assertNotNull(lifecycleTransactional)
+        assertEquals(Propagation.MANDATORY, lifecycleTransactional.propagation)
     }
 
     private fun tripParticipantsAddedPayload(
