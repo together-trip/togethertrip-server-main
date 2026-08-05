@@ -11,6 +11,7 @@ CREATE TABLE user_account_deletion_cleanup_tasks
     claim_id         VARCHAR(36),
     lease_expires_at TIMESTAMPTZ,
     last_error_code  VARCHAR(60),
+    version          BIGINT      NOT NULL DEFAULT 0,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at       TIMESTAMPTZ,

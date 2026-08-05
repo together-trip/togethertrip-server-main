@@ -6,6 +6,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.time.Instant
 import kotlin.math.min
 
@@ -45,6 +46,10 @@ class UserAccountDeletionCleanupTask private constructor(
     @Enumerated(EnumType.STRING)
     @Column(name = "last_error_code", length = 60)
     var lastErrorCode: UserAccountDeletionCleanupErrorCode? = null,
+
+    @Version
+    @Column(nullable = false)
+    var version: Long = 0,
 ) : BaseEntity(createdAt = nextAttemptAt, updatedAt = nextAttemptAt) {
 
     fun markProcessing(
