@@ -1,8 +1,6 @@
 package com.togethertrip.main.user.service
 
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
-import com.togethertrip.main.auth.service.RefreshTokenService
-import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
@@ -27,7 +25,6 @@ import com.togethertrip.main.user.repository.UserRepository
 import com.togethertrip.main.user.service.storage.StoredUserProfileImage
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.springframework.stereotype.Service
-import org.slf4j.LoggerFactory
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
@@ -43,9 +40,8 @@ class UserService(
     private val profileImageUrlPolicy: ProfileImageUrlPolicy,
     private val oauthAccountRepository: OAuthAccountRepository,
     private val userAgreementRepository: UserAgreementRepository,
-    private val refreshTokenService: RefreshTokenService,
     private val outboxEventPublisher: OutboxEventPublisher,
-    private val oauthAccountRevoker: OAuthAccountRevoker = OAuthAccountRevoker.NoOp,
+    private val accountDeletionCleanupEnqueueService: UserAccountDeletionCleanupEnqueueService,
 ) {
 
     @Transactional(readOnly = true)
@@ -113,8 +109,10 @@ class UserService(
         val deletedAt = Instant.now()
         val profileImageUrl = user.profileImageUrl
 
-        // Apple token은 OAuth 계정 삭제 전에 읽고 커밋 후 폐기하도록 예약한다.
-        oauthAccountRevoker.revokeForUser(userId)
+        accountDeletionCleanupEnqueueService.enqueue(
+            userId = userId,
+            profileImageUrl = profileImageUrl,
+        )
         tripParticipantRepository.anonymizeAllByUserIdIncludingDeleted(
             userId = userId,
             displayName = User.WITHDRAWN_USER_NICKNAME,
@@ -135,18 +133,6 @@ class UserService(
             ),
         )
 
-        runAfterCommit {
-            runCatching { refreshTokenService.delete(userId) }
-                .onFailure {
-                    logger.warn("Refresh token cleanup failed after account deletion userId={}", userId, it)
-                }
-            profileImageUrl?.let { fileUrl ->
-                runCatching { userProfileImageStorage.deleteByFileUrl(fileUrl) }
-                    .onFailure {
-                        logger.warn("Profile image cleanup failed after account deletion userId={}", userId, it)
-                    }
-            }
-        }
     }
 
     @Transactional(readOnly = true)
@@ -266,19 +252,6 @@ class UserService(
         )
     }
 
-    private fun runAfterCommit(action: () -> Unit) {
-        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
-            action()
-            return
-        }
-
-        TransactionSynchronizationManager.registerSynchronization(
-            object : TransactionSynchronization {
-                override fun afterCommit() = action()
-            }
-        )
-    }
-
     private fun validateNickname(nickname: String) {
         if (
             nickname.isBlank() ||
@@ -290,7 +263,6 @@ class UserService(
     }
 
     companion object {
-        private val logger = LoggerFactory.getLogger(UserService::class.java)
         private const val MIN_NICKNAME_LENGTH = 2
         private const val MAX_NICKNAME_LENGTH = 20
         private const val MAX_PROFILE_IMAGE_URL_LENGTH = 500

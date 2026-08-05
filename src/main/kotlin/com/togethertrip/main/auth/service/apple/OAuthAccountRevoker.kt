@@ -1,9 +1,9 @@
 package com.togethertrip.main.auth.service.apple
 
-interface OAuthAccountRevoker {
-    fun revokeForUser(userId: Long)
+fun interface OAuthAccountRevoker {
+    fun revokeEncrypted(encryptedRefreshToken: String)
 
     object NoOp : OAuthAccountRevoker {
-        override fun revokeForUser(userId: Long) = Unit
+        override fun revokeEncrypted(encryptedRefreshToken: String) = Unit
     }
 }

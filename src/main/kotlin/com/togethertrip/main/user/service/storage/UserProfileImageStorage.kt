@@ -8,6 +8,8 @@ interface UserProfileImageStorage {
 
     fun delete(storedImage: StoredUserProfileImage)
 
+    fun isManagedFileUrl(fileUrl: String): Boolean
+
     fun deleteByFileUrl(fileUrl: String)
 }
 
