@@ -45,6 +45,10 @@ Redis refresh token 삭제를 내구성 있는 작업으로 저장하고 실패 
 - Apple refresh token은 기존 암호문 그대로 저장하고 실행 직전에만 복호화한다.
 - 프로필 URL은 파일 삭제에 필요한 기간만 저장하며 완료 즉시 payload를 `NULL`로 지운다.
 - repository claim 쿼리는 due 상태만 선택하고 행 잠금으로 다중 인스턴스 경쟁을 제어한다.
+- 짧은 claim 트랜잭션이 5분 lease와 claim ID를 저장한 뒤 외부 I/O는 트랜잭션 밖에서 수행한다.
+- 완료와 실패는 작업별 짧은 트랜잭션에서 현재 claim ID가 일치할 때만 저장한다.
+- 작업 `version` 낙관적 잠금으로 lease 경계에서 늦은 worker가 새 claim 상태를 덮어쓰지 못하게 한다.
+- lease 만료 작업은 다른 worker가 회수하며 `WORKER_LEASE_EXPIRED`로 재시도를 추적한다.
 
 ### TDD 시나리오
 
@@ -67,8 +71,18 @@ Redis refresh token 삭제를 내구성 있는 작업으로 저장하고 실패 
 
 ## 위험과 확인 사항
 
-- 외부 호출 중 DB transaction과 row lock을 유지한다. batch 크기와 timeout을 작게 유지하고,
-  장기적으로 lease 기반 claim이 필요해지면 별도 이슈로 분리한다.
+- 외부 호출 성공과 완료 상태 저장 사이의 프로세스 종료는 중복 실행을 만들 수 있다. Redis 삭제,
+  로컬 파일 삭제, Apple revoke의 멱등 계약을 전제로 하며 claim ID로 늦은 worker의 상태 덮어쓰기를 막는다.
 - 작업 payload는 삭제 완료 전까지 DB에 남는다. Apple token은 암호문만 저장하고 완료 즉시 제거한다.
-- 영구 장애는 `FAILED` 상태로 계속 추적되며 백오프 상한 이후 일정 간격으로 재시도한다.
+- 영구 장애는 `FAILED` 상태로 계속 추적되며 백오프 상한 이후 일정 간격으로 재시도한다. revoke 전
+  Apple 암호문을 제거하면 정리가 불가능하므로 운영 경보와 암호화 키 보존으로 장기 실패를 관리한다.
 - 기존 이슈 #125의 미완료 범위이므로 새 GitHub 이슈는 만들지 않는다.
+
+## 구현 상태
+
+- 삭제 트랜잭션에서 Apple 암호문, 관리 대상 프로필 파일, Redis 정리 작업을 영속화한다.
+- 5분 lease와 `FOR UPDATE SKIP LOCKED`로 다중 worker claim을 조정한다.
+- 외부 I/O는 DB 트랜잭션 밖에서 실행하고 결과만 작업별 트랜잭션으로 저장한다.
+- 실패는 30초부터 6시간 상한의 지수 백오프로 재시도하며 lease 만료 작업도 회수한다.
+- 완료 payload 제거, 비민감 오류 코드, claim/version 경합 방어를 반영했다.
+- API 응답, 사용자 익명화, `USER_ACCOUNT_DELETED` outbox 계약은 변경하지 않았다.
