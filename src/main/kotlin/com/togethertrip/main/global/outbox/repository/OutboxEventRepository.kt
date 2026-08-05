@@ -8,13 +8,23 @@ import org.springframework.data.repository.query.Param
 interface OutboxEventRepository : JpaRepository<OutboxEvent, Long> {
     @Query(
         value = """
-        select *
-        from outbox_events
-        where status = 'PENDING'
-           or (status = 'FAILED' and retry_count < :maxAttempts)
-        order by created_at asc, id asc
+        select event.*
+        from outbox_events event
+        where (
+                event.status = 'PENDING'
+                or (event.status = 'FAILED' and event.retry_count < :maxAttempts)
+              )
+          and not exists (
+                select 1
+                from outbox_events predecessor
+                where predecessor.aggregate_type = event.aggregate_type
+                  and predecessor.aggregate_id = event.aggregate_id
+                  and predecessor.status <> 'PUBLISHED'
+                  and (predecessor.created_at, predecessor.id) < (event.created_at, event.id)
+              )
+        order by event.created_at asc, event.id asc
         limit :limit
-        for update skip locked
+        for update of event skip locked
         """,
         nativeQuery = true,
     )

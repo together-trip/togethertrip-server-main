@@ -52,5 +52,44 @@ class SqsOutboxEventSenderTest {
         assertEquals(1, body["payload"]["eventVersion"].intValue())
         assertEquals(1L, body["payload"]["recipients"][0]["userId"].longValue())
         assertEquals("2026-06-22T12:00:00Z", body["payload"]["occurredAt"].stringValue())
+        assertEquals(null, request.messageGroupId())
+        assertEquals(null, request.messageDeduplicationId())
+    }
+
+    @Test
+    fun `FIFO queue는 aggregate ordering group과 event deduplication ID를 설정한다`() {
+        val fifoSender = SqsOutboxEventSender(
+            sqsClient = sqsClient,
+            objectMapper = objectMapper,
+            properties = SqsOutboxProperties(
+                queueUrl = "https://sqs.ap-northeast-2.amazonaws.com/123/togethertrip-test.fifo",
+                queueType = SqsOutboxQueueType.FIFO,
+            ),
+        )
+        val event = outboxEvent(id = 15L, aggregateType = "SETTLEMENT_TRANSFER", aggregateId = 203L)
+
+        fifoSender.send(event)
+
+        val captor = ArgumentCaptor.forClass(SendMessageRequest::class.java)
+        verify(sqsClient).sendMessage(captor.capture())
+        assertEquals("SETTLEMENT_TRANSFER:203", captor.value.messageGroupId())
+        assertEquals("15", captor.value.messageDeduplicationId())
+    }
+
+    private fun outboxEvent(
+        id: Long,
+        aggregateType: String,
+        aggregateId: Long,
+    ): OutboxEvent {
+        return OutboxEvent(
+            aggregateType = aggregateType,
+            aggregateId = aggregateId,
+            eventType = "SETTLEMENT_TRANSFER_COMPLETED",
+            payload = """{"eventVersion":1,"recipients":[{"userId":1}]}""",
+        ).apply {
+            this.id = id
+            createdAt = Instant.parse("2026-06-22T12:00:00Z")
+            updatedAt = Instant.parse("2026-06-22T12:00:00Z")
+        }
     }
 }
