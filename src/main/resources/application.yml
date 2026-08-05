@@ -63,6 +63,8 @@ auth:
     jwks-url: ${APPLE_JWKS_URL:https://appleid.apple.com/auth/keys}
     token-url: ${APPLE_TOKEN_URL:https://appleid.apple.com/auth/token}
     revoke-url: ${APPLE_REVOKE_URL:https://appleid.apple.com/auth/revoke}
+    connect-timeout: ${APPLE_CONNECT_TIMEOUT:PT3S}
+    response-timeout: ${APPLE_RESPONSE_TIMEOUT:PT5S}
 
 springdoc:
   swagger-ui:
