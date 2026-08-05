@@ -29,4 +29,9 @@ interface UserRepository : JpaRepository<User, Long> {
         id: Long,
     ): Boolean
 
+    fun existsByIdAndProfileImageUrlAndDeletedAtIsNull(
+        id: Long,
+        profileImageUrl: String,
+    ): Boolean
+
 }

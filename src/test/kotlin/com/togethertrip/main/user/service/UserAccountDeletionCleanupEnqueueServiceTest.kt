@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyList
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.mockingDetails
+import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import java.time.Clock
 import java.time.Instant
@@ -19,6 +21,49 @@ import java.time.ZoneOffset
 import kotlin.test.assertEquals
 
 class UserAccountDeletionCleanupEnqueueServiceTest {
+
+    @Test
+    fun `프로필 교체는 이전 managed 파일 정리 작업을 저장한다`() {
+        val oauthAccountRepository = mock(OAuthAccountRepository::class.java)
+        val taskRepository = mock(UserAccountDeletionCleanupTaskRepository::class.java)
+        val profileImageStorage = mock(UserProfileImageStorage::class.java)
+        val profileImageUrl = "/uploads/user-profile-images/previous.jpg"
+        `when`(profileImageStorage.isManagedFileUrl(profileImageUrl)).thenReturn(true)
+        val service = UserAccountDeletionCleanupEnqueueService(
+            oauthAccountRepository = oauthAccountRepository,
+            taskRepository = taskRepository,
+            profileImageStorage = profileImageStorage,
+            clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
+        )
+
+        service.enqueueProfileImage(1L, profileImageUrl)
+
+        val task = mockingDetails(taskRepository).invocations
+            .single { it.method.name == "save" }
+            .arguments[0] as UserAccountDeletionCleanupTask
+        assertEquals(1L, task.userId)
+        assertEquals(UserAccountDeletionCleanupType.PROFILE_IMAGE, task.type)
+        assertEquals(profileImageUrl, task.payload)
+        assertEquals(Instant.EPOCH, task.nextAttemptAt)
+    }
+
+    @Test
+    fun `프로필 교체는 외부 파일 URL 정리 작업을 저장하지 않는다`() {
+        val oauthAccountRepository = mock(OAuthAccountRepository::class.java)
+        val taskRepository = mock(UserAccountDeletionCleanupTaskRepository::class.java)
+        val profileImageStorage = mock(UserProfileImageStorage::class.java)
+        val service = UserAccountDeletionCleanupEnqueueService(
+            oauthAccountRepository = oauthAccountRepository,
+            taskRepository = taskRepository,
+            profileImageStorage = profileImageStorage,
+            clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
+        )
+
+        service.enqueueProfileImage(1L, "https://k.kakaocdn.net/profile.jpg")
+
+        verify(profileImageStorage).isManagedFileUrl("https://k.kakaocdn.net/profile.jpg")
+        verifyNoInteractions(taskRepository)
+    }
 
     @Test
     fun `Apple 토큰과 프로필 이미지와 Redis 정리 작업을 삭제 트랜잭션에 저장한다`() {
