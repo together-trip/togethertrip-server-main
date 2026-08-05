@@ -1,32 +1,32 @@
 package com.togethertrip.main.auth.service
 
+import com.togethertrip.main.auth.client.AppleIdentityTokenVerifier
+import com.togethertrip.main.auth.client.AppleOAuthClient
 import com.togethertrip.main.auth.client.KakaoOAuthClient
 import com.togethertrip.main.auth.domain.OAuthAccount
 import com.togethertrip.main.auth.domain.OAuthProvider
 import com.togethertrip.main.auth.dto.OAuthUserInfo
-import com.togethertrip.main.auth.dto.request.ConfirmPhoneVerificationRequest
+import com.togethertrip.main.auth.dto.AppleTokenResponse
+import com.togethertrip.main.auth.dto.request.AppleLoginRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
 import com.togethertrip.main.auth.dto.response.AuthStatus
-import com.togethertrip.main.auth.exception.AuthErrorCode
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
 import com.togethertrip.main.auth.service.oauth.OAuthSignupLock
-import com.togethertrip.main.auth.service.oauth.OAuthTemporarySession
-import com.togethertrip.main.auth.service.oauth.OAuthTemporarySessionService
-import com.togethertrip.main.auth.service.phone.ConfirmedPhoneVerification
-import com.togethertrip.main.auth.service.phone.PhoneVerificationService
+import com.togethertrip.main.auth.service.apple.AppleTokenCipher
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.security.jwt.JwtTokenProvider
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.user.domain.User
+import com.togethertrip.main.user.domain.UserRole
 import com.togethertrip.main.user.domain.UserStatus
+import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Answers
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
-import org.springframework.dao.DataIntegrityViolationException
-import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
@@ -34,447 +34,235 @@ import kotlin.test.assertNull
 class AuthServiceTest {
 
     private lateinit var kakaoOAuthClient: KakaoOAuthClient
+    private lateinit var appleIdentityTokenVerifier: AppleIdentityTokenVerifier
+    private lateinit var appleOAuthClient: AppleOAuthClient
+    private lateinit var appleTokenCipher: AppleTokenCipher
     private lateinit var oauthAccountRepository: OAuthAccountRepository
     private lateinit var userRepository: UserRepository
     private lateinit var jwtTokenProvider: JwtTokenProvider
     private lateinit var refreshTokenService: RefreshTokenService
-    private lateinit var temporarySessionService: OAuthTemporarySessionService
-    private lateinit var phoneVerificationService: PhoneVerificationService
-    private lateinit var oauthSignupLock: OAuthSignupLock
-    private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
+    private lateinit var signupLock: CapturingOAuthSignupLock
     private lateinit var authService: AuthService
 
     @BeforeEach
     fun setUp() {
         kakaoOAuthClient = mock(KakaoOAuthClient::class.java)
+        appleIdentityTokenVerifier = mock(AppleIdentityTokenVerifier::class.java)
+        appleOAuthClient = mock(AppleOAuthClient::class.java)
+        appleTokenCipher = mock(AppleTokenCipher::class.java)
         oauthAccountRepository = mock(OAuthAccountRepository::class.java)
-        userRepository = mock(UserRepository::class.java)
+        userRepository = mock(UserRepository::class.java) { invocation ->
+            if (invocation.method.name == "save") {
+                (invocation.arguments[0] as User).apply { id = 1L }
+            } else {
+                Answers.RETURNS_DEFAULTS.answer(invocation)
+            }
+        }
         jwtTokenProvider = mock(JwtTokenProvider::class.java)
         refreshTokenService = mock(RefreshTokenService::class.java)
-        temporarySessionService = mock(OAuthTemporarySessionService::class.java)
-        phoneVerificationService = mock(PhoneVerificationService::class.java)
-        oauthSignupLock = object : OAuthSignupLock {
-            override fun <T> withLock(
-                session: OAuthTemporarySession,
-                block: () -> T,
-            ): T = block()
-        }
-        profileImageUrlPolicy = ProfileImageUrlPolicy(
-            userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
-        )
+        signupLock = CapturingOAuthSignupLock()
         authService = AuthService(
             kakaoOAuthClient = kakaoOAuthClient,
+            appleIdentityTokenVerifier = appleIdentityTokenVerifier,
+            appleOAuthClient = appleOAuthClient,
+            appleTokenCipher = appleTokenCipher,
             oauthAccountRepository = oauthAccountRepository,
             userRepository = userRepository,
             jwtTokenProvider = jwtTokenProvider,
             refreshTokenService = refreshTokenService,
-            temporarySessionService = temporarySessionService,
-            phoneVerificationService = phoneVerificationService,
-            oauthSignupLock = oauthSignupLock,
-            profileImageUrlPolicy = profileImageUrlPolicy,
+            oauthSignupLock = signupLock,
+            profileImageUrlPolicy = ProfileImageUrlPolicy(
+                userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
+            ),
         )
     }
 
     @Test
-    fun `탈퇴 사용자가 동일 카카오 계정으로 로그인하면 재활성화 후 전화번호 인증을 요구한다`() {
-        val oauthUserInfo = OAuthUserInfo(
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-            nickname = "여행자",
-            profileImageUrl = null,
+    fun `신규 Apple 사용자는 최초 이름과 암호화 refresh token을 저장한다`() {
+        val request = AppleLoginRequest(
+            authorizationCode = "authorization-code",
+            identityToken = "identity-token",
+            rawNonce = "12345678901234567890123456789012",
+            givenName = "재완",
+            familyName = "주",
         )
-        val user = User(nickname = "여행자").apply {
-            id = 1L
-            verifyPhoneNumberHash(
-                phoneNumberHash = "phone-hash-old",
-                phoneNumberHashVersion = "v1",
-            )
-            withdraw()
-        }
-        val oauthAccount = OAuthAccount(
-            user = user,
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-        )
-
-        `when`(kakaoOAuthClient.getUserInfo("kakao-token"))
-            .thenReturn(oauthUserInfo)
         `when`(
-            oauthAccountRepository.findByProviderAndProviderUserId(
-                provider = OAuthProvider.KAKAO,
-                providerUserId = "kakao-123",
+            appleIdentityTokenVerifier.verify(
+                request.identityToken,
+                request.rawNonce,
+                "주 재완",
             )
-        ).thenReturn(oauthAccount)
-        `when`(
-            temporarySessionService.create(
-                oauthUserInfo = oauthUserInfo,
-                existingUserId = 1L,
-            )
-        ).thenReturn("temporary-token")
-
-        val response = authService.loginWithKakao(
-            KakaoLoginRequest(accessToken = "kakao-token")
+        ).thenReturn(
+            OAuthUserInfo(OAuthProvider.APPLE, "apple-user", "주 재완", null)
         )
+        `when`(appleOAuthClient.exchangeAuthorizationCode(request.authorizationCode))
+            .thenReturn(AppleTokenResponse(refreshToken = "apple-refresh-token"))
+        `when`(appleTokenCipher.encrypt("apple-refresh-token"))
+            .thenReturn("encrypted-token")
+        stubTokens(userId = 1L)
 
-        assertEquals(AuthStatus.PHONE_VERIFICATION_REQUIRED, response.status)
-        assertEquals("temporary-token", response.temporaryToken)
-        assertEquals(UserStatus.ACTIVE, user.status)
-        assertNull(user.deletedAt)
-        assertNull(user.phoneNumber)
-        assertNull(user.phoneVerifiedAt)
-    }
-
-    @Test
-    fun `다른 세션에서 이미 회원가입을 완료하면 stale 임시 토큰의 인증 완료를 거부한다`() {
-        val session = OAuthTemporarySession(
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-            nickname = "여행자",
-            profileImageUrl = null,
-            existingUserId = 1L,
-        )
-        val user = User(nickname = "여행자").apply {
-            id = 1L
-            verifyPhoneNumberHash(
-                phoneNumberHash = "phone-hash-old",
-                phoneNumberHashVersion = "v1",
-            )
-        }
-        val oauthAccount = OAuthAccount(
-            user = user,
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-        )
-
-        `when`(temporarySessionService.get("stale-token"))
-            .thenReturn(session)
-        `when`(
-            oauthAccountRepository.findByProviderAndProviderUserId(
-                provider = OAuthProvider.KAKAO,
-                providerUserId = "kakao-123",
-            )
-        ).thenReturn(oauthAccount)
-
-        val exception = assertFailsWith<BusinessException> {
-            authService.confirmPhoneVerification(
-                ConfirmPhoneVerificationRequest(
-                    temporaryToken = "stale-token",
-                    phoneNumber = "010-3333-4444",
-                    code = "123456",
-                )
-            )
-        }
-
-        assertEquals(AuthErrorCode.SIGNUP_ALREADY_COMPLETED, exception.errorCode)
-        verify(phoneVerificationService).deleteTemporarySession("stale-token")
-    }
-
-    @Test
-    fun `재활성화 세션은 전화번호 인증 후 기존 사용자에 전화번호를 저장한다`() {
-        val session = OAuthTemporarySession(
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-            nickname = "여행자",
-            profileImageUrl = null,
-            existingUserId = 1L,
-        )
-        val user = User(nickname = "여행자").apply {
-            id = 1L
-        }
-
-        `when`(temporarySessionService.get("temporary-token"))
-            .thenReturn(session)
-        `when`(
-            oauthAccountRepository.findByProviderAndProviderUserId(
-                provider = OAuthProvider.KAKAO,
-                providerUserId = "kakao-123",
-            )
-        ).thenReturn(null)
-        `when`(phoneVerificationService.confirmCode(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )).thenReturn(
-            ConfirmedPhoneVerification(
-                session = session,
-                phoneNumberHash = "phone-hash-3333",
-                phoneNumberHashVersion = "v1",
-                phoneNumberEncrypted = "encrypted-phone",
-                phoneNumberEncryptionVersion = "v1",
-                phoneNumberMasked = "010-****-3333",
-            )
-        )
-        `when`(userRepository.findLockedByIdIncludingDeleted(1L))
-            .thenReturn(user)
-        `when`(
-            userRepository.existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
-                phoneNumberHash = "phone-hash-3333",
-                id = 1L,
-            )
-        ).thenReturn(false)
-        `when`(jwtTokenProvider.createAccessToken(userId = 1L, role = user.role))
-            .thenReturn("access-token")
-        `when`(jwtTokenProvider.createRefreshToken(userId = 1L, role = user.role))
-            .thenReturn("refresh-token")
-
-        val response = authService.confirmPhoneVerification(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )
+        val response = authService.loginWithApple(request)
 
         assertEquals(AuthStatus.PROFILE_REQUIRED, response.status)
-        assertEquals("phone-hash-3333", user.phoneNumberHash)
-        assertEquals("encrypted-phone", user.phoneNumberEncrypted)
-        assertEquals("v1", user.phoneNumberEncryptionVersion)
-        assertEquals("010-****-3333", user.phoneNumberMasked)
-        assertNull(user.phoneNumber)
-        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
-        verify(refreshTokenService).save(
-            userId = 1L,
-            refreshToken = "refresh-token",
-        )
+        assertEquals(OAuthProvider.APPLE, savedOAuthAccount().provider)
+        assertEquals("apple-user", savedOAuthAccount().providerUserId)
+        assertEquals("주 재완", savedOAuthAccount().nickname)
+        assertEquals("encrypted-token", savedOAuthAccount().encryptedRefreshToken)
     }
 
     @Test
-    fun `프로필 완료 재활성화 세션은 전화번호 인증 후 인증 완료를 반환한다`() {
-        val session = OAuthTemporarySession(
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-            nickname = "여행자",
-            profileImageUrl = null,
-            existingUserId = 1L,
+    fun `신규 카카오 사용자를 즉시 생성하고 프로필 입력 필요 토큰을 반환한다`() {
+        stubKakaoUser(
+            nickname = "카카오 닉네임",
+            profileImageUrl = "https://profile.kakaocdn.net/image.jpg",
         )
-        val user = User(
-            nickname = "여행자",
-            gender = "MALE",
-            birthDate = LocalDate.of(1990, 1, 1),
-        ).apply {
-            id = 1L
-            verifyPhoneNumberHash(
-                phoneNumberHash = "phone-hash-old",
-                phoneNumberHashVersion = "v1",
-            )
-            withdraw()
-        }
+        stubTokens(userId = 1L)
 
-        `when`(temporarySessionService.get("temporary-token"))
-            .thenReturn(session)
-        `when`(
-            oauthAccountRepository.findByProviderAndProviderUserId(
-                provider = OAuthProvider.KAKAO,
-                providerUserId = "kakao-123",
-            )
-        ).thenReturn(null)
-        `when`(phoneVerificationService.confirmCode(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )).thenReturn(
-            ConfirmedPhoneVerification(
-                session = session,
-                phoneNumberHash = "phone-hash-3333",
-                phoneNumberHashVersion = "v1",
-            )
-        )
-        `when`(userRepository.findLockedByIdIncludingDeleted(1L))
-            .thenReturn(user)
-        `when`(
-            userRepository.existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
-                phoneNumberHash = "phone-hash-3333",
-                id = 1L,
-            )
-        ).thenReturn(false)
-        `when`(jwtTokenProvider.createAccessToken(userId = 1L, role = user.role))
-            .thenReturn("access-token")
-        `when`(jwtTokenProvider.createRefreshToken(userId = 1L, role = user.role))
-            .thenReturn("refresh-token")
+        val response = authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
 
-        val response = authService.confirmPhoneVerification(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )
+        assertEquals(AuthStatus.PROFILE_REQUIRED, response.status)
+        assertEquals("access-token", response.accessToken)
+        assertEquals("refresh-token", response.refreshToken)
+        assertEquals(OAuthProvider.KAKAO, signupLock.provider)
+        assertEquals("kakao-123", signupLock.providerUserId)
+
+        val savedUser = savedUser()
+        assertEquals("", savedUser.nickname)
+        assertEquals("https://profile.kakaocdn.net/image.jpg", savedUser.profileImageUrl)
+        val savedAccount = savedOAuthAccount()
+        assertEquals(savedUser, savedAccount.user)
+        assertEquals("카카오 닉네임", savedAccount.nickname)
+        verify(refreshTokenService).save(1L, "refresh-token")
+    }
+
+    @Test
+    fun `허용되지 않은 OAuth 프로필 이미지 URL은 저장하지 않는다`() {
+        stubKakaoUser(profileImageUrl = "http://example.com/profile.jpg")
+        stubTokens(userId = 1L)
+
+        authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
+
+        assertNull(savedUser().profileImageUrl)
+        assertNull(savedOAuthAccount().profileImageUrl)
+    }
+
+    @Test
+    fun `프로필을 완료한 기존 사용자는 인증 완료를 반환한다`() {
+        val user = existingUser(nickname = "여행자")
+        stubExistingAccount(user)
+        stubKakaoUser()
+        stubTokens(userId = user.id)
+
+        val response = authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
 
         assertEquals(AuthStatus.AUTHENTICATED, response.status)
-        assertEquals(UserStatus.ACTIVE, user.status)
-        assertNull(user.deletedAt)
-        assertEquals("phone-hash-3333", user.phoneNumberHash)
-        assertNull(user.phoneNumber)
-        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
+        verify(refreshTokenService).save(user.id, "refresh-token")
     }
 
     @Test
-    fun `탈퇴 사용자 임시 세션은 인증 확인 단계에서도 재활성화 후 전화번호를 저장한다`() {
-        val session = OAuthTemporarySession(
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-            nickname = "여행자",
-            profileImageUrl = null,
-            existingUserId = 1L,
-        )
-        val user = User(nickname = "여행자").apply {
-            id = 1L
-            verifyPhoneNumberHash(
-                phoneNumberHash = "phone-hash-old",
-                phoneNumberHashVersion = "v1",
-            )
-            withdraw()
-        }
+    fun `프로필이 비어 있는 기존 사용자는 프로필 입력 필요를 반환한다`() {
+        val user = existingUser(nickname = "")
+        stubExistingAccount(user)
+        stubKakaoUser()
+        stubTokens(userId = user.id)
 
-        `when`(temporarySessionService.get("temporary-token"))
-            .thenReturn(session)
-        `when`(
-            oauthAccountRepository.findByProviderAndProviderUserId(
-                provider = OAuthProvider.KAKAO,
-                providerUserId = "kakao-123",
-            )
-        ).thenReturn(null)
-        `when`(phoneVerificationService.confirmCode(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )).thenReturn(
-            ConfirmedPhoneVerification(
-                session = session,
-                phoneNumberHash = "phone-hash-3333",
-                phoneNumberHashVersion = "v1",
-            )
-        )
-        `when`(userRepository.findLockedByIdIncludingDeleted(1L))
-            .thenReturn(user)
-        `when`(
-            userRepository.existsByPhoneNumberHashAndIdNotAndDeletedAtIsNull(
-                phoneNumberHash = "phone-hash-3333",
-                id = 1L,
-            )
-        ).thenReturn(false)
-        `when`(jwtTokenProvider.createAccessToken(userId = 1L, role = user.role))
-            .thenReturn("access-token")
-        `when`(jwtTokenProvider.createRefreshToken(userId = 1L, role = user.role))
-            .thenReturn("refresh-token")
-
-        val response = authService.confirmPhoneVerification(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )
+        val response = authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
 
         assertEquals(AuthStatus.PROFILE_REQUIRED, response.status)
-        assertEquals(UserStatus.ACTIVE, user.status)
-        assertNull(user.deletedAt)
-        assertEquals("phone-hash-3333", user.phoneNumberHash)
-        assertNull(user.phoneNumber)
-        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
     }
 
     @Test
-    fun `임시 세션의 기존 사용자 id가 DB에 없으면 세션 만료로 거부한다`() {
-        val session = OAuthTemporarySession(
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-            nickname = "여행자",
-            profileImageUrl = null,
-            existingUserId = 1L,
-        )
-
-        `when`(temporarySessionService.get("temporary-token"))
-            .thenReturn(session)
-        `when`(
-            oauthAccountRepository.findByProviderAndProviderUserId(
-                provider = OAuthProvider.KAKAO,
-                providerUserId = "kakao-123",
-            )
-        ).thenReturn(null)
-        `when`(phoneVerificationService.confirmCode(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )).thenReturn(
-            ConfirmedPhoneVerification(
-                session = session,
-                phoneNumberHash = "phone-hash-3333",
-                phoneNumberHashVersion = "v1",
-            )
-        )
-        `when`(userRepository.findLockedByIdIncludingDeleted(1L))
-            .thenReturn(null)
+    fun `삭제되지 않은 OAuth 연결이 탈퇴 사용자를 가리키면 로그인에 실패한다`() {
+        val user = existingUser(nickname = "여행자").apply { anonymizeAndWithdraw() }
+        stubExistingAccount(user)
+        stubKakaoUser()
 
         val exception = assertFailsWith<BusinessException> {
-            authService.confirmPhoneVerification(
-                ConfirmPhoneVerificationRequest(
-                    temporaryToken = "temporary-token",
-                    phoneNumber = "010-3333-4444",
-                    code = "123456",
-                )
-            )
+            authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
         }
 
-        assertEquals(AuthErrorCode.PHONE_VERIFICATION_TOKEN_EXPIRED, exception.errorCode)
-        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
+        assertEquals(UserErrorCode.INACTIVE_USER, exception.errorCode)
+        assertEquals(UserStatus.WITHDRAWN, user.status)
     }
 
     @Test
-    fun `신규 가입 저장 단계의 전화번호 unique 충돌은 전화번호 중복으로 변환한다`() {
-        val session = OAuthTemporarySession(
-            provider = OAuthProvider.KAKAO,
-            providerUserId = "kakao-123",
-            nickname = "여행자",
-            profileImageUrl = null,
-            existingUserId = null,
-        )
+    fun `정지 사용자는 로그인할 수 없다`() {
+        val user = existingUser(nickname = "여행자", status = UserStatus.SUSPENDED)
+        stubExistingAccount(user)
+        stubKakaoUser()
 
-        `when`(temporarySessionService.get("temporary-token"))
-            .thenReturn(session)
+        val exception = assertFailsWith<BusinessException> {
+            authService.loginWithKakao(KakaoLoginRequest("kakao-token"))
+        }
+
+        assertEquals(UserErrorCode.INACTIVE_USER, exception.errorCode)
+    }
+
+    private fun stubKakaoUser(
+        nickname: String? = "여행자",
+        profileImageUrl: String? = null,
+    ) {
+        `when`(kakaoOAuthClient.getUserInfo("kakao-token")).thenReturn(
+            OAuthUserInfo(
+                provider = OAuthProvider.KAKAO,
+                providerUserId = "kakao-123",
+                nickname = nickname,
+                profileImageUrl = profileImageUrl,
+            )
+        )
+    }
+
+    private fun stubExistingAccount(user: User) {
         `when`(
             oauthAccountRepository.findByProviderAndProviderUserId(
+                OAuthProvider.KAKAO,
+                "kakao-123",
+            )
+        ).thenReturn(
+            OAuthAccount(
+                user = user,
                 provider = OAuthProvider.KAKAO,
                 providerUserId = "kakao-123",
             )
-        ).thenReturn(null)
-        `when`(phoneVerificationService.confirmCode(
-            ConfirmPhoneVerificationRequest(
-                temporaryToken = "temporary-token",
-                phoneNumber = "010-3333-4444",
-                code = "123456",
-            )
-        )).thenReturn(
-            ConfirmedPhoneVerification(
-                session = session,
-                phoneNumberHash = "phone-hash-3333",
-                phoneNumberHashVersion = "v1",
-            )
         )
-        `when`(userRepository.existsByPhoneNumberHashAndDeletedAtIsNull("phone-hash-3333"))
-            .thenReturn(false)
-        `when`(userRepository.save(org.mockito.Mockito.any(User::class.java)))
-            .thenThrow(DataIntegrityViolationException("duplicate phone hash"))
+    }
 
-        val exception = assertFailsWith<BusinessException> {
-            authService.confirmPhoneVerification(
-                ConfirmPhoneVerificationRequest(
-                    temporaryToken = "temporary-token",
-                    phoneNumber = "010-3333-4444",
-                    code = "123456",
-                )
-            )
+    private fun stubTokens(userId: Long) {
+        `when`(jwtTokenProvider.createAccessToken(userId, UserRole.USER))
+            .thenReturn("access-token")
+        `when`(jwtTokenProvider.createRefreshToken(userId, UserRole.USER))
+            .thenReturn("refresh-token")
+    }
+
+    private fun existingUser(
+        nickname: String,
+        status: UserStatus = UserStatus.ACTIVE,
+    ): User = User(nickname = nickname, status = status).apply { id = 7L }
+
+    private fun savedUser(): User {
+        val invocation = org.mockito.Mockito.mockingDetails(userRepository).invocations
+            .last { it.method.name == "save" }
+        return invocation.arguments[0] as User
+    }
+
+    private fun savedOAuthAccount(): OAuthAccount {
+        val invocation = org.mockito.Mockito.mockingDetails(oauthAccountRepository).invocations
+            .last { it.method.name == "save" }
+        return invocation.arguments[0] as OAuthAccount
+    }
+
+    private class CapturingOAuthSignupLock : OAuthSignupLock {
+        var provider: OAuthProvider? = null
+        var providerUserId: String? = null
+
+        override fun <T> withLock(
+            provider: OAuthProvider,
+            providerUserId: String,
+            block: () -> T,
+        ): T {
+            this.provider = provider
+            this.providerUserId = providerUserId
+            return block()
         }
-
-        assertEquals(AuthErrorCode.PHONE_NUMBER_ALREADY_USED, exception.errorCode)
-        verify(phoneVerificationService).deleteTemporarySession("temporary-token")
     }
 }

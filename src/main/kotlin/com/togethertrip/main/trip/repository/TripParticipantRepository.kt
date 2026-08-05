@@ -4,10 +4,47 @@ import com.togethertrip.main.settlement.domain.snapshot.SettlementParticipantRow
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
 interface TripParticipantRepository : JpaRepository<TripParticipant, Long> {
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        value = """
+        update trip_participants
+        set display_name = :displayName,
+            profile_image_url = null,
+            updated_at = :updatedAt
+        where user_id = :userId
+        """,
+        nativeQuery = true,
+    )
+    fun anonymizeAllByUserIdIncludingDeleted(
+        @Param("userId") userId: Long,
+        @Param("displayName") displayName: String,
+        @Param("updatedAt") updatedAt: java.time.Instant,
+    ): Int
+
+    @Query(
+        """
+        select case when count(p1) > 0 then true else false end
+        from TripParticipant p1, TripParticipant p2
+        where p1.trip.id = p2.trip.id
+          and p1.user.id = :firstUserId
+          and p2.user.id = :secondUserId
+          and p1.participantStatus = :participantStatus
+          and p2.participantStatus = :participantStatus
+          and p1.deletedAt is null
+          and p2.deletedAt is null
+        """
+    )
+    fun existsSharedActiveTrip(
+        firstUserId: Long,
+        secondUserId: Long,
+        @Param("participantStatus") participantStatus: TripParticipantStatus = TripParticipantStatus.ACTIVE,
+    ): Boolean
+
     fun findByTripIdAndUserIdAndDeletedAtIsNull(
         tripId: Long,
         userId: Long,

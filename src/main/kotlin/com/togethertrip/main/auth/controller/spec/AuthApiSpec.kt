@@ -1,10 +1,8 @@
 package com.togethertrip.main.auth.controller.spec
 
 import com.togethertrip.main.auth.dto.response.AuthResponse
-import com.togethertrip.main.auth.dto.request.ConfirmPhoneVerificationRequest
+import com.togethertrip.main.auth.dto.request.AppleLoginRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
-import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
-import com.togethertrip.main.auth.dto.request.RequestPhoneVerificationRequest
 import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.TokenResponse
 import com.togethertrip.main.global.response.ApiResponse
@@ -27,18 +25,12 @@ interface AuthApiSpec {
     ): ApiResponse<AuthResponse>
 
     @Operation(
-        summary = "전화번호 인증번호 요청",
-        description = "카카오 로그인 임시 토큰으로 전화번호 인증번호를 SMS 발송합니다. local 인증 우회는 카카오 사용자 조회만 대체하며, 전화번호 인증은 실제 SMS 설정을 사용합니다.",
+        summary = "Apple 로그인",
+        description = "Sign in with Apple의 authorization code, identity token, nonce를 검증해 로그인합니다.",
     )
     @SecurityRequirements
-    fun requestPhoneVerification(
-        request: RequestPhoneVerificationRequest,
-    ): ApiResponse<PhoneVerificationCodeSentResponse>
-
-    @Operation(summary = "전화번호 인증번호 확인", description = "전화번호 인증번호를 확인하고 사용자 생성 또는 전화번호 갱신 후 토큰을 발급합니다.")
-    @SecurityRequirements
-    fun confirmPhoneVerification(
-        request: ConfirmPhoneVerificationRequest,
+    fun loginWithApple(
+        request: AppleLoginRequest,
     ): ApiResponse<AuthResponse>
 
     @Operation(summary = "토큰 갱신", description = "리프레시 토큰으로 새 액세스 토큰을 발급합니다.")

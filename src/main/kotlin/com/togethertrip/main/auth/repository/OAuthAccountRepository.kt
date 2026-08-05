@@ -10,4 +10,11 @@ interface OAuthAccountRepository : JpaRepository<OAuthAccount, Long> {
         provider: OAuthProvider,
         providerUserId: String,
     ): OAuthAccount?
+
+    fun findAllByUserIdAndProvider(
+        userId: Long,
+        provider: OAuthProvider,
+    ): List<OAuthAccount>
+
+    fun deleteAllByUserId(userId: Long)
 }

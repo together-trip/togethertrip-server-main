@@ -1,0 +1,7 @@
+[versions]
+kotlin-jdsl = "3.9.0"
+
+[libraries]
+kotlinJdslJpqlDsl = { module = "com.linecorp.kotlin-jdsl:jpql-dsl", version.ref = "kotlin-jdsl" }
+kotlinJdslJpqlRender = { module = "com.linecorp.kotlin-jdsl:jpql-render", version.ref = "kotlin-jdsl" }
+kotlinJdslSpringDataJpaBoot4Support = { module = "com.linecorp.kotlin-jdsl:spring-data-jpa-boot4-support", version.ref = "kotlin-jdsl" }

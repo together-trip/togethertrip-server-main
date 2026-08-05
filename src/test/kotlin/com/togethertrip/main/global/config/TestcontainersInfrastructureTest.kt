@@ -38,7 +38,80 @@ class TestcontainersInfrastructureTest @Autowired constructor(
         assertEquals(postgisContainer.jdbcUrl, connectedJdbcUrl)
         assertNotNull(postgisVersion)
         assertTrue(postgisVersion.isNotBlank())
-        assertEquals("21", flyway.info().current()?.version?.version)
+        assertEquals("26", flyway.info().current()?.version?.version)
+        assertEquals(
+            1,
+            jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'oauth_accounts'
+                  and column_name = 'encrypted_refresh_token'
+                """.trimIndent(),
+                Int::class.java,
+            )
+        )
+        assertEquals(
+            0,
+            jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'users'
+                  and column_name in (
+                    'phone_number',
+                    'phone_number_encrypted',
+                    'phone_number_encryption_version',
+                    'phone_number_masked',
+                    'phone_number_hash',
+                    'phone_number_hash_version',
+                    'phone_verified_at'
+                  )
+                """.trimIndent(),
+                Int::class.java,
+            )
+        )
+        assertEquals(
+            2,
+            jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from pg_indexes
+                where schemaname = 'public'
+                  and indexname in (
+                    'idx_transaction_payments_participant_transaction_active',
+                    'idx_transaction_shares_participant_transaction_active'
+                  )
+                """.trimIndent(),
+                Int::class.java,
+            )
+        )
+        assertEquals(
+            3,
+            jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from information_schema.tables
+                where table_schema = 'public'
+                  and table_name in ('moderation_reports', 'moderation_report_audits', 'user_blocks')
+                """.trimIndent(),
+                Int::class.java,
+            )
+        )
+        assertEquals(
+            0,
+            jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from pg_indexes
+                where schemaname = 'public'
+                  and indexname = 'uk_users_verified_phone_hash'
+                """.trimIndent(),
+                Int::class.java,
+            )
+        )
     }
 
     @Test

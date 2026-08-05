@@ -2,12 +2,10 @@ package com.togethertrip.main.auth.controller
 
 import com.togethertrip.main.auth.controller.spec.AuthApiSpec
 import com.togethertrip.main.auth.dto.TokenResponse
-import com.togethertrip.main.auth.dto.request.ConfirmPhoneVerificationRequest
+import com.togethertrip.main.auth.dto.request.AppleLoginRequest
 import com.togethertrip.main.auth.dto.request.KakaoLoginRequest
-import com.togethertrip.main.auth.dto.request.RequestPhoneVerificationRequest
 import com.togethertrip.main.auth.dto.request.TokenRefreshRequest
 import com.togethertrip.main.auth.dto.response.AuthResponse
-import com.togethertrip.main.auth.dto.response.PhoneVerificationCodeSentResponse
 import com.togethertrip.main.auth.service.AuthService
 import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
@@ -33,21 +31,12 @@ class AuthController(
         )
     }
 
-    @PostMapping("/phone/request")
-    override fun requestPhoneVerification(
-        @Valid @RequestBody request: RequestPhoneVerificationRequest,
-    ): ApiResponse<PhoneVerificationCodeSentResponse> {
-        return ApiResponse.success(
-            authService.requestPhoneVerification(request)
-        )
-    }
-
-    @PostMapping("/phone/confirm")
-    override fun confirmPhoneVerification(
-        @Valid @RequestBody request: ConfirmPhoneVerificationRequest,
+    @PostMapping("/oauth/apple")
+    override fun loginWithApple(
+        @Valid @RequestBody request: AppleLoginRequest,
     ): ApiResponse<AuthResponse> {
         return ApiResponse.success(
-            authService.confirmPhoneVerification(request)
+            authService.loginWithApple(request)
         )
     }
 

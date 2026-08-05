@@ -8,6 +8,7 @@ import com.togethertrip.main.post.exception.PostErrorCode
 import com.togethertrip.main.post.repository.PostRepository
 import com.togethertrip.main.transaction.service.TransactionService
 import com.togethertrip.main.trip.domain.TripParticipant
+import com.togethertrip.main.moderation.service.ModerationPolicy
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional
 class PostDeleteService(
     private val postRepository: PostRepository,
     private val transactionService: TransactionService,
+    private val moderationPolicy: ModerationPolicy = ModerationPolicy.NOOP,
 ) {
 
     @Transactional
@@ -23,6 +25,7 @@ class PostDeleteService(
         tripId: Long,
         postId: Long,
     ) {
+        moderationPolicy.validateUserCanWrite(userId)
         val post = getPostOrThrow(
             tripId = tripId,
             postId = postId,

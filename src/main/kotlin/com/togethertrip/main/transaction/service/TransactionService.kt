@@ -28,6 +28,7 @@ import com.togethertrip.main.transaction.pagination.TransactionCursor
 import com.togethertrip.main.transaction.repository.TransactionEventRepository
 import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
+import com.togethertrip.main.transaction.repository.TransactionSearchCondition
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
 import com.togethertrip.main.transaction.repository.projection.TransactionStatisticsRow
@@ -102,15 +103,14 @@ class TransactionService(
         val transactionType = type?.let(::parseTransactionType)
         val parsedCursor = cursor?.let(::parseCursor)
         val transactions = transactionRepository.findTransactions(
-            tripId = tripId,
-            status = TransactionStatus.ACTIVE,
-            transactionType = transactionType,
-            transactionTypeFilterEnabled = transactionType != null,
-            participantId = participantId,
-            participantFilterEnabled = participantId != null,
-            cursorCreatedAt = parsedCursor?.createdAt,
-            cursorId = parsedCursor?.id,
-            cursorFilterEnabled = parsedCursor != null,
+            condition = TransactionSearchCondition(
+                tripId = tripId,
+                status = TransactionStatus.ACTIVE,
+                transactionType = transactionType,
+                participantId = participantId,
+                cursorCreatedAt = parsedCursor?.createdAt,
+                cursorId = parsedCursor?.id,
+            ),
             pageable = PageRequest.of(0, requestedSize + 1),
         )
         val responseItems = transactions.take(requestedSize)

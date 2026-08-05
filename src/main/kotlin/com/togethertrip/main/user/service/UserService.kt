@@ -1,25 +1,26 @@
 package com.togethertrip.main.user.service
 
-import com.togethertrip.main.auth.exception.AuthErrorCode
+import com.togethertrip.main.auth.repository.OAuthAccountRepository
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
-import com.togethertrip.main.global.phone.PhoneNumberHasher
-import com.togethertrip.main.global.phone.PhoneNumberNormalizer
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.user.UserAccountDeletedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.exception.TripErrorCode
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
-import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
 import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
-import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
-import com.togethertrip.main.user.dto.response.PhoneUserSummaryResponse
 import com.togethertrip.main.user.dto.response.UserSearchResponse
+import com.togethertrip.main.user.dto.response.UserSummaryResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.exception.UserErrorCode
+import com.togethertrip.main.user.repository.UserAgreementRepository
 import com.togethertrip.main.user.repository.UserRepository
 import com.togethertrip.main.user.service.storage.StoredUserProfileImage
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
@@ -28,16 +29,19 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile
+import java.time.Instant
 import java.time.LocalDate
 
 @Service
 class UserService(
     private val userRepository: UserRepository,
     private val tripParticipantRepository: TripParticipantRepository,
-    private val phoneNumberNormalizer: PhoneNumberNormalizer,
-    private val phoneNumberHasher: PhoneNumberHasher,
     private val userProfileImageStorage: UserProfileImageStorage,
     private val profileImageUrlPolicy: ProfileImageUrlPolicy,
+    private val oauthAccountRepository: OAuthAccountRepository,
+    private val userAgreementRepository: UserAgreementRepository,
+    private val outboxEventPublisher: OutboxEventPublisher,
+    private val accountDeletionCleanupEnqueueService: UserAccountDeletionCleanupEnqueueService,
 ) {
 
     @Transactional(readOnly = true)
@@ -101,10 +105,34 @@ class UserService(
 
     @Transactional
     fun deleteMe(userId: Long) {
-        val user = getActiveUser(userId)
+        val user = getLockedActiveUser(userId)
+        val deletedAt = Instant.now()
+        val profileImageUrl = user.profileImageUrl
 
-        // 회원 탈퇴 처리
-        user.withdraw()
+        accountDeletionCleanupEnqueueService.enqueue(
+            userId = userId,
+            profileImageUrl = profileImageUrl,
+        )
+        tripParticipantRepository.anonymizeAllByUserIdIncludingDeleted(
+            userId = userId,
+            displayName = User.WITHDRAWN_USER_NICKNAME,
+            updatedAt = deletedAt,
+        )
+        oauthAccountRepository.deleteAllByUserId(userId)
+        userAgreementRepository.deleteAllByUserId(userId)
+        user.anonymizeAndWithdraw(deletedAt)
+        userRepository.save(user)
+
+        outboxEventPublisher.publishLifecycle(
+            aggregateType = OutboxAggregateType.USER,
+            aggregateId = userId,
+            eventType = OutboxEventType.USER_ACCOUNT_DELETED,
+            payload = UserAccountDeletedPayload(
+                userId = userId,
+                occurredAt = deletedAt,
+            ),
+        )
+
     }
 
     @Transactional(readOnly = true)
@@ -127,34 +155,6 @@ class UserService(
     }
 
     @Transactional(readOnly = true)
-    fun searchByPhoneNumber(
-        authUserId: Long,
-        request: SearchUserByPhoneRequest,
-    ): PhoneUserSearchResponse {
-        val authUser = getActiveUser(authUserId)
-
-        // 검색 요청자 전화번호 인증 확인
-        if (authUser.phoneVerifiedAt == null) {
-            throw BusinessException(AuthErrorCode.PHONE_VERIFICATION_REQUIRED)
-        }
-
-        // 검색 전화번호 hash 변환
-        val phoneNumber = phoneNumberNormalizer.normalize(request.phoneNumber)
-        val phoneNumberHash = phoneNumberHasher.hash(phoneNumber)
-        val user = userRepository
-            .findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-                phoneNumberHash = phoneNumberHash,
-                status = UserStatus.ACTIVE,
-            )
-            ?: return PhoneUserSearchResponse.notFound()
-
-        // 전화번호 검색 결과 응답
-        return PhoneUserSearchResponse.found(
-            PhoneUserSummaryResponse.from(user)
-        )
-    }
-
-    @Transactional(readOnly = true)
     fun searchByNickname(
         authUserId: Long,
         request: SearchUserByNicknameRequest,
@@ -168,7 +168,7 @@ class UserService(
         ) ?: return UserSearchResponse.notFound()
 
         return UserSearchResponse.found(
-            PhoneUserSummaryResponse.from(user)
+            UserSummaryResponse.from(user)
         )
     }
 
@@ -182,6 +182,17 @@ class UserService(
         }
 
         // 활성 사용자 반환
+        return user
+    }
+
+    private fun getLockedActiveUser(userId: Long): User {
+        val user = userRepository.findLockedByIdAndDeletedAtIsNull(userId)
+            ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+
+        if (user.status != UserStatus.ACTIVE) {
+            throw BusinessException(UserErrorCode.INACTIVE_USER)
+        }
+
         return user
     }
 

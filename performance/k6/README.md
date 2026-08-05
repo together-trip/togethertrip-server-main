@@ -13,7 +13,6 @@ k6 -> gateway:8080 -> main:8081
 ```text
 docs/k6-results/read-settlement/
 docs/k6-results/dml/
-docs/k6-results/concurrent-signup/
 ```
 
 ## 1. 실행 전 준비
@@ -440,70 +439,4 @@ dml_settlements: 40
 dml_transfers: 80
 dml_completed_transfers: 80
 k6 exit code: 0
-```
-
-## 11. 동시 회원가입 부하 테스트
-
-회원가입 동시성 정합성을 확인할 때는 아래 스크립트를 사용합니다.
-
-```bash
-cd /Users/jujaewan/1_Projects/togethertrip/togethertrip-server-main
-
-./performance/k6/run-concurrent-signup.sh
-```
-
-이 스크립트는 gateway를 통해 `main` 서버에 접근하고, `auth.local-test.enabled=true` 상태에서 로컬 테스트용 OAuth 세션과 전화번호 인증 상태를 준비합니다.
-
-실행 시나리오는 아래 두 가지입니다.
-
-```text
-same-session: 동일 temporaryToken으로 동시에 회원가입 confirm
-same-phone: 서로 다른 temporaryToken이 같은 전화번호로 동시에 회원가입 confirm
-```
-
-기본값은 아래와 같습니다.
-
-```text
-BASE_URL=http://localhost:8080
-CONFIRM_CODE=123456
-SAME_SESSION_VUS=20
-SAME_PHONE_VUS=10
-MAX_DURATION=5s
-READY_TIMEOUT_SECONDS=60
-```
-
-부하를 조정할 때는 아래처럼 실행합니다.
-
-```bash
-SAME_SESSION_VUS=50 SAME_PHONE_VUS=30 MAX_DURATION=10s ./performance/k6/run-concurrent-signup.sh
-```
-
-직접 k6만 실행할 수도 있습니다.
-
-```bash
-BASE_URL=http://localhost:8080 \
-RUN_ID=manual-signup-001 \
-SCENARIO=same-session \
-VUS=20 \
-k6 run performance/k6/concurrent-signup.js
-```
-
-```bash
-BASE_URL=http://localhost:8080 \
-RUN_ID=manual-signup-001 \
-SCENARIO=same-phone \
-VUS=10 \
-k6 run performance/k6/concurrent-signup.js
-```
-
-사후 DB 검증 SQL은 아래 파일을 사용합니다.
-
-```text
-performance/seed/validate-concurrent-signup.sql
-```
-
-자동 실행 스크립트 결과는 아래 디렉터리에 저장합니다.
-
-```text
-docs/k6-results/concurrent-signup/
 ```

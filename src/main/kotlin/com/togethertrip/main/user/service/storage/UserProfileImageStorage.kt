@@ -7,6 +7,10 @@ interface UserProfileImageStorage {
     fun store(file: MultipartFile): StoredUserProfileImage
 
     fun delete(storedImage: StoredUserProfileImage)
+
+    fun isManagedFileUrl(fileUrl: String): Boolean
+
+    fun deleteByFileUrl(fileUrl: String)
 }
 
 data class StoredUserProfileImage(

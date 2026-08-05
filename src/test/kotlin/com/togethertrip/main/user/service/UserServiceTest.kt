@@ -1,11 +1,13 @@
 package com.togethertrip.main.user.service
 
-import com.togethertrip.main.auth.exception.AuthErrorCode
+import com.togethertrip.main.auth.repository.OAuthAccountRepository
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
-import com.togethertrip.main.global.phone.PhoneNumberHasher
-import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
+import com.togethertrip.main.global.outbox.domain.OutboxAggregateType
+import com.togethertrip.main.global.outbox.domain.OutboxEventType
+import com.togethertrip.main.global.outbox.payload.user.UserAccountDeletedPayload
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.trip.domain.Trip
 import com.togethertrip.main.trip.domain.TripParticipant
 import com.togethertrip.main.trip.domain.TripParticipantRole
@@ -15,15 +17,16 @@ import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.User
 import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
-import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.exception.UserErrorCode
 import com.togethertrip.main.user.repository.UserRepository
+import com.togethertrip.main.user.repository.UserAgreementRepository
 import com.togethertrip.main.user.service.storage.StoredUserProfileImage
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
@@ -33,37 +36,42 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class UserServiceTest {
 
     private lateinit var userRepository: UserRepository
     private lateinit var tripParticipantRepository: TripParticipantRepository
-    private lateinit var phoneNumberNormalizer: PhoneNumberNormalizer
-    private lateinit var phoneNumberHasher: PhoneNumberHasher
     private lateinit var userProfileImageStorage: UserProfileImageStorage
     private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
+    private lateinit var oauthAccountRepository: OAuthAccountRepository
+    private lateinit var userAgreementRepository: UserAgreementRepository
+    private lateinit var outboxEventPublisher: OutboxEventPublisher
+    private lateinit var accountDeletionCleanupEnqueueService: UserAccountDeletionCleanupEnqueueService
     private lateinit var userService: UserService
 
     @BeforeEach
     fun setUp() {
         userRepository = mock(UserRepository::class.java)
         tripParticipantRepository = mock(TripParticipantRepository::class.java)
-        phoneNumberNormalizer = PhoneNumberNormalizer()
-        phoneNumberHasher = PhoneNumberHasher(
-            key = "test-phone-hash-key-must-be-at-least-32-bytes",
-            version = "v1",
-        )
         userProfileImageStorage = mock(UserProfileImageStorage::class.java)
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
         )
+        oauthAccountRepository = mock(OAuthAccountRepository::class.java)
+        userAgreementRepository = mock(UserAgreementRepository::class.java)
+        outboxEventPublisher = mock(OutboxEventPublisher::class.java)
+        accountDeletionCleanupEnqueueService = mock(UserAccountDeletionCleanupEnqueueService::class.java)
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
-            phoneNumberNormalizer = phoneNumberNormalizer,
-            phoneNumberHasher = phoneNumberHasher,
             userProfileImageStorage = userProfileImageStorage,
             profileImageUrlPolicy = profileImageUrlPolicy,
+            oauthAccountRepository = oauthAccountRepository,
+            userAgreementRepository = userAgreementRepository,
+            outboxEventPublisher = outboxEventPublisher,
+            accountDeletionCleanupEnqueueService = accountDeletionCleanupEnqueueService,
         )
     }
 
@@ -355,16 +363,78 @@ class UserServiceTest {
     }
 
     @Test
-    fun `회원 탈퇴는 soft delete로 처리한다`() {
-        val user = createUser()
+    fun `회원 탈퇴는 개인정보와 인증 연결을 제거하고 lifecycle 이벤트를 저장한다`() {
+        val user = createUser().apply {
+            gender = "MALE"
+            birthDate = LocalDate.of(1990, 1, 1)
+            profileImageUrl = "/uploads/user-profile-images/profile.jpg"
+        }
 
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
+        `when`(userRepository.findLockedByIdAndDeletedAtIsNull(1L))
             .thenReturn(user)
 
-        userService.deleteMe(1L)
+        TransactionSynchronizationManager.initSynchronization()
+        TransactionSynchronizationManager.setActualTransactionActive(true)
+        try {
+            userService.deleteMe(1L)
 
-        assertEquals(UserStatus.WITHDRAWN, user.status)
-        assertNotNull(user.deletedAt)
+            assertEquals(User.WITHDRAWN_USER_NICKNAME, user.nickname)
+            assertNull(user.gender)
+            assertNull(user.birthDate)
+            assertNull(user.profileImageUrl)
+            assertEquals(UserStatus.WITHDRAWN, user.status)
+            assertNotNull(user.deletedAt)
+            verify(accountDeletionCleanupEnqueueService).enqueue(
+                1L,
+                "/uploads/user-profile-images/profile.jpg",
+            )
+            verify(oauthAccountRepository).deleteAllByUserId(1L)
+            verify(userAgreementRepository).deleteAllByUserId(1L)
+
+            val participantInvocation = mockingDetails(tripParticipantRepository).invocations
+                .single { it.method.name == "anonymizeAllByUserIdIncludingDeleted" }
+            assertEquals(1L, participantInvocation.arguments[0])
+            assertEquals(User.WITHDRAWN_USER_NICKNAME, participantInvocation.arguments[1])
+
+            val outboxInvocation = mockingDetails(outboxEventPublisher).invocations
+                .single { it.method.name == "publishLifecycle" }
+            assertEquals(OutboxAggregateType.USER, outboxInvocation.arguments[0])
+            assertEquals(1L, outboxInvocation.arguments[1])
+            assertEquals(OutboxEventType.USER_ACCOUNT_DELETED, outboxInvocation.arguments[2])
+            val payload = outboxInvocation.arguments[3] as UserAccountDeletedPayload
+            assertEquals(1, payload.eventVersion)
+            assertEquals(1L, payload.userId)
+
+            TransactionSynchronizationManager.getSynchronizations().forEach { it.afterCommit() }
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false)
+            TransactionSynchronizationManager.clearSynchronization()
+        }
+
+    }
+
+    @Test
+    fun `회원 탈퇴는 외부 저장소를 직접 정리하지 않는다`() {
+        val user = createUser().apply {
+            profileImageUrl = "/uploads/user-profile-images/profile.jpg"
+        }
+        `when`(userRepository.findLockedByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+
+        TransactionSynchronizationManager.initSynchronization()
+        TransactionSynchronizationManager.setActualTransactionActive(true)
+        try {
+            userService.deleteMe(1L)
+            TransactionSynchronizationManager.getSynchronizations()
+                .forEach { it.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK) }
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(false)
+            TransactionSynchronizationManager.clearSynchronization()
+        }
+
+        assertTrue(
+            mockingDetails(userProfileImageStorage).invocations
+                .none { it.method.name == "deleteByFileUrl" }
+        )
     }
 
     @Test
@@ -425,44 +495,6 @@ class UserServiceTest {
     }
 
     @Test
-    fun `전화번호로 인증 완료 활성 사용자를 검색한다`() {
-        val authUser = createUser().apply {
-            verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash("+821011112222"),
-                phoneNumberHashVersion = phoneNumberHasher.version,
-            )
-        }
-        val targetUser = createUser().apply {
-            id = 2L
-            nickname = "동행자"
-            verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
-                phoneNumberHashVersion = phoneNumberHasher.version,
-            )
-        }
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(authUser)
-        `when`(
-            userRepository.findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
-                status = UserStatus.ACTIVE,
-            )
-        ).thenReturn(targetUser)
-
-        val response = userService.searchByPhoneNumber(
-            authUserId = 1L,
-            request = SearchUserByPhoneRequest(
-                phoneNumber = "010-3333-4444",
-            ),
-        )
-
-        assertEquals(true, response.found)
-        assertEquals(2L, response.user?.userId)
-        assertEquals("동행자", response.user?.nickname)
-    }
-
-    @Test
     fun `닉네임으로 활성 사용자를 검색한다`() {
         val authUser = createUser()
         val targetUser = createUser().apply {
@@ -513,54 +545,6 @@ class UserServiceTest {
 
         assertEquals(false, response.found)
         assertEquals(null, response.user)
-    }
-
-    @Test
-    fun `전화번호 검색 결과가 없으면 found false를 반환한다`() {
-        val authUser = createUser().apply {
-            verifyPhoneNumberHash(
-                phoneNumberHash = phoneNumberHasher.hash("+821011112222"),
-                phoneNumberHashVersion = phoneNumberHasher.version,
-            )
-        }
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(authUser)
-        `when`(
-            userRepository.findByPhoneNumberHashAndPhoneVerifiedAtIsNotNullAndStatusAndDeletedAtIsNull(
-                phoneNumberHash = phoneNumberHasher.hash("+821033334444"),
-                status = UserStatus.ACTIVE,
-            )
-        ).thenReturn(null)
-
-        val response = userService.searchByPhoneNumber(
-            authUserId = 1L,
-            request = SearchUserByPhoneRequest(
-                phoneNumber = "+821033334444",
-            ),
-        )
-
-        assertEquals(false, response.found)
-        assertEquals(null, response.user)
-    }
-
-    @Test
-    fun `전화번호 미인증 사용자는 전화번호 검색에 실패한다`() {
-        val authUser = createUser()
-
-        `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
-            .thenReturn(authUser)
-
-        val exception = assertBusinessException {
-            userService.searchByPhoneNumber(
-                authUserId = 1L,
-                request = SearchUserByPhoneRequest(
-                    phoneNumber = "01033334444",
-                ),
-            )
-        }
-
-        assertEquals(AuthErrorCode.PHONE_VERIFICATION_REQUIRED, exception.errorCode)
     }
 
     private fun createUser(

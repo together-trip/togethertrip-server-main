@@ -8,6 +8,7 @@ import org.springframework.mock.web.MockMultipartFile
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -80,6 +81,42 @@ class LocalUserProfileImageStorageTest {
         storage.delete(stored)
 
         assertEquals(0, Files.list(tempDir).use { it.count() })
+    }
+
+    @Test
+    fun `서버 생성 URL로 저장된 프로필 이미지를 삭제한다`() {
+        val storage = LocalUserProfileImageStorage(
+            storagePath = tempDir.toString(),
+            publicUrlPrefix = "/uploads/user-profile-images",
+            uploadFileTypeDetector = UploadFileTypeDetector(),
+        )
+        val stored = storage.store(
+            MockMultipartFile("profileImage", "profile.jpg", "image/jpeg", jpegBytes())
+        )
+
+        assertTrue(storage.isManagedFileUrl(stored.fileUrl))
+        storage.deleteByFileUrl(stored.fileUrl)
+
+        assertEquals(0, Files.list(tempDir).use { it.count() })
+    }
+
+    @Test
+    fun `외부 URL과 경로 이탈 URL은 로컬 파일을 삭제하지 않는다`() {
+        val storage = LocalUserProfileImageStorage(
+            storagePath = tempDir.toString(),
+            publicUrlPrefix = "/uploads/user-profile-images",
+            uploadFileTypeDetector = UploadFileTypeDetector(),
+        )
+        storage.store(
+            MockMultipartFile("profileImage", "profile.jpg", "image/jpeg", jpegBytes())
+        )
+
+        storage.deleteByFileUrl("https://k.kakaocdn.net/profile.jpg")
+        storage.deleteByFileUrl("/uploads/user-profile-images/../profile.jpg")
+
+        assertEquals(1, Files.list(tempDir).use { it.count() })
+        assertFalse(storage.isManagedFileUrl("https://k.kakaocdn.net/profile.jpg"))
+        assertFalse(storage.isManagedFileUrl("/uploads/user-profile-images/../profile.jpg"))
     }
 
     @Test

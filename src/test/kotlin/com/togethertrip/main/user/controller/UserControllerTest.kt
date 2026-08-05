@@ -1,8 +1,8 @@
 package com.togethertrip.main.user.controller
 
+import com.togethertrip.main.auth.repository.OAuthAccountRepository
+import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.security.principal.AuthUser
-import com.togethertrip.main.global.phone.PhoneNumberHasher
-import com.togethertrip.main.global.phone.PhoneNumberNormalizer
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
 import com.togethertrip.main.trip.repository.TripParticipantRepository
 import com.togethertrip.main.user.domain.UserRole
@@ -10,7 +10,9 @@ import com.togethertrip.main.user.domain.UserStatus
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.repository.UserRepository
+import com.togethertrip.main.user.repository.UserAgreementRepository
 import com.togethertrip.main.user.service.UserService
+import com.togethertrip.main.user.service.UserAccountDeletionCleanupEnqueueService
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -73,15 +75,14 @@ class UserControllerTest {
     private class CapturingUserService : UserService(
         userRepository = mock(UserRepository::class.java),
         tripParticipantRepository = mock(TripParticipantRepository::class.java),
-        phoneNumberNormalizer = PhoneNumberNormalizer(),
-        phoneNumberHasher = PhoneNumberHasher(
-            key = "test-phone-hash-key-must-be-at-least-32-bytes",
-            version = "v1",
-        ),
         userProfileImageStorage = mock(UserProfileImageStorage::class.java),
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
         ),
+        oauthAccountRepository = mock(OAuthAccountRepository::class.java),
+        userAgreementRepository = mock(UserAgreementRepository::class.java),
+        outboxEventPublisher = mock(OutboxEventPublisher::class.java),
+        accountDeletionCleanupEnqueueService = mock(UserAccountDeletionCleanupEnqueueService::class.java),
     ) {
         var capturedUserId: Long? = null
         lateinit var capturedRequest: UpdateUserRequest
@@ -102,9 +103,6 @@ class UserControllerTest {
                 gender = request.gender,
                 birthDate = request.birthDate,
                 profileImageUrl = "/uploads/user-profile-images/stored-profile.jpg",
-                phoneVerifiedAt = null,
-                phoneNumberMasked = null,
-                phoneVerified = false,
                 role = UserRole.USER,
                 status = UserStatus.ACTIVE,
             )

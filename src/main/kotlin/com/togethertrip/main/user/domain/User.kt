@@ -25,27 +25,6 @@ class User(
     @Column(name = "profile_image_url", nullable = true, length = 500)
     var profileImageUrl: String? = null,
 
-    @Column(name = "phone_number", length = 30)
-    var phoneNumber: String? = null,
-
-    @Column(name = "phone_number_encrypted", columnDefinition = "TEXT")
-    var phoneNumberEncrypted: String? = null,
-
-    @Column(name = "phone_number_encryption_version", length = 30)
-    var phoneNumberEncryptionVersion: String? = null,
-
-    @Column(name = "phone_number_masked", length = 30)
-    var phoneNumberMasked: String? = null,
-
-    @Column(name = "phone_number_hash", length = 64)
-    var phoneNumberHash: String? = null,
-
-    @Column(name = "phone_number_hash_version", length = 30)
-    var phoneNumberHashVersion: String? = null,
-
-    @Column(name = "phone_verified_at")
-    var phoneVerifiedAt: Instant? = null,
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     var role: UserRole = UserRole.USER,
@@ -53,6 +32,15 @@ class User(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     var status: UserStatus = UserStatus.ACTIVE,
+
+    @Column(name = "moderation_restricted_at")
+    var moderationRestrictedAt: Instant? = null,
+
+    @Column(name = "moderation_restricted_until")
+    var moderationRestrictedUntil: Instant? = null,
+
+    @Column(name = "moderation_restriction_reason", length = 500)
+    var moderationRestrictionReason: String? = null,
 
 ) : BaseEntity() {
 
@@ -86,48 +74,43 @@ class User(
         updatedAt = Instant.now()
     }
 
-    fun withdraw(now: Instant = Instant.now()) {
-        // 탈퇴 상태 변경
+    fun anonymizeAndWithdraw(now: Instant = Instant.now()) {
+        nickname = WITHDRAWN_USER_NICKNAME
+        gender = null
+        birthDate = null
+        profileImageUrl = null
+        moderationRestrictedAt = null
+        moderationRestrictedUntil = null
+        moderationRestrictionReason = null
         status = UserStatus.WITHDRAWN
         markDeleted(now)
     }
 
-    fun reactivateForSignup(now: Instant = Instant.now()) {
-        // 재가입 상태 초기화
-        status = UserStatus.ACTIVE
-        deletedAt = null
-        phoneNumber = null
-        phoneNumberEncrypted = null
-        phoneNumberEncryptionVersion = null
-        phoneNumberMasked = null
-        phoneNumberHash = null
-        phoneNumberHashVersion = null
-        phoneVerifiedAt = null
+    fun isProfileCompleted(): Boolean {
+        return nickname.isNotBlank()
+    }
+
+    fun restrictModeration(reason: String?, until: Instant?, now: Instant) {
+        moderationRestrictedAt = now
+        moderationRestrictedUntil = until
+        moderationRestrictionReason = reason?.take(500)
         updatedAt = now
     }
 
-    fun verifyPhoneNumberHash(
-        phoneNumberHash: String,
-        phoneNumberHashVersion: String,
-        phoneNumberEncrypted: String? = null,
-        phoneNumberEncryptionVersion: String? = null,
-        phoneNumberMasked: String? = null,
-        verifiedAt: Instant = Instant.now(),
-    ) {
-        // 전화번호 인증 정보 저장
-        this.phoneNumber = null
-        this.phoneNumberEncrypted = phoneNumberEncrypted
-        this.phoneNumberEncryptionVersion = phoneNumberEncryptionVersion
-        this.phoneNumberMasked = phoneNumberMasked
-        this.phoneNumberHash = phoneNumberHash
-        this.phoneNumberHashVersion = phoneNumberHashVersion
-
-        // 전화번호 인증 시각 갱신
-        phoneVerifiedAt = verifiedAt
-        updatedAt = verifiedAt
+    fun clearModerationRestriction(now: Instant) {
+        moderationRestrictedAt = null
+        moderationRestrictedUntil = null
+        moderationRestrictionReason = null
+        updatedAt = now
     }
 
-    fun isProfileCompleted(): Boolean {
-        return nickname.isNotBlank() && gender != null && birthDate != null
+    fun isModerationRestricted(now: Instant): Boolean {
+        val restrictedAt = moderationRestrictedAt ?: return false
+        val until = moderationRestrictedUntil
+        return restrictedAt <= now && (until == null || until > now)
+    }
+
+    companion object {
+        const val WITHDRAWN_USER_NICKNAME = "탈퇴한 사용자"
     }
 }

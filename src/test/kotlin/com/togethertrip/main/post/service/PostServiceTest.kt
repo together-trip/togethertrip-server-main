@@ -25,7 +25,10 @@ import com.togethertrip.main.post.pagination.PostCommentCursor
 import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
+import com.togethertrip.main.post.repository.PostCommentSearchCondition
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.repository.PostSearchCondition
+import com.togethertrip.main.post.repository.PostCommentCountProjection
 import com.togethertrip.main.post.service.storage.PostAttachmentStorage
 import com.togethertrip.main.post.service.storage.StoredPostAttachment
 import com.togethertrip.main.transaction.domain.Transaction
@@ -424,7 +427,7 @@ class PostServiceTest {
 
         assertEquals(1, response.attachments.size)
         assertEquals(PostAttachmentType.IMAGE, response.attachments.first().attachmentType)
-        assertEquals("/uploads/post-attachments/receipt-stored.jpg", response.attachments.first().fileUrl)
+        assertEquals("/api/trips/10/posts/0/attachments/0", response.attachments.first().fileUrl)
         verify(postAttachmentStorage, never()).delete(
             StoredPostAttachment(
                 storageKey = "receipt-stored.jpg",
@@ -592,7 +595,7 @@ class PostServiceTest {
 
         `when`(
             postRepository.findPosts(
-                tripId = 10L,
+                condition = PostSearchCondition(10L, null, null, null, null),
                 pageable = PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(first, second, extra))
@@ -636,7 +639,7 @@ class PostServiceTest {
 
         `when`(
             postRepository.findPosts(
-                tripId = 10L,
+                condition = PostSearchCondition(10L, null, 1L, null, null),
                 pageable = PageRequest.of(0, 2),
             )
         ).thenReturn(listOf(post))
@@ -645,17 +648,24 @@ class PostServiceTest {
                 listOf(303L)
             )
         ).thenReturn(listOf(firstAttachment, secondAttachment))
+        val countProjection = mock(PostCommentCountProjection::class.java)
+        `when`(countProjection.postId).thenReturn(303L)
+        `when`(countProjection.commentCount).thenReturn(7L)
+        `when`(postCommentRepository.findVisibleCommentCounts(listOf(303L), 1L))
+            .thenReturn(listOf(countProjection))
 
         val response = postService.getPosts(
             tripId = 10L,
             postType = null,
             cursor = null,
             size = 1,
+            userId = 1L,
         )
 
         assertEquals(1, response.items.size)
         assertEquals(listOf(501L, 502L), response.items.first().attachments.map { it.id })
-        assertEquals("https://cdn.example.com/first.jpg", response.items.first().attachments.first().fileUrl)
+        assertEquals("/api/trips/10/posts/303/attachments/501", response.items.first().attachments.first().fileUrl)
+        assertEquals(7, response.items.first().commentCount)
     }
 
     @Test
@@ -666,11 +676,14 @@ class PostServiceTest {
         )
 
         `when`(
-            postRepository.findPostsByTypeAndCursor(
-                tripId = 10L,
-                postType = PostType.RECORD,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
+            postRepository.findPosts(
+                condition = PostSearchCondition(
+                    tripId = 10L,
+                    postType = PostType.RECORD,
+                    viewerUserId = null,
+                    cursorCreatedAt = cursor.createdAt,
+                    cursorId = cursor.id,
+                ),
                 pageable = PageRequest.of(0, 21),
             )
         ).thenReturn(emptyList())
@@ -1046,7 +1059,7 @@ class PostServiceTest {
         )
 
         assertNotNull(oldAttachment.deletedAt)
-        assertEquals(listOf("/uploads/post-attachments/new-stored.jpg"), response.attachments.map { it.fileUrl })
+        assertEquals(listOf("/api/trips/10/posts/300/attachments/0"), response.attachments.map { it.fileUrl })
     }
 
     @Test
@@ -1222,7 +1235,7 @@ class PostServiceTest {
         ).thenReturn(post)
         `when`(
             postCommentRepository.findRootComments(
-                postId = 300L,
+                condition = PostCommentSearchCondition(300L, null, null, null),
                 pageable = PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(first, second, extra))
@@ -1258,10 +1271,13 @@ class PostServiceTest {
             )
         ).thenReturn(post)
         `when`(
-            postCommentRepository.findRootCommentsByCursor(
-                postId = 300L,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
+            postCommentRepository.findRootComments(
+                condition = PostCommentSearchCondition(
+                    postId = 300L,
+                    viewerUserId = null,
+                    cursorCreatedAt = cursor.createdAt,
+                    cursorId = cursor.id,
+                ),
                 pageable = PageRequest.of(0, 21),
             )
         ).thenReturn(emptyList())

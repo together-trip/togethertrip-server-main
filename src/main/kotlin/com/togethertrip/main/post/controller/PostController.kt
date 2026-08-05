@@ -15,6 +15,7 @@ import com.togethertrip.main.post.service.PostService
 import com.togethertrip.main.trip.security.RequireActiveTripParticipant
 import jakarta.validation.Valid
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -65,6 +66,7 @@ class PostController(
                 postType = postType,
                 cursor = cursor,
                 size = size,
+                userId = authUser.userId,
             )
         )
     }
@@ -80,8 +82,23 @@ class PostController(
             tripPostService.getPost(
                 tripId = tripId,
                 postId = postId,
+                userId = authUser.userId,
             )
         )
+    }
+
+    @GetMapping("/{postId}/attachments/{attachmentId}")
+    @RequireActiveTripParticipant
+    override fun getAttachment(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+        @PathVariable postId: Long,
+        @PathVariable attachmentId: Long,
+    ): ResponseEntity<ByteArray> {
+        val file = tripPostService.getAttachment(authUser.userId, tripId, postId, attachmentId)
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(file.contentType))
+            .body(file.bytes)
     }
 
     @PatchMapping("/{postId}", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
@@ -151,6 +168,7 @@ class PostController(
                 postId = postId,
                 cursor = cursor,
                 size = size,
+                userId = authUser.userId,
             )
         )
     }

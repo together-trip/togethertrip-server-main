@@ -14,11 +14,12 @@ data class PostAttachmentResponse(
 ) {
     companion object {
         fun from(attachment: PostAttachment): PostAttachmentResponse {
+            val secureUrl = "/api/trips/${attachment.post.trip.id}/posts/${attachment.post.id}/attachments/${attachment.id}"
             return PostAttachmentResponse(
                 id = attachment.id,
                 attachmentType = attachment.attachmentType,
-                fileUrl = attachment.fileUrl,
-                thumbnailUrl = attachment.thumbnailUrl,
+                fileUrl = secureUrl,
+                thumbnailUrl = null,
                 fileSize = attachment.fileSize,
                 mimeType = attachment.mimeType,
                 sortOrder = attachment.sortOrder,

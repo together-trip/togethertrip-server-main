@@ -30,24 +30,12 @@ jwt:
   access-token-expiration: 1800
   refresh-token-expiration: 1209600
 
-phone:
-  hash:
-    key: test-phone-hash-key-must-be-at-least-32-bytes
-    version: v1
-  encryption:
-    key: test-phone-encryption-key-must-be-at-least-32-bytes
-    version: v1
-
 auth:
   local-test:
     enabled: false
-
-sms:
-  solapi:
-    base-url: https://api.solapi.com
-    api-key: test-solapi-api-key
-    api-secret: test-solapi-api-secret
-    from: "01000000000"
+  apple:
+    enabled: false
+    token-encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 
 springdoc:
   swagger-ui:
@@ -66,6 +54,8 @@ user:
   profile-images:
     local-storage-path: ./build/test-uploads/user-profile-images
     public-url-prefix: /uploads/user-profile-images
+  account-deletion-cleanup:
+    enabled: false
 
 trip:
   invite:

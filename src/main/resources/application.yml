@@ -49,24 +49,20 @@ jwt:
   access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1800}
   refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:1209600}
 
-phone:
-  hash:
-    key: ${PHONE_HASH_KEY:local-dev-phone-hash-key-must-be-at-least-32-bytes}
-    version: ${PHONE_HASH_VERSION:v1}
-  encryption:
-    key: ${PHONE_ENCRYPTION_KEY:local-dev-phone-encryption-key-must-be-at-least-32-bytes}
-    version: ${PHONE_ENCRYPTION_VERSION:v1}
-
 auth:
   local-test:
     enabled: ${AUTH_LOCAL_TEST_ENABLED:false}
-
-sms:
-  solapi:
-    base-url: ${SOLAPI_BASE_URL:https://api.solapi.com}
-    api-key: ${SOLAPI_API_KEY:}
-    api-secret: ${SOLAPI_API_SECRET:}
-    from: ${SOLAPI_FROM:}
+  apple:
+    enabled: ${APPLE_AUTH_ENABLED:false}
+    client-id: ${APPLE_CLIENT_ID:}
+    team-id: ${APPLE_TEAM_ID:}
+    key-id: ${APPLE_KEY_ID:}
+    private-key: ${APPLE_PRIVATE_KEY:}
+    token-encryption-key: ${APPLE_TOKEN_ENCRYPTION_KEY:}
+    issuer: ${APPLE_ISSUER:https://appleid.apple.com}
+    jwks-url: ${APPLE_JWKS_URL:https://appleid.apple.com/auth/keys}
+    token-url: ${APPLE_TOKEN_URL:https://appleid.apple.com/auth/token}
+    revoke-url: ${APPLE_REVOKE_URL:https://appleid.apple.com/auth/revoke}
 
 springdoc:
   swagger-ui:
@@ -96,6 +92,11 @@ user:
   profile-images:
     local-storage-path: ${USER_PROFILE_IMAGE_LOCAL_STORAGE_PATH:./uploads/user-profile-images}
     public-url-prefix: ${USER_PROFILE_IMAGE_PUBLIC_URL_PREFIX:/uploads/user-profile-images}
+  account-deletion-cleanup:
+    enabled: ${USER_ACCOUNT_DELETION_CLEANUP_ENABLED:true}
+    fixed-delay: ${USER_ACCOUNT_DELETION_CLEANUP_FIXED_DELAY:PT5S}
+    batch-size: ${USER_ACCOUNT_DELETION_CLEANUP_BATCH_SIZE:50}
+    lease-duration: ${USER_ACCOUNT_DELETION_CLEANUP_LEASE_DURATION:PT5M}
 
 trip:
   invite:

@@ -4,12 +4,10 @@ import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.user.controller.spec.UserApiSpec
 import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
-import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserMultipartRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
 import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
-import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
 import com.togethertrip.main.user.dto.response.UserSearchResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import com.togethertrip.main.user.service.UserService
@@ -31,19 +29,6 @@ import org.springframework.web.bind.annotation.RestController
 class UserController(
     private val userService: UserService,
 ) : UserApiSpec {
-
-    @PostMapping("/search/phone")
-    override fun searchByPhoneNumber(
-        @AuthenticationPrincipal authUser: AuthUser,
-        @Valid @RequestBody request: SearchUserByPhoneRequest,
-    ): ApiResponse<PhoneUserSearchResponse> {
-        return ApiResponse.success(
-            userService.searchByPhoneNumber(
-                authUserId = authUser.userId,
-                request = request,
-            )
-        )
-    }
 
     @PostMapping("/search/nickname")
     override fun searchByNickname(

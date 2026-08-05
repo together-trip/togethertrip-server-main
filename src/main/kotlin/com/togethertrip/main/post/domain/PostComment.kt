@@ -9,6 +9,7 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import org.hibernate.annotations.SQLRestriction
+import java.time.Instant
 
 /**
  * 여행 게시글 댓글.
@@ -36,4 +37,23 @@ class PostComment(
     @Column(name = "comment_depth", nullable = false)
     var commentDepth: Int = 0,
 
-) : BaseEntity()
+    @Column(name = "moderation_hidden_at")
+    var moderationHiddenAt: Instant? = null,
+
+    @Column(name = "moderation_deleted_at")
+    var moderationDeletedAt: Instant? = null,
+
+) : BaseEntity() {
+    fun hideByModeration(now: Instant) {
+        moderationHiddenAt = now
+        updatedAt = now
+    }
+
+    fun deleteByModeration(now: Instant) {
+        moderationDeletedAt = now
+        moderationHiddenAt = now
+        updatedAt = now
+    }
+
+    fun isVisibleByModeration(): Boolean = moderationHiddenAt == null && moderationDeletedAt == null
+}

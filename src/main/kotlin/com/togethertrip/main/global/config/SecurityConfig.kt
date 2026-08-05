@@ -40,8 +40,7 @@ class SecurityConfig(
 
                 it.requestMatchers(
                     "/api/auth/oauth/kakao",
-                    "/api/auth/phone/request",
-                    "/api/auth/phone/confirm",
+                    "/api/auth/oauth/apple",
                     "/api/auth/refresh",
                     "/api/local-test/**",
                     "/api/users/nicknames/availability",
@@ -50,7 +49,6 @@ class SecurityConfig(
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
-                    "/uploads/post-attachments/**",
                     "/uploads/user-profile-images/**",
                 ).permitAll()
 

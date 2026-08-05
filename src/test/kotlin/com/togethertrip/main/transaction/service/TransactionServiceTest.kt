@@ -19,6 +19,7 @@ import com.togethertrip.main.transaction.pagination.TransactionCursor
 import com.togethertrip.main.transaction.repository.TransactionEventRepository
 import com.togethertrip.main.transaction.repository.TransactionPaymentRepository
 import com.togethertrip.main.transaction.repository.TransactionRepository
+import com.togethertrip.main.transaction.repository.TransactionSearchCondition
 import com.togethertrip.main.transaction.repository.TransactionShareRepository
 import com.togethertrip.main.transaction.repository.TransactionStatisticsQueryRepository
 import com.togethertrip.main.transaction.repository.projection.CommonFundBalanceRow
@@ -1163,15 +1164,14 @@ class TransactionServiceTest {
         `when`(tripRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(trip)
         `when`(
             transactionRepository.findTransactions(
-                tripId = 10L,
-                status = TransactionStatus.ACTIVE,
-                transactionType = null,
-                transactionTypeFilterEnabled = false,
-                participantId = null,
-                participantFilterEnabled = false,
-                cursorCreatedAt = Instant.parse("2026-07-02T11:00:00Z"),
-                cursorId = 301L,
-                cursorFilterEnabled = true,
+                condition = TransactionSearchCondition(
+                    tripId = 10L,
+                    status = TransactionStatus.ACTIVE,
+                    transactionType = null,
+                    participantId = null,
+                    cursorCreatedAt = Instant.parse("2026-07-02T11:00:00Z"),
+                    cursorId = 301L,
+                ),
                 pageable = PageRequest.of(0, 3),
             )
         ).thenReturn(listOf(firstTransaction, secondTransaction, extraTransaction))

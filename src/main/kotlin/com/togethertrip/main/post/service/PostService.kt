@@ -10,6 +10,7 @@ import com.togethertrip.main.global.outbox.payload.post.PostCommentCreatedPayloa
 import com.togethertrip.main.global.outbox.payload.post.PostCreatedPayload
 import com.togethertrip.main.global.outbox.service.OutboxEventPublisher
 import com.togethertrip.main.global.response.CursorResponse
+import com.togethertrip.main.moderation.service.ModerationPolicy
 import com.togethertrip.main.post.domain.Post
 import com.togethertrip.main.post.domain.PostAttachment
 import com.togethertrip.main.post.domain.PostComment
@@ -28,9 +29,12 @@ import com.togethertrip.main.post.pagination.PostCommentCursor
 import com.togethertrip.main.post.pagination.PostCursor
 import com.togethertrip.main.post.repository.PostAttachmentRepository
 import com.togethertrip.main.post.repository.PostCommentRepository
+import com.togethertrip.main.post.repository.PostCommentSearchCondition
 import com.togethertrip.main.post.repository.PostRepository
+import com.togethertrip.main.post.repository.PostSearchCondition
 import com.togethertrip.main.post.service.storage.PostAttachmentStorage
 import com.togethertrip.main.post.service.storage.StoredPostAttachment
+import com.togethertrip.main.post.service.storage.StoredPostAttachmentFile
 import com.togethertrip.main.transaction.repository.TransactionRepository
 import com.togethertrip.main.transaction.domain.Transaction
 import com.togethertrip.main.transaction.domain.TransactionStatus
@@ -64,6 +68,7 @@ class PostService(
     private val transactionService: TransactionService,
     private val outboxEventPublisher: OutboxEventPublisher,
     private val tripNotificationRecipientResolver: TripNotificationRecipientResolver,
+    private val moderationPolicy: ModerationPolicy = ModerationPolicy.NOOP,
 ) {
 
     @Transactional
@@ -72,6 +77,8 @@ class PostService(
         tripId: Long,
         request: CreatePostRequest,
     ): PostDetailResponse {
+        moderationPolicy.validateUserCanWrite(userId)
+        moderationPolicy.validateContent(request.title, request.category, request.content, request.placeName)
         val author = getParticipant(
             userId = userId,
             tripId = tripId,
@@ -129,6 +136,8 @@ class PostService(
         tripId: Long,
         request: CreateExpensePostRequest,
     ): CreateExpensePostResponse {
+        moderationPolicy.validateUserCanWrite(userId)
+        moderationPolicy.validateContent(request.title, request.category, request.content, request.placeName)
         val creationResult = transactionCreationService.create(
             userId = userId,
             tripId = tripId,
@@ -180,6 +189,8 @@ class PostService(
         postId: Long,
         request: UpdateExpensePostRequest,
     ): CreateExpensePostResponse {
+        moderationPolicy.validateUserCanWrite(userId)
+        moderationPolicy.validateContent(request.title, request.category, request.content, request.placeName)
         val post = getPostOrThrow(
             tripId = tripId,
             postId = postId,
@@ -233,6 +244,7 @@ class PostService(
         postType: String?,
         cursor: String?,
         size: Int?,
+        userId: Long? = null,
     ): CursorResponse<PostSummaryResponse> {
         val requestedSize = size?.coerceIn(1, MAX_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
         val pageable = PageRequest.of(0, requestedSize + 1)
@@ -243,6 +255,7 @@ class PostService(
             postType = parsedPostType,
             cursor = parsedCursor,
             pageable = pageable,
+            viewerUserId = userId,
         )
         val responseItems = posts.take(requestedSize)
         val hasNext = posts.size > requestedSize
@@ -257,12 +270,14 @@ class PostService(
         }
 
         val attachmentsByPostId = findAttachmentsByPostId(responseItems)
+        val visibleCommentCounts = findVisibleCommentCounts(responseItems, userId)
 
         return CursorResponse(
             items = responseItems.map { post ->
                 PostSummaryResponse.from(
                     post = post,
                     attachments = attachmentsByPostId[post.id] ?: emptyList(),
+                    commentCount = visibleCommentCounts[post.id] ?: 0,
                 )
             },
             nextCursor = nextCursor,
@@ -276,52 +291,58 @@ class PostService(
         postType: PostType?,
         cursor: PostCursor?,
         pageable: PageRequest,
+        viewerUserId: Long?,
     ): List<Post> {
-        return when {
-            postType != null && cursor != null -> postRepository.findPostsByTypeAndCursor(
+        return postRepository.findPosts(
+            condition = PostSearchCondition(
                 tripId = tripId,
                 postType = postType,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
-                pageable = pageable,
-            )
-
-            postType != null -> postRepository.findPostsByType(
-                tripId = tripId,
-                postType = postType,
-                pageable = pageable,
-            )
-
-            cursor != null -> postRepository.findPostsByCursor(
-                tripId = tripId,
-                cursorCreatedAt = cursor.createdAt,
-                cursorId = cursor.id,
-                pageable = pageable,
-            )
-
-            else -> postRepository.findPosts(
-                tripId = tripId,
-                pageable = pageable,
-            )
-        }
+                viewerUserId = viewerUserId,
+                cursorCreatedAt = cursor?.createdAt,
+                cursorId = cursor?.id,
+            ),
+            pageable = pageable,
+        )
     }
 
     @Transactional(readOnly = true)
     fun getPost(
         tripId: Long,
         postId: Long,
+        userId: Long? = null,
     ): PostDetailResponse {
         val post = getPostOrThrow(
             tripId = tripId,
             postId = postId,
         )
+        if (userId != null && !moderationPolicy.canViewPost(userId, post)) {
+            throw BusinessException(PostErrorCode.POST_NOT_FOUND)
+        }
         val attachments = postAttachmentRepository
             .findByPostIdAndDeletedAtIsNullOrderBySortOrderAsc(postId)
 
         return PostDetailResponse.from(
             post = post,
             attachments = attachments,
+            commentCount = visibleCommentCount(post, userId),
         )
+    }
+
+    @Transactional(readOnly = true)
+    fun getAttachment(
+        userId: Long,
+        tripId: Long,
+        postId: Long,
+        attachmentId: Long,
+    ): StoredPostAttachmentFile {
+        getParticipant(userId, tripId)
+        val post = getPostOrThrow(tripId, postId)
+        if (!moderationPolicy.canViewPost(userId, post)) {
+            throw BusinessException(PostErrorCode.POST_NOT_FOUND)
+        }
+        val attachment = postAttachmentRepository.findByIdAndPostIdAndDeletedAtIsNull(attachmentId, postId)
+            ?: throw BusinessException(PostErrorCode.POST_NOT_FOUND)
+        return postAttachmentStorage.load(attachment)
     }
 
     @Transactional
@@ -331,6 +352,8 @@ class PostService(
         postId: Long,
         request: UpdatePostRequest,
     ): PostDetailResponse {
+        moderationPolicy.validateUserCanWrite(userId)
+        moderationPolicy.validateContent(request.title, request.category, request.content, request.placeName)
         val post = getPostOrThrow(
             tripId = tripId,
             postId = postId,
@@ -378,6 +401,8 @@ class PostService(
         postId: Long,
         request: CreatePostCommentRequest,
     ): PostCommentResponse {
+        moderationPolicy.validateUserCanWrite(userId)
+        moderationPolicy.validateContent(request.content)
         val author = getParticipant(
             userId = userId,
             tripId = tripId,
@@ -386,6 +411,10 @@ class PostService(
             tripId = tripId,
             postId = postId,
         )
+        if (!post.isVisibleByModeration()) {
+            throw BusinessException(PostErrorCode.POST_NOT_FOUND)
+        }
+        moderationPolicy.validateCommentInteraction(userId, post)
         val comment = PostComment(
             post = post,
             author = author,
@@ -406,27 +435,27 @@ class PostService(
         postId: Long,
         cursor: String?,
         size: Int?,
+        userId: Long? = null,
     ): CursorResponse<PostCommentResponse> {
-        getPostOrThrow(
+        val post = getPostOrThrow(
             tripId = tripId,
             postId = postId,
         )
+        if (userId != null && !moderationPolicy.canViewPost(userId, post)) {
+            throw BusinessException(PostErrorCode.POST_NOT_FOUND)
+        }
         val requestedSize = size?.coerceIn(1, MAX_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
         val pageable = PageRequest.of(0, requestedSize + 1)
         val parsedCursor = cursor?.let(::parseCommentCursor)
-        val comments = if (parsedCursor == null) {
-            postCommentRepository.findRootComments(
+        val comments = postCommentRepository.findRootComments(
+            condition = PostCommentSearchCondition(
                 postId = postId,
-                pageable = pageable,
-            )
-        } else {
-            postCommentRepository.findRootCommentsByCursor(
-                postId = postId,
-                cursorCreatedAt = parsedCursor.createdAt,
-                cursorId = parsedCursor.id,
-                pageable = pageable,
-            )
-        }
+                viewerUserId = userId,
+                cursorCreatedAt = parsedCursor?.createdAt,
+                cursorId = parsedCursor?.id,
+            ),
+            pageable = pageable,
+        )
         val responseItems = comments.take(requestedSize)
         val hasNext = comments.size > requestedSize
         val nextCursor = if (hasNext && responseItems.isNotEmpty()) {
@@ -454,6 +483,7 @@ class PostService(
         postId: Long,
         commentId: Long,
     ) {
+        moderationPolicy.validateUserCanWrite(userId)
         val post = getPostOrThrow(
             tripId = tripId,
             postId = postId,
@@ -534,6 +564,18 @@ class PostService(
         return postAttachmentRepository
             .findByPostIdInAndDeletedAtIsNullOrderByPostIdAscSortOrderAsc(posts.map { it.id })
             .groupBy { it.post.id }
+    }
+
+    private fun visibleCommentCount(post: Post, viewerUserId: Long?): Int {
+        if (viewerUserId == null) return post.commentCount
+        return postCommentRepository.countVisibleRootComments(post.id, viewerUserId).toInt()
+    }
+
+    private fun findVisibleCommentCounts(posts: List<Post>, viewerUserId: Long?): Map<Long, Int> {
+        if (posts.isEmpty()) return emptyMap()
+        if (viewerUserId == null) return posts.associate { it.id to it.commentCount }
+        return postCommentRepository.findVisibleCommentCounts(posts.map { it.id }, viewerUserId)
+            .associate { it.postId to it.commentCount.toInt() }
     }
 
     private fun replaceAttachments(
@@ -632,10 +674,12 @@ class PostService(
 
     private fun publishPostCreated(post: Post) {
         val actorUserId = post.author.user?.id ?: return
-        val recipients = tripNotificationRecipientResolver.findActiveUserIds(
+        val candidateRecipientIds = tripNotificationRecipientResolver.findActiveUserIds(
             tripId = post.trip.id,
             actorUserId = actorUserId,
-        ).map(::DefaultOutboxRecipientPayload)
+        )
+        val recipients = moderationPolicy.filterNotifiableUserIds(actorUserId, candidateRecipientIds)
+            .map(::DefaultOutboxRecipientPayload)
 
         outboxEventPublisher.publish(
             aggregateType = OutboxAggregateType.POST,
@@ -661,7 +705,8 @@ class PostService(
             userId = comment.post.author.user?.id,
             actorUserId = actorUserId,
         )
-        val recipients = listOfNotNull(recipientUserId).map(::DefaultOutboxRecipientPayload)
+        val recipients = moderationPolicy.filterNotifiableUserIds(actorUserId, listOfNotNull(recipientUserId))
+            .map(::DefaultOutboxRecipientPayload)
 
         outboxEventPublisher.publish(
             aggregateType = OutboxAggregateType.POST,

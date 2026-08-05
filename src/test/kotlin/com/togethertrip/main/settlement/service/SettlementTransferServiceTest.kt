@@ -14,6 +14,7 @@ import com.togethertrip.main.settlement.domain.SettlementTransferRow
 import com.togethertrip.main.settlement.domain.SettlementTransferStatus
 import com.togethertrip.main.settlement.exception.SettlementErrorCode
 import com.togethertrip.main.settlement.repository.SettlementTransferRepository
+import com.togethertrip.main.settlement.repository.SettlementTransferSearchCondition
 import com.togethertrip.main.settlement.repository.projection.SettlementTransferCompletionSummary
 import com.togethertrip.main.settlement.service.support.SettlementAccessResolver
 import com.togethertrip.main.settlement.service.support.SettlementTransferConfirmationProcessor
@@ -90,13 +91,7 @@ class SettlementTransferServiceTest {
         `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
-                tripId = 10L,
-                settlementFilterEnabled = false,
-                settlementId = 0L,
-                participantFilterEnabled = false,
-                participantId = 0L,
-                statusFilterEnabled = false,
-                status = "",
+                SettlementTransferSearchCondition(10L, null, null, null),
             )
         ).thenReturn(listOf(sentTransfer, receivedTransfer))
 
@@ -129,13 +124,7 @@ class SettlementTransferServiceTest {
         `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
-                tripId = 10L,
-                settlementFilterEnabled = false,
-                settlementId = 0L,
-                participantFilterEnabled = false,
-                participantId = 0L,
-                statusFilterEnabled = false,
-                status = "",
+                SettlementTransferSearchCondition(10L, null, null, null),
             )
         ).thenReturn(listOf(sentTransfer, receivedTransfer))
 
@@ -165,13 +154,7 @@ class SettlementTransferServiceTest {
         `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
-                tripId = 10L,
-                settlementFilterEnabled = false,
-                settlementId = 0L,
-                participantFilterEnabled = false,
-                participantId = 0L,
-                statusFilterEnabled = false,
-                status = "",
+                SettlementTransferSearchCondition(10L, null, null, null),
             )
         ).thenReturn(listOf(transfer))
 
@@ -194,13 +177,9 @@ class SettlementTransferServiceTest {
         `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
-                tripId = 10L,
-                settlementFilterEnabled = true,
-                settlementId = 30L,
-                participantFilterEnabled = true,
-                participantId = 100L,
-                statusFilterEnabled = true,
-                status = SettlementTransferStatus.PENDING.name,
+                SettlementTransferSearchCondition(
+                    10L, 30L, 100L, SettlementTransferStatus.PENDING,
+                ),
             )
         ).thenReturn(emptyList())
 
@@ -214,13 +193,9 @@ class SettlementTransferServiceTest {
         )
 
         verify(settlementTransferRepository).findTransferRows(
-            tripId = 10L,
-            settlementFilterEnabled = true,
-            settlementId = 30L,
-            participantFilterEnabled = true,
-            participantId = 100L,
-            statusFilterEnabled = true,
-            status = SettlementTransferStatus.PENDING.name,
+            SettlementTransferSearchCondition(
+                10L, 30L, 100L, SettlementTransferStatus.PENDING,
+            ),
         )
     }
 
@@ -590,13 +565,7 @@ class SettlementTransferServiceTest {
         `when`(settlementAccessResolver.getActiveParticipant(1L, 10L)).thenReturn(participant)
         `when`(
             settlementTransferRepository.findTransferRows(
-                tripId = 10L,
-                settlementFilterEnabled = false,
-                settlementId = 0L,
-                participantFilterEnabled = false,
-                participantId = 0L,
-                statusFilterEnabled = false,
-                status = "",
+                SettlementTransferSearchCondition(10L, null, null, null),
             )
         ).thenReturn(emptyList())
 

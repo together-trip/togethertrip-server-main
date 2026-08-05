@@ -3,12 +3,10 @@ package com.togethertrip.main.user.controller.spec
 import com.togethertrip.main.global.response.ApiResponse
 import com.togethertrip.main.global.security.principal.AuthUser
 import com.togethertrip.main.user.dto.request.SearchUserByNicknameRequest
-import com.togethertrip.main.user.dto.request.SearchUserByPhoneRequest
 import com.togethertrip.main.user.dto.request.UpdateUserMultipartRequest
 import com.togethertrip.main.user.dto.request.UpdateUserRequest
 import com.togethertrip.main.user.dto.response.MyTripParticipantResponse
 import com.togethertrip.main.user.dto.response.NicknameAvailabilityResponse
-import com.togethertrip.main.user.dto.response.PhoneUserSearchResponse
 import com.togethertrip.main.user.dto.response.UserSearchResponse
 import com.togethertrip.main.user.dto.response.UserResponse
 import io.swagger.v3.oas.annotations.Operation
@@ -19,12 +17,6 @@ import io.swagger.v3.oas.annotations.tags.Tag
 @Tag(name = "User", description = "사용자 API")
 @SecurityRequirement(name = "bearerAuth")
 interface UserApiSpec {
-
-    @Operation(summary = "전화번호로 사용자 검색", description = "전화번호와 정확히 일치하는 인증 완료 활성 사용자를 검색합니다.")
-    fun searchByPhoneNumber(
-        authUser: AuthUser,
-        request: SearchUserByPhoneRequest,
-    ): ApiResponse<PhoneUserSearchResponse>
 
     @Operation(summary = "닉네임으로 사용자 검색", description = "닉네임과 정확히 일치하는 활성 사용자를 검색합니다.")
     fun searchByNickname(
@@ -59,7 +51,10 @@ interface UserApiSpec {
         request: UpdateUserMultipartRequest,
     ): ApiResponse<UserResponse>
 
-    @Operation(summary = "회원 탈퇴", description = "현재 사용자를 탈퇴 처리합니다.")
+    @Operation(
+        summary = "회원 탈퇴",
+        description = "현재 사용자의 개인정보와 인증 연결을 제거하고 정산·지출 원장은 익명화해 보존합니다.",
+    )
     fun deleteMe(
         authUser: AuthUser,
     ): ApiResponse<Unit>
