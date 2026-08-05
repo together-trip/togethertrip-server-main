@@ -28,7 +28,7 @@ class AppleOAuthClient(
     private val properties: AppleOAuthProperties,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    private val webClient = webClientBuilder.build()
+    private val webClient = AppleOAuthWebClient.build(webClientBuilder, properties)
 
     fun exchangeAuthorizationCode(authorizationCode: String): AppleTokenResponse {
         ensureEnabled()
@@ -44,10 +44,11 @@ class AppleOAuthClient(
                 )
                 .retrieve()
                 .bodyToMono<AppleTokenResponse>()
+                .timeout(properties.responseTimeout)
                 .block()
                 ?: authorizationFailed()
-        } catch (_: WebClientException) {
-            authorizationFailed()
+        } catch (exception: Exception) {
+            handleClientFailure(exception)
         }
     }
 
@@ -65,9 +66,10 @@ class AppleOAuthClient(
                 )
                 .retrieve()
                 .toBodilessEntity()
+                .timeout(properties.responseTimeout)
                 .block()
-        } catch (_: WebClientException) {
-            authorizationFailed()
+        } catch (exception: Exception) {
+            handleClientFailure(exception)
         }
     }
 
@@ -120,6 +122,13 @@ class AppleOAuthClient(
 
     private fun authorizationFailed(): Nothing {
         throw BusinessException(AuthErrorCode.APPLE_AUTHORIZATION_FAILED)
+    }
+
+    private fun handleClientFailure(exception: Exception): Nothing {
+        if (exception is WebClientException || AppleOAuthWebClient.isTimeout(exception)) {
+            authorizationFailed()
+        }
+        throw exception
     }
 
     companion object {

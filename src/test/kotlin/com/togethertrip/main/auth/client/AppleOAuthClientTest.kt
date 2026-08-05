@@ -66,6 +66,31 @@ class AppleOAuthClientTest {
     }
 
     @Test
+    fun `Apple token endpoint 응답이 timeout되면 인증 실패로 변환한다`() {
+        val keyPair = KeyPairGenerator.getInstance("EC").apply {
+            initialize(ECGenParameterSpec("secp256r1"))
+        }.generateKeyPair()
+        val client = AppleOAuthClient(
+            webClientBuilder = WebClient.builder().exchangeFunction { Mono.never() },
+            properties = AppleOAuthProperties(
+                enabled = true,
+                clientId = "com.togethertrip.app",
+                teamId = "TEAM123",
+                keyId = "KEY123",
+                privateKey = Base64.getEncoder().encodeToString(keyPair.private.encoded),
+                tokenEncryptionKey = "configured",
+                responseTimeout = java.time.Duration.ofMillis(10),
+            ),
+        )
+
+        val exception = assertFailsWith<BusinessException> {
+            client.exchangeAuthorizationCode("authorization-code")
+        }
+
+        assertEquals(AuthErrorCode.APPLE_AUTHORIZATION_FAILED, exception.errorCode)
+    }
+
+    @Test
     fun `Apple 설정이 비활성화되면 외부 호출 전에 실패한다`() {
         val client = AppleOAuthClient(
             webClientBuilder = WebClient.builder(),

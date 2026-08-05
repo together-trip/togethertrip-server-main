@@ -26,7 +26,7 @@ class AppleIdentityTokenVerifier(
     private val nonceStore: AppleNonceStore,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    private val webClient = webClientBuilder.build()
+    private val webClient = AppleOAuthWebClient.build(webClientBuilder, properties)
     @Volatile private var cachedKeys: CachedKeys? = null
 
     fun verify(identityToken: String, rawNonce: String, nickname: String?): OAuthUserInfo {
@@ -57,11 +57,15 @@ class AppleIdentityTokenVerifier(
         val expectedNonce = sha256(rawNonce)
         val expiresAt = claims.expirationTime?.toInstant() ?: invalidToken()
         val issuedAt = claims.issueTime?.toInstant() ?: invalidToken()
+        val tokenLifetime = Duration.between(issuedAt, expiresAt)
         if (
             claims.issuer != properties.issuer ||
             properties.clientId !in claims.audience ||
             !expiresAt.isAfter(now) ||
             issuedAt.isAfter(now.plusSeconds(CLOCK_SKEW_SECONDS)) ||
+            tokenLifetime.isZero ||
+            tokenLifetime.isNegative ||
+            tokenLifetime > MAX_IDENTITY_TOKEN_LIFETIME ||
             claims.getStringClaim("nonce") != expectedNonce
         ) {
             invalidToken()
@@ -70,7 +74,7 @@ class AppleIdentityTokenVerifier(
         val subject = claims.subject?.takeIf { it.isNotBlank() } ?: invalidToken()
         val replayKey = claims.jwtid?.takeIf { it.isNotBlank() }
             ?: "$subject:$expectedNonce"
-        val replayTtl = Duration.between(now, expiresAt).coerceAtMost(MAX_NONCE_TTL)
+        val replayTtl = Duration.between(now, expiresAt)
         if (!nonceStore.claim(replayKey, replayTtl)) {
             throw BusinessException(AuthErrorCode.APPLE_NONCE_REUSED)
         }
@@ -101,9 +105,14 @@ class AppleIdentityTokenVerifier(
                 .uri(properties.jwksUrl)
                 .retrieve()
                 .bodyToMono<String>()
+                .timeout(properties.responseTimeout)
                 .block()
-        } catch (_: WebClientException) {
-            null
+        } catch (exception: Exception) {
+            if (exception is WebClientException || AppleOAuthWebClient.isTimeout(exception)) {
+                null
+            } else {
+                throw exception
+            }
         }
         val jwkSet = try {
             body?.let(JWKSet::parse)
@@ -133,6 +142,6 @@ class AppleIdentityTokenVerifier(
     companion object {
         private const val CLOCK_SKEW_SECONDS = 60L
         private val KEY_CACHE_TTL = Duration.ofHours(1)
-        private val MAX_NONCE_TTL = Duration.ofMinutes(10)
+        private val MAX_IDENTITY_TOKEN_LIFETIME = Duration.ofMinutes(10)
     }
 }
