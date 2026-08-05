@@ -37,7 +37,7 @@ class UserAccountDeletionIntegrationTest @Autowired constructor(
                 nickname = "실명 사용자",
                 gender = "FEMALE",
                 birthDate = LocalDate.of(1995, 5, 1),
-                profileImageUrl = "https://k.kakaocdn.net/profile.jpg",
+                profileImageUrl = "/uploads/user-profile-images/profile.jpg",
             )
         )
         persist(
@@ -47,6 +47,14 @@ class UserAccountDeletionIntegrationTest @Autowired constructor(
                 providerUserId = "deleted-kakao-user",
                 nickname = "카카오 실명",
                 profileImageUrl = "https://k.kakaocdn.net/profile.jpg",
+            )
+        )
+        persist(
+            OAuthAccount(
+                user = user,
+                provider = OAuthProvider.APPLE,
+                providerUserId = "deleted-apple-user",
+                encryptedRefreshToken = "encrypted-apple-refresh-token",
             )
         )
         persist(
@@ -109,6 +117,27 @@ class UserAccountDeletionIntegrationTest @Autowired constructor(
                 user.id,
             ),
         )
+
+        val cleanupTasks = jdbcTemplate.queryForList(
+            """
+                select task_type, payload, status, retry_count
+                from user_account_deletion_cleanup_tasks
+                where user_id = ?
+                order by id
+            """.trimIndent(),
+            user.id,
+        )
+        assertEquals(3, cleanupTasks.size)
+        assertEquals(
+            listOf("APPLE_REFRESH_TOKEN", "PROFILE_IMAGE", "REDIS_REFRESH_TOKEN"),
+            cleanupTasks.map { it["task_type"] },
+        )
+        assertEquals("encrypted-apple-refresh-token", cleanupTasks[0]["payload"])
+        assertEquals("/uploads/user-profile-images/profile.jpg", cleanupTasks[1]["payload"])
+        cleanupTasks.forEach { task ->
+            assertEquals("PENDING", task["status"])
+            assertEquals(0, task["retry_count"])
+        }
         assertEquals(
             0,
             jdbcTemplate.queryForObject(

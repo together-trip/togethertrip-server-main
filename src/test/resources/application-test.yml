@@ -54,6 +54,8 @@ user:
   profile-images:
     local-storage-path: ./build/test-uploads/user-profile-images
     public-url-prefix: /uploads/user-profile-images
+  account-deletion-cleanup:
+    enabled: false
 
 trip:
   invite:

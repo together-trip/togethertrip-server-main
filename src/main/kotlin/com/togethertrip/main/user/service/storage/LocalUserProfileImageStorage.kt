@@ -65,12 +65,7 @@ class LocalUserProfileImageStorage(
     }
 
     override fun deleteByFileUrl(fileUrl: String) {
-        val normalizedPrefix = publicUrlPrefix.trimEnd('/')
-        val storedFileName = fileUrl
-            .takeIf { it.startsWith("$normalizedPrefix/") }
-            ?.removePrefix("$normalizedPrefix/")
-            ?.takeIf { STORED_FILE_NAME_PATTERN.matches(it) }
-            ?: return
+        val storedFileName = resolveStoredFileName(fileUrl) ?: return
 
         delete(
             StoredUserProfileImage(
@@ -80,6 +75,18 @@ class LocalUserProfileImageStorage(
                 mimeType = null,
             )
         )
+    }
+
+    override fun isManagedFileUrl(fileUrl: String): Boolean {
+        return resolveStoredFileName(fileUrl) != null
+    }
+
+    private fun resolveStoredFileName(fileUrl: String): String? {
+        val normalizedPrefix = publicUrlPrefix.trimEnd('/')
+        return fileUrl
+            .takeIf { it.startsWith("$normalizedPrefix/") }
+            ?.removePrefix("$normalizedPrefix/")
+            ?.takeIf { STORED_FILE_NAME_PATTERN.matches(it) }
     }
 
     private fun detectProfileImageType(fileBytes: ByteArray): UploadFileType {

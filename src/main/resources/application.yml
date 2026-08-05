@@ -92,6 +92,11 @@ user:
   profile-images:
     local-storage-path: ${USER_PROFILE_IMAGE_LOCAL_STORAGE_PATH:./uploads/user-profile-images}
     public-url-prefix: ${USER_PROFILE_IMAGE_PUBLIC_URL_PREFIX:/uploads/user-profile-images}
+  account-deletion-cleanup:
+    enabled: ${USER_ACCOUNT_DELETION_CLEANUP_ENABLED:true}
+    fixed-delay: ${USER_ACCOUNT_DELETION_CLEANUP_FIXED_DELAY:PT5S}
+    batch-size: ${USER_ACCOUNT_DELETION_CLEANUP_BATCH_SIZE:50}
+    lease-duration: ${USER_ACCOUNT_DELETION_CLEANUP_LEASE_DURATION:PT5M}
 
 trip:
   invite:

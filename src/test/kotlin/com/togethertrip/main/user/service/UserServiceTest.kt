@@ -1,8 +1,6 @@
 package com.togethertrip.main.user.service
 
 import com.togethertrip.main.auth.repository.OAuthAccountRepository
-import com.togethertrip.main.auth.service.RefreshTokenService
-import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.global.exception.BusinessException
 import com.togethertrip.main.global.exception.CommonErrorCode
 import com.togethertrip.main.global.storage.ProfileImageUrlPolicy
@@ -49,9 +47,8 @@ class UserServiceTest {
     private lateinit var profileImageUrlPolicy: ProfileImageUrlPolicy
     private lateinit var oauthAccountRepository: OAuthAccountRepository
     private lateinit var userAgreementRepository: UserAgreementRepository
-    private lateinit var refreshTokenService: RefreshTokenService
     private lateinit var outboxEventPublisher: OutboxEventPublisher
-    private lateinit var oauthAccountRevoker: OAuthAccountRevoker
+    private lateinit var accountDeletionCleanupEnqueueService: UserAccountDeletionCleanupEnqueueService
     private lateinit var userService: UserService
 
     @BeforeEach
@@ -62,11 +59,10 @@ class UserServiceTest {
         profileImageUrlPolicy = ProfileImageUrlPolicy(
             userProfileImagePublicUrlPrefix = "/uploads/user-profile-images",
         )
-        oauthAccountRevoker = mock(OAuthAccountRevoker::class.java)
         oauthAccountRepository = mock(OAuthAccountRepository::class.java)
         userAgreementRepository = mock(UserAgreementRepository::class.java)
-        refreshTokenService = mock(RefreshTokenService::class.java)
         outboxEventPublisher = mock(OutboxEventPublisher::class.java)
+        accountDeletionCleanupEnqueueService = mock(UserAccountDeletionCleanupEnqueueService::class.java)
         userService = UserService(
             userRepository = userRepository,
             tripParticipantRepository = tripParticipantRepository,
@@ -74,9 +70,8 @@ class UserServiceTest {
             profileImageUrlPolicy = profileImageUrlPolicy,
             oauthAccountRepository = oauthAccountRepository,
             userAgreementRepository = userAgreementRepository,
-            refreshTokenService = refreshTokenService,
             outboxEventPublisher = outboxEventPublisher,
-            oauthAccountRevoker = oauthAccountRevoker,
+            accountDeletionCleanupEnqueueService = accountDeletionCleanupEnqueueService,
         )
     }
 
@@ -389,10 +384,12 @@ class UserServiceTest {
             assertNull(user.profileImageUrl)
             assertEquals(UserStatus.WITHDRAWN, user.status)
             assertNotNull(user.deletedAt)
-            verify(oauthAccountRevoker).revokeForUser(1L)
+            verify(accountDeletionCleanupEnqueueService).enqueue(
+                1L,
+                "/uploads/user-profile-images/profile.jpg",
+            )
             verify(oauthAccountRepository).deleteAllByUserId(1L)
             verify(userAgreementRepository).deleteAllByUserId(1L)
-            verifyNoInteractions(refreshTokenService)
 
             val participantInvocation = mockingDetails(tripParticipantRepository).invocations
                 .single { it.method.name == "anonymizeAllByUserIdIncludingDeleted" }
@@ -414,13 +411,10 @@ class UserServiceTest {
             TransactionSynchronizationManager.clearSynchronization()
         }
 
-        verify(refreshTokenService).delete(1L)
-        verify(userProfileImageStorage)
-            .deleteByFileUrl("/uploads/user-profile-images/profile.jpg")
     }
 
     @Test
-    fun `회원 탈퇴 트랜잭션이 롤백되면 외부 저장소를 정리하지 않는다`() {
+    fun `회원 탈퇴는 외부 저장소를 직접 정리하지 않는다`() {
         val user = createUser().apply {
             profileImageUrl = "/uploads/user-profile-images/profile.jpg"
         }
@@ -437,7 +431,6 @@ class UserServiceTest {
             TransactionSynchronizationManager.clearSynchronization()
         }
 
-        verifyNoInteractions(refreshTokenService)
         assertTrue(
             mockingDetails(userProfileImageStorage).invocations
                 .none { it.method.name == "deleteByFileUrl" }

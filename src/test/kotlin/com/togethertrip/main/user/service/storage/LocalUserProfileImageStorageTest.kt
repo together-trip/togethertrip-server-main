@@ -8,6 +8,7 @@ import org.springframework.mock.web.MockMultipartFile
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -93,6 +94,7 @@ class LocalUserProfileImageStorageTest {
             MockMultipartFile("profileImage", "profile.jpg", "image/jpeg", jpegBytes())
         )
 
+        assertTrue(storage.isManagedFileUrl(stored.fileUrl))
         storage.deleteByFileUrl(stored.fileUrl)
 
         assertEquals(0, Files.list(tempDir).use { it.count() })
@@ -113,6 +115,8 @@ class LocalUserProfileImageStorageTest {
         storage.deleteByFileUrl("/uploads/user-profile-images/../profile.jpg")
 
         assertEquals(1, Files.list(tempDir).use { it.count() })
+        assertFalse(storage.isManagedFileUrl("https://k.kakaocdn.net/profile.jpg"))
+        assertFalse(storage.isManagedFileUrl("/uploads/user-profile-images/../profile.jpg"))
     }
 
     @Test
