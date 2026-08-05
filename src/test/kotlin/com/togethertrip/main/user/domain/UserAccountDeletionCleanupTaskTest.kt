@@ -15,6 +15,7 @@ class UserAccountDeletionCleanupTaskTest {
             now = Instant.EPOCH,
         )
         val completedAt = Instant.parse("2026-08-05T01:00:00Z")
+        task.markProcessing("claim-1", completedAt.plusSeconds(60), completedAt)
 
         task.markCompleted(completedAt)
 
@@ -31,6 +32,7 @@ class UserAccountDeletionCleanupTaskTest {
             now = Instant.EPOCH,
         )
         val failedAt = Instant.parse("2026-08-05T01:00:00Z")
+        task.markProcessing("claim-1", failedAt.plusSeconds(60), failedAt)
 
         task.markFailed(
             errorCode = UserAccountDeletionCleanupErrorCode.REDIS_REFRESH_TOKEN_DELETE_FAILED,
@@ -44,5 +46,24 @@ class UserAccountDeletionCleanupTaskTest {
             UserAccountDeletionCleanupErrorCode.REDIS_REFRESH_TOKEN_DELETE_FAILED,
             task.lastErrorCode,
         )
+        assertNull(task.claimId)
+        assertNull(task.leaseExpiresAt)
+    }
+
+    @Test
+    fun `만료된 processing 작업을 다시 claim하면 lease 만료를 추적한다`() {
+        val task = UserAccountDeletionCleanupTask.refreshToken(1L, Instant.EPOCH)
+        task.markProcessing("claim-1", Instant.EPOCH.plusSeconds(60), Instant.EPOCH)
+
+        task.markProcessing(
+            newClaimId = "claim-2",
+            newLeaseExpiresAt = Instant.EPOCH.plusSeconds(120),
+            now = Instant.EPOCH.plusSeconds(60),
+        )
+
+        assertEquals(UserAccountDeletionCleanupStatus.PROCESSING, task.status)
+        assertEquals(1, task.retryCount)
+        assertEquals(UserAccountDeletionCleanupErrorCode.WORKER_LEASE_EXPIRED, task.lastErrorCode)
+        assertEquals("claim-2", task.claimId)
     }
 }

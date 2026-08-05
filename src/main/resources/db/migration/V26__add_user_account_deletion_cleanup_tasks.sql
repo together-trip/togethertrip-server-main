@@ -7,15 +7,17 @@ CREATE TABLE user_account_deletion_cleanup_tasks
     status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     retry_count     INT         NOT NULL DEFAULT 0,
     next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    completed_at    TIMESTAMPTZ,
-    last_error_code VARCHAR(60),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at      TIMESTAMPTZ,
+    completed_at     TIMESTAMPTZ,
+    claim_id         VARCHAR(36),
+    lease_expires_at TIMESTAMPTZ,
+    last_error_code  VARCHAR(60),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at       TIMESTAMPTZ,
     CONSTRAINT ck_user_account_deletion_cleanup_task_type
         CHECK (task_type IN ('APPLE_REFRESH_TOKEN', 'PROFILE_IMAGE', 'REDIS_REFRESH_TOKEN')),
     CONSTRAINT ck_user_account_deletion_cleanup_status
-        CHECK (status IN ('PENDING', 'FAILED', 'COMPLETED')),
+        CHECK (status IN ('PENDING', 'PROCESSING', 'FAILED', 'COMPLETED')),
     CONSTRAINT ck_user_account_deletion_cleanup_retry_count
         CHECK (retry_count >= 0),
     CONSTRAINT ck_user_account_deletion_cleanup_completion
@@ -27,12 +29,21 @@ CREATE TABLE user_account_deletion_cleanup_tasks
             OR payload IS NOT NULL
         ),
     CONSTRAINT ck_user_account_deletion_cleanup_redis_payload
-        CHECK (task_type <> 'REDIS_REFRESH_TOKEN' OR payload IS NULL)
+        CHECK (task_type <> 'REDIS_REFRESH_TOKEN' OR payload IS NULL),
+    CONSTRAINT ck_user_account_deletion_cleanup_claim
+        CHECK (
+            (status = 'PROCESSING' AND claim_id IS NOT NULL AND lease_expires_at IS NOT NULL)
+            OR (status <> 'PROCESSING' AND claim_id IS NULL AND lease_expires_at IS NULL)
+        )
 );
 
 CREATE INDEX idx_user_account_deletion_cleanup_due
     ON user_account_deletion_cleanup_tasks (next_attempt_at, id)
     WHERE status IN ('PENDING', 'FAILED') AND deleted_at IS NULL;
+
+CREATE INDEX idx_user_account_deletion_cleanup_expired_lease
+    ON user_account_deletion_cleanup_tasks (lease_expires_at, id)
+    WHERE status = 'PROCESSING' AND deleted_at IS NULL;
 
 CREATE INDEX idx_user_account_deletion_cleanup_user
     ON user_account_deletion_cleanup_tasks (user_id, created_at DESC);

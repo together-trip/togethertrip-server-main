@@ -36,15 +36,38 @@ class UserAccountDeletionCleanupTask private constructor(
     @Column(name = "completed_at")
     var completedAt: Instant? = null,
 
+    @Column(name = "claim_id", length = 36)
+    var claimId: String? = null,
+
+    @Column(name = "lease_expires_at")
+    var leaseExpiresAt: Instant? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "last_error_code", length = 60)
     var lastErrorCode: UserAccountDeletionCleanupErrorCode? = null,
 ) : BaseEntity(createdAt = nextAttemptAt, updatedAt = nextAttemptAt) {
 
+    fun markProcessing(
+        newClaimId: String,
+        newLeaseExpiresAt: Instant,
+        now: Instant,
+    ) {
+        if (status == UserAccountDeletionCleanupStatus.PROCESSING) {
+            retryCount += 1
+            lastErrorCode = UserAccountDeletionCleanupErrorCode.WORKER_LEASE_EXPIRED
+        }
+        status = UserAccountDeletionCleanupStatus.PROCESSING
+        claimId = newClaimId
+        leaseExpiresAt = newLeaseExpiresAt
+        updatedAt = now
+    }
+
     fun markCompleted(now: Instant) {
         status = UserAccountDeletionCleanupStatus.COMPLETED
         payload = null
         completedAt = now
+        claimId = null
+        leaseExpiresAt = null
         lastErrorCode = null
         updatedAt = now
     }
@@ -57,6 +80,8 @@ class UserAccountDeletionCleanupTask private constructor(
         retryCount += 1
         nextAttemptAt = now.plusSeconds(calculateBackoffSeconds(retryCount))
         lastErrorCode = errorCode
+        claimId = null
+        leaseExpiresAt = null
         updatedAt = now
     }
 

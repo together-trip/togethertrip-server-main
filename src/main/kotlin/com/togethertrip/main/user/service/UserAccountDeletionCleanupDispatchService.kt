@@ -3,36 +3,28 @@ package com.togethertrip.main.user.service
 import com.togethertrip.main.auth.service.RefreshTokenService
 import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupErrorCode
-import com.togethertrip.main.user.domain.UserAccountDeletionCleanupTask
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupType
-import com.togethertrip.main.user.repository.UserAccountDeletionCleanupTaskRepository
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
-import java.time.Clock
-import java.time.Instant
 
 @Service
 class UserAccountDeletionCleanupDispatchService(
-    private val taskRepository: UserAccountDeletionCleanupTaskRepository,
+    private val taskLifecycleService: UserAccountDeletionCleanupTaskLifecycleService,
     private val oauthAccountRevoker: OAuthAccountRevoker,
     private val profileImageStorage: UserProfileImageStorage,
     private val refreshTokenService: RefreshTokenService,
-    private val clock: Clock = Clock.systemUTC(),
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    @Transactional
     fun dispatchDue(limit: Int = DEFAULT_LIMIT): UserAccountDeletionCleanupDispatchResult {
-        val now = Instant.now(clock)
-        val tasks = taskRepository.findDueForUpdate(now, limit.coerceIn(1, MAX_LIMIT))
+        val claims = taskLifecycleService.claimDue(limit.coerceIn(1, MAX_LIMIT))
         var completedCount = 0
         var failedCount = 0
 
-        tasks.forEach { task ->
-            if (dispatch(task, now)) {
+        claims.forEach { claim ->
+            if (dispatch(claim)) {
                 completedCount += 1
             } else {
                 failedCount += 1
@@ -40,50 +32,87 @@ class UserAccountDeletionCleanupDispatchService(
         }
 
         return UserAccountDeletionCleanupDispatchResult(
-            requestedCount = tasks.size,
+            requestedCount = claims.size,
             completedCount = completedCount,
             failedCount = failedCount,
         )
     }
 
     private fun dispatch(
-        task: UserAccountDeletionCleanupTask,
-        now: Instant,
+        claim: UserAccountDeletionCleanupClaim,
     ): Boolean {
-        return try {
-            execute(task)
-            task.markCompleted(now)
-            true
+        try {
+            execute(claim)
         } catch (exception: Exception) {
-            val errorCode = errorCodeFor(task.type, exception)
-            task.markFailed(errorCode, now)
+            val errorCode = errorCodeFor(claim.type, exception)
+            persistFailure(claim, errorCode)
             logger.warn(
                 "Account deletion cleanup failed. taskId={}, userId={}, taskType={}, errorCode={}, exceptionType={}",
-                task.id,
-                task.userId,
-                task.type,
+                claim.taskId,
+                claim.userId,
+                claim.type,
                 errorCode,
                 exception.javaClass.simpleName,
+            )
+            return false
+        }
+
+        return try {
+            val completed = taskLifecycleService.complete(claim)
+            if (!completed) {
+                logger.warn(
+                    "Account deletion cleanup claim expired before completion. taskId={}, userId={}, taskType={}",
+                    claim.taskId,
+                    claim.userId,
+                    claim.type,
+                )
+            }
+            completed
+        } catch (stateException: Exception) {
+            logger.error(
+                "Account deletion cleanup completion state persistence failed. " +
+                    "taskId={}, userId={}, taskType={}, exceptionType={}",
+                claim.taskId,
+                claim.userId,
+                claim.type,
+                stateException.javaClass.simpleName,
             )
             false
         }
     }
 
-    private fun execute(task: UserAccountDeletionCleanupTask) {
-        when (task.type) {
+    private fun persistFailure(
+        claim: UserAccountDeletionCleanupClaim,
+        errorCode: UserAccountDeletionCleanupErrorCode,
+    ) {
+        runCatching { taskLifecycleService.fail(claim, errorCode) }
+            .onFailure { stateException ->
+                logger.error(
+                    "Account deletion cleanup failure state persistence failed. " +
+                        "taskId={}, userId={}, taskType={}, exceptionType={}",
+                    claim.taskId,
+                    claim.userId,
+                    claim.type,
+                    stateException.javaClass.simpleName,
+                )
+            }
+    }
+
+    private fun execute(claim: UserAccountDeletionCleanupClaim) {
+        when (claim.type) {
             UserAccountDeletionCleanupType.APPLE_REFRESH_TOKEN ->
-                oauthAccountRevoker.revokeEncrypted(requirePayload(task))
+                oauthAccountRevoker.revokeEncrypted(requirePayload(claim))
 
             UserAccountDeletionCleanupType.PROFILE_IMAGE ->
-                profileImageStorage.deleteByFileUrl(requirePayload(task))
+                profileImageStorage.deleteByFileUrl(requirePayload(claim))
 
             UserAccountDeletionCleanupType.REDIS_REFRESH_TOKEN ->
-                refreshTokenService.delete(task.userId)
+                refreshTokenService.delete(claim.userId)
         }
     }
 
-    private fun requirePayload(task: UserAccountDeletionCleanupTask): String {
-        return task.payload ?: throw InvalidCleanupTaskPayloadException()
+    private fun requirePayload(claim: UserAccountDeletionCleanupClaim): String {
+        return claim.payload ?: throw InvalidCleanupTaskPayloadException()
     }
 
     private fun errorCodeFor(

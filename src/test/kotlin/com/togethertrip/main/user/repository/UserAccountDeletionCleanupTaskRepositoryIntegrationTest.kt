@@ -6,6 +6,7 @@ import com.togethertrip.main.global.config.MainIntegrationTest
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupStatus
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupTask
 import com.togethertrip.main.user.service.UserAccountDeletionCleanupDispatchService
+import com.togethertrip.main.user.service.UserAccountDeletionCleanupTaskLifecycleService
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -13,11 +14,13 @@ import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -92,10 +95,16 @@ class UserAccountDeletionCleanupTaskRepositoryIntegrationTest @Autowired constru
                     ready.countDown()
                     start.await(10, TimeUnit.SECONDS)
                     inTransaction {
-                        val tasks = repository.findDueForUpdate(now, 10)
+                        val tasks = repository.findClaimableForUpdate(now, 10)
                         selected.countDown()
                         selected.await(2, TimeUnit.SECONDS)
-                        tasks.forEach { task -> task.markCompleted(now) }
+                        tasks.forEach { task ->
+                            task.markProcessing(
+                                newClaimId = UUID.randomUUID().toString(),
+                                newLeaseExpiresAt = now.plusSeconds(60),
+                                now = now,
+                            )
+                        }
                         tasks.map { task -> task.id }.toSet()
                     }
                 }
@@ -112,15 +121,50 @@ class UserAccountDeletionCleanupTaskRepositoryIntegrationTest @Autowired constru
         }
     }
 
+    @Test
+    fun `worker lease가 만료된 processing 작업은 새 claim으로 복구한다`() {
+        val startedAt = Instant.parse("2026-08-05T03:00:00Z")
+        val taskId = inTransaction {
+            repository.saveAndFlush(
+                UserAccountDeletionCleanupTask.refreshToken(System.nanoTime(), startedAt)
+                    .apply {
+                        markProcessing("expired-claim", startedAt.plusSeconds(60), startedAt)
+                    }
+            ).id
+        }
+
+        val beforeExpiry = createLifecycle(startedAt.plusSeconds(59))
+        assertEquals(0, inTransaction { beforeExpiry.claimDue(1) }.size)
+
+        val afterExpiry = createLifecycle(startedAt.plusSeconds(60))
+        val recovered = inTransaction { afterExpiry.claimDue(1) }
+
+        assertEquals(1, recovered.size)
+        assertEquals(taskId, recovered.single().taskId)
+        inTransaction {
+            val task = repository.findById(taskId).orElseThrow()
+            assertEquals(UserAccountDeletionCleanupStatus.PROCESSING, task.status)
+            assertEquals(1, task.retryCount)
+            assertEquals("WORKER_LEASE_EXPIRED", task.lastErrorCode?.name)
+        }
+    }
+
     private fun createService(
         revoker: OAuthAccountRevoker,
         now: Instant,
     ): UserAccountDeletionCleanupDispatchService {
         return UserAccountDeletionCleanupDispatchService(
-            taskRepository = repository,
+            taskLifecycleService = createLifecycle(now),
             oauthAccountRevoker = revoker,
             profileImageStorage = mock(UserProfileImageStorage::class.java),
             refreshTokenService = mock(RefreshTokenService::class.java),
+        )
+    }
+
+    private fun createLifecycle(now: Instant): UserAccountDeletionCleanupTaskLifecycleService {
+        return UserAccountDeletionCleanupTaskLifecycleService(
+            taskRepository = repository,
+            leaseDuration = Duration.ofMinutes(1),
             clock = Clock.fixed(now, ZoneOffset.UTC),
         )
     }

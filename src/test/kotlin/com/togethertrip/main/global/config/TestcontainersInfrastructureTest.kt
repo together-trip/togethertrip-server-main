@@ -38,7 +38,7 @@ class TestcontainersInfrastructureTest @Autowired constructor(
         assertEquals(postgisContainer.jdbcUrl, connectedJdbcUrl)
         assertNotNull(postgisVersion)
         assertTrue(postgisVersion.isNotBlank())
-        assertEquals("25", flyway.info().current()?.version?.version)
+        assertEquals("26", flyway.info().current()?.version?.version)
         assertEquals(
             1,
             jdbcTemplate.queryForObject(
