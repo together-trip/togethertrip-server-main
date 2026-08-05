@@ -84,7 +84,7 @@ class LocalUserProfileImageStorageTest {
     }
 
     @Test
-    fun `서버 생성 URL로 저장된 프로필 이미지를 삭제한다`() {
+    fun `서버 생성 URL로 저장된 프로필 이미지를 반복 삭제해도 성공한다`() {
         val storage = LocalUserProfileImageStorage(
             storagePath = tempDir.toString(),
             publicUrlPrefix = "/uploads/user-profile-images",
@@ -95,6 +95,7 @@ class LocalUserProfileImageStorageTest {
         )
 
         assertTrue(storage.isManagedFileUrl(stored.fileUrl))
+        storage.deleteByFileUrl(stored.fileUrl)
         storage.deleteByFileUrl(stored.fileUrl)
 
         assertEquals(0, Files.list(tempDir).use { it.count() })

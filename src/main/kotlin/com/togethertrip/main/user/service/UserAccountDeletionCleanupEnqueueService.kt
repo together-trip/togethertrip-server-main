@@ -17,6 +17,23 @@ class UserAccountDeletionCleanupEnqueueService(
     private val clock: Clock = Clock.systemUTC(),
 ) {
 
+    fun enqueueProfileImage(
+        userId: Long,
+        profileImageUrl: String,
+    ) {
+        if (!profileImageStorage.isManagedFileUrl(profileImageUrl)) {
+            return
+        }
+
+        taskRepository.save(
+            UserAccountDeletionCleanupTask.profileImage(
+                userId = userId,
+                profileImageUrl = profileImageUrl,
+                now = Instant.now(clock),
+            )
+        )
+    }
+
     fun enqueue(
         userId: Long,
         profileImageUrl: String?,
