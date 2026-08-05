@@ -20,11 +20,17 @@ class SqsOutboxEventSender(
             eventType = event.eventType,
             payload = objectMapper.readTree(event.payload),
         )
-        sqsClient.sendMessage(
-            SendMessageRequest.builder()
-                .queueUrl(properties.queueUrl)
-                .messageBody(objectMapper.writeValueAsString(message))
-                .build(),
-        )
+        val requestBuilder = SendMessageRequest.builder()
+            .queueUrl(properties.queueUrl)
+            .messageBody(objectMapper.writeValueAsString(message))
+
+        if (properties.isFifoQueue()) {
+            val ordering = SqsOutboxMessageOrdering.from(event)
+            requestBuilder
+                .messageGroupId(ordering.messageGroupId)
+                .messageDeduplicationId(ordering.messageDeduplicationId)
+        }
+
+        sqsClient.sendMessage(requestBuilder.build())
     }
 }
