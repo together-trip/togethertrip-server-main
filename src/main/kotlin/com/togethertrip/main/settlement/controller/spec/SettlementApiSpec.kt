@@ -53,9 +53,21 @@ interface SettlementApiSpec {
 
     @Operation(
         summary = "정산 공유 토큰 생성",
-        description = "확정된 정산 결과를 공유하기 위한 토큰을 생성합니다.",
+        description = "확정된 정산 결과를 공유하기 위한 토큰을 생성합니다. " +
+            "이미 발급된 토큰이 있으면 같은 토큰을 반환합니다.",
     )
     fun createShareToken(
+        authUser: AuthUser,
+        tripId: Long,
+        settlementId: Long,
+    ): ApiResponse<SettlementShareTokenResponse>
+
+    @Operation(
+        summary = "정산 공유 토큰 회전",
+        description = "새 공유 토큰을 발급하고 기존 공유 링크를 무효화합니다. " +
+            "링크가 유출되었을 때 사용합니다.",
+    )
+    fun rotateShareToken(
         authUser: AuthUser,
         tripId: Long,
         settlementId: Long,

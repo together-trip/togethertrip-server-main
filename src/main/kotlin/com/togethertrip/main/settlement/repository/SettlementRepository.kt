@@ -42,4 +42,22 @@ interface SettlementRepository : JpaRepository<Settlement, Long> {
         @Param("shareToken") shareToken: String,
         @Param("updatedAt") updatedAt: Instant,
     ): Int
+
+    // 회전은 기존 토큰을 새 값으로 덮어써 이전 공유 링크를 무효화한다.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        value = """
+        update settlements
+        set share_token = :shareToken,
+            updated_at = :updatedAt
+        where id = :settlementId
+          and deleted_at is null
+        """,
+        nativeQuery = true
+    )
+    fun rotateShareToken(
+        @Param("settlementId") settlementId: Long,
+        @Param("shareToken") shareToken: String,
+        @Param("updatedAt") updatedAt: Instant,
+    ): Int
 }

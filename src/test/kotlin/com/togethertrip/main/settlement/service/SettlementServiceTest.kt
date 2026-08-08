@@ -532,6 +532,60 @@ class SettlementServiceTest {
     }
 
     @Test
+    fun `공유 토큰 회전은 기존 토큰이 있어도 새 토큰으로 덮어쓴다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val settlement = createSettlement(
+            trip = trip,
+            confirmedBy = owner,
+            shareToken = "leaked-token",
+        )
+
+        `when`(settlementRepository.findByIdAndDeletedAtIsNull(30L)).thenReturn(settlement)
+        `when`(settlementShareTokenGenerator.generate()).thenReturn("rotated-token")
+        `when`(
+            settlementRepository.rotateShareToken(
+                settlementId = eqLong(30L),
+                shareToken = eqString("rotated-token"),
+                updatedAt = anyInstant(),
+            )
+        ).thenReturn(1)
+
+        val response = settlementService.rotateShareToken(
+            userId = 1L,
+            tripId = 10L,
+            settlementId = 30L,
+        )
+
+        assertEquals(30L, response.settlementId)
+        assertEquals("rotated-token", response.shareToken)
+    }
+
+    @Test
+    fun `확정되지 않은 정산은 공유 토큰을 회전할 수 없다`() {
+        val owner = createUser()
+        val trip = createTrip(owner)
+        val settlement = createSettlement(
+            trip = trip,
+            confirmedBy = owner,
+            status = SettlementStatus.DRAFT,
+        )
+
+        `when`(settlementRepository.findByIdAndDeletedAtIsNull(30L)).thenReturn(settlement)
+
+        val exception = assertBusinessException {
+            settlementService.rotateShareToken(
+                userId = 1L,
+                tripId = 10L,
+                settlementId = 30L,
+            )
+        }
+
+        assertEquals(SettlementErrorCode.SETTLEMENT_NOT_CONFIRMED, exception.errorCode)
+        verifyNoInteractions(settlementShareTokenGenerator)
+    }
+
+    @Test
     fun `정산 확정 시 탈퇴 송금자는 자동 동의 처리된다`() {
         val owner = createUser()
         val trip = createTrip(owner)
@@ -902,10 +956,11 @@ class SettlementServiceTest {
         trip: Trip,
         confirmedBy: User,
         shareToken: String? = null,
+        status: SettlementStatus = SettlementStatus.CONFIRMED,
     ): Settlement {
         return Settlement(
             trip = trip,
-            status = SettlementStatus.CONFIRMED,
+            status = status,
             tripExpenseVersion = 1L,
             calculationVersion = "settlement-v1",
             baseCurrency = "KRW",

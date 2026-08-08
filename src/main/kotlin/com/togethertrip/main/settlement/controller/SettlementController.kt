@@ -98,4 +98,21 @@ class SettlementController(
             )
         )
     }
+
+    @PostMapping("/settlements/{settlementId}/share-tokens/rotation")
+    @RequireActiveTripParticipant
+    @RequireTripOwner
+    override fun rotateShareToken(
+        @AuthenticationPrincipal authUser: AuthUser,
+        @PathVariable tripId: Long,
+        @PathVariable settlementId: Long,
+    ): ApiResponse<SettlementShareTokenResponse> {
+        return ApiResponse.success(
+            settlementService.rotateShareToken(
+                userId = authUser.userId,
+                tripId = tripId,
+                settlementId = settlementId,
+            )
+        )
+    }
 }

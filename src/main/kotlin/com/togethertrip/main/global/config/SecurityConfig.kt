@@ -38,6 +38,10 @@ class SecurityConfig(
                 it.requestMatchers("/api/admin/**").hasRole("ADMIN")
                 it.requestMatchers(HttpMethod.GET, "/api/terms").permitAll()
 
+                // 정산 공유 링크는 앱을 쓰지 않는 동행자에게 확정 정산 결과를 전달한다.
+                // 공유 토큰 자체가 접근 수단이므로 인증을 요구하지 않는다.
+                it.requestMatchers(HttpMethod.GET, "/api/settlement-shares").permitAll()
+
                 it.requestMatchers(
                     "/api/auth/oauth/kakao",
                     "/api/auth/oauth/apple",

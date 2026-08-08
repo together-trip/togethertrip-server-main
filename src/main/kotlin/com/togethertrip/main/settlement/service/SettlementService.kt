@@ -213,6 +213,29 @@ class SettlementService(
         )
     }
 
+    @Transactional
+    fun rotateShareToken(
+        userId: Long,
+        tripId: Long,
+        settlementId: Long,
+    ): SettlementShareTokenResponse {
+        settlementAccessResolver.getOwnedTrip(
+            userId = userId,
+            tripId = tripId,
+        )
+        val settlement = getSettlementOrThrow(settlementId)
+        validateSettlementTrip(
+            settlement = settlement,
+            tripId = tripId,
+        )
+        validateConfirmedSettlement(settlement)
+
+        return SettlementShareTokenResponse(
+            settlementId = settlement.id,
+            shareToken = settlementShareTokenIssuer.rotate(settlement),
+        )
+    }
+
     private fun calculateValidSettlement(trip: Trip): SettlementCalculationResult {
         val calculation = settlementCalculationService.calculate(
             tripId = trip.id,
