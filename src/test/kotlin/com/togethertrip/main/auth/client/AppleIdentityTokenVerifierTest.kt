@@ -147,6 +147,64 @@ class AppleIdentityTokenVerifierTest {
     }
 
     @Test
+    fun `Apple 공개키 응답이 timeout되면 인증 서버 장애로 처리한다`() {
+        val verifier = AppleIdentityTokenVerifier(
+            webClientBuilder = WebClient.builder().exchangeFunction { Mono.never() },
+            properties = AppleOAuthProperties(
+                enabled = true,
+                clientId = "com.togethertrip.app",
+                responseTimeout = Duration.ofMillis(10),
+            ),
+            nonceStore = RecordingNonceStore(),
+            clock = Clock.fixed(now, ZoneOffset.UTC),
+        )
+
+        val exception = assertFailsWith<BusinessException> {
+            verifier.verify(token(key, "nonce-a", "jwt-a"), "nonce-a", null)
+        }
+
+        assertEquals(AuthErrorCode.APPLE_AUTHORIZATION_FAILED, exception.errorCode)
+    }
+
+    @Test
+    fun `허용 범위보다 수명이 긴 identity token을 거부한다`() {
+        val verifier = verifier(key, RecordingNonceStore())
+
+        assertInvalidToken {
+            verifier.verify(
+                token(
+                    signingKey = key,
+                    rawNonce = "nonce-a",
+                    jwtId = "jwt-a",
+                    expiresAt = now.plusSeconds(601),
+                ),
+                "nonce-a",
+                null,
+            )
+        }
+    }
+
+    @Test
+    fun `replay 방지 key를 identity token 만료까지 유지한다`() {
+        val nonceStore = RecordingNonceStore()
+        val verifier = verifier(key, nonceStore)
+
+        verifier.verify(
+            token(
+                signingKey = key,
+                rawNonce = "nonce-a",
+                jwtId = "jwt-a",
+                issuedAt = now.plusSeconds(30),
+                expiresAt = now.plusSeconds(630),
+            ),
+            "nonce-a",
+            null,
+        )
+
+        assertEquals(listOf(Duration.ofSeconds(630)), nonceStore.claimedTtls)
+    }
+
+    @Test
     fun `같은 identity token 재사용을 거부한다`() {
         val verifier = verifier(key, RecordingNonceStore())
         val identityToken = token(key, "nonce-a", "jwt-a")
@@ -222,7 +280,11 @@ class AppleIdentityTokenVerifierTest {
 
     private class RecordingNonceStore : AppleNonceStore {
         private val claimed = mutableSetOf<String>()
+        val claimedTtls = mutableListOf<Duration>()
 
-        override fun claim(nonce: String, ttl: Duration): Boolean = claimed.add(nonce)
+        override fun claim(nonce: String, ttl: Duration): Boolean {
+            claimedTtls += ttl
+            return claimed.add(nonce)
+        }
     }
 }

@@ -73,6 +73,12 @@ class UserService(
 
         // 수정 대상 사용자 조회
         val user = getActiveUser(userId)
+        val previousProfileImageUrl = user.profileImageUrl
+        validateManagedProfileImageReference(
+            user = user,
+            request = request,
+            profileImage = profileImage,
+        )
 
         // 닉네임 중복 확인
         if (
@@ -98,6 +104,14 @@ class UserService(
             birthDate = request.birthDate,
             profileImageUrl = profileImageUrl,
         )
+        if (profileImageUrl != null && profileImageUrl != previousProfileImageUrl) {
+            previousProfileImageUrl?.let { previousUrl ->
+                accountDeletionCleanupEnqueueService.enqueueProfileImage(
+                    userId = userId,
+                    profileImageUrl = previousUrl,
+                )
+            }
+        }
 
         // 수정된 사용자 응답
         return UserResponse.from(user)
@@ -234,6 +248,24 @@ class UserService(
         deleteStoredImageAfterRollback(storedImage)
 
         return storedImage.fileUrl
+    }
+
+    private fun validateManagedProfileImageReference(
+        user: User,
+        request: UpdateUserRequest,
+        profileImage: MultipartFile?,
+    ) {
+        if (profileImage != null && !profileImage.isEmpty) {
+            return
+        }
+
+        val requestedProfileImageUrl = request.profileImageUrl?.trim() ?: return
+        if (
+            userProfileImageStorage.isManagedFileUrl(requestedProfileImageUrl) &&
+            requestedProfileImageUrl != user.profileImageUrl
+        ) {
+            throw BusinessException(CommonErrorCode.INVALID_INPUT)
+        }
     }
 
     private fun deleteStoredImageAfterRollback(storedImage: StoredUserProfileImage) {

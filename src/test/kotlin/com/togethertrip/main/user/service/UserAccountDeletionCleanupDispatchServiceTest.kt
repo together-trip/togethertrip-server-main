@@ -4,10 +4,12 @@ import com.togethertrip.main.auth.service.RefreshTokenService
 import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupErrorCode
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupType
+import com.togethertrip.main.user.repository.UserRepository
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import kotlin.test.assertEquals
@@ -18,12 +20,32 @@ class UserAccountDeletionCleanupDispatchServiceTest {
     private val oauthAccountRevoker = mock(OAuthAccountRevoker::class.java)
     private val profileImageStorage = mock(UserProfileImageStorage::class.java)
     private val refreshTokenService = mock(RefreshTokenService::class.java)
+    private val userRepository = mock(UserRepository::class.java)
     private val service = UserAccountDeletionCleanupDispatchService(
         taskLifecycleService = taskLifecycleService,
         oauthAccountRevoker = oauthAccountRevoker,
         profileImageStorage = profileImageStorage,
         refreshTokenService = refreshTokenService,
+        userRepository = userRepository,
     )
+
+    @Test
+    fun `이전 이미지 cleanup 전에 같은 URL이 현재 프로필로 재참조되면 파일 삭제를 건너뛰고 완료한다`() {
+        val profileImageUrl = "/uploads/user-profile-images/a.jpg"
+        val profileClaim = claim(1L, UserAccountDeletionCleanupType.PROFILE_IMAGE, profileImageUrl)
+        `when`(taskLifecycleService.claimDue(50)).thenReturn(listOf(profileClaim))
+        `when`(
+            userRepository.existsByIdAndProfileImageUrlAndDeletedAtIsNull(1L, profileImageUrl)
+        ).thenReturn(true)
+        `when`(taskLifecycleService.complete(profileClaim)).thenReturn(true)
+
+        val result = service.dispatchDue()
+
+        verify(profileImageStorage, never()).deleteByFileUrl(profileImageUrl)
+        verify(taskLifecycleService).complete(profileClaim)
+        assertEquals(1, result.completedCount)
+        assertEquals(0, result.failedCount)
+    }
 
     @Test
     fun `claim 트랜잭션 밖에서 서로 다른 외부 정리 작업을 실행하고 개별 완료한다`() {

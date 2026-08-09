@@ -4,6 +4,7 @@ import com.togethertrip.main.auth.service.RefreshTokenService
 import com.togethertrip.main.auth.service.apple.OAuthAccountRevoker
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupErrorCode
 import com.togethertrip.main.user.domain.UserAccountDeletionCleanupType
+import com.togethertrip.main.user.repository.UserRepository
 import com.togethertrip.main.user.service.storage.UserProfileImageStorage
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -14,6 +15,7 @@ class UserAccountDeletionCleanupDispatchService(
     private val oauthAccountRevoker: OAuthAccountRevoker,
     private val profileImageStorage: UserProfileImageStorage,
     private val refreshTokenService: RefreshTokenService,
+    private val userRepository: UserRepository,
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -103,8 +105,12 @@ class UserAccountDeletionCleanupDispatchService(
             UserAccountDeletionCleanupType.APPLE_REFRESH_TOKEN ->
                 oauthAccountRevoker.revokeEncrypted(requirePayload(claim))
 
-            UserAccountDeletionCleanupType.PROFILE_IMAGE ->
-                profileImageStorage.deleteByFileUrl(requirePayload(claim))
+            UserAccountDeletionCleanupType.PROFILE_IMAGE -> {
+                val profileImageUrl = requirePayload(claim)
+                if (!isCurrentlyReferenced(claim.userId, profileImageUrl)) {
+                    profileImageStorage.deleteByFileUrl(profileImageUrl)
+                }
+            }
 
             UserAccountDeletionCleanupType.REDIS_REFRESH_TOKEN ->
                 refreshTokenService.delete(claim.userId)
@@ -113,6 +119,16 @@ class UserAccountDeletionCleanupDispatchService(
 
     private fun requirePayload(claim: UserAccountDeletionCleanupClaim): String {
         return claim.payload ?: throw InvalidCleanupTaskPayloadException()
+    }
+
+    private fun isCurrentlyReferenced(
+        userId: Long,
+        profileImageUrl: String,
+    ): Boolean {
+        return userRepository.existsByIdAndProfileImageUrlAndDeletedAtIsNull(
+            id = userId,
+            profileImageUrl = profileImageUrl,
+        )
     }
 
     private fun errorCodeFor(

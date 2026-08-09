@@ -63,6 +63,8 @@ auth:
     jwks-url: ${APPLE_JWKS_URL:https://appleid.apple.com/auth/keys}
     token-url: ${APPLE_TOKEN_URL:https://appleid.apple.com/auth/token}
     revoke-url: ${APPLE_REVOKE_URL:https://appleid.apple.com/auth/revoke}
+    connect-timeout: ${APPLE_CONNECT_TIMEOUT:PT3S}
+    response-timeout: ${APPLE_RESPONSE_TIMEOUT:PT5S}
 
 springdoc:
   swagger-ui:
@@ -150,6 +152,7 @@ exchange-rate:
 notification:
   sqs:
     queue-url: ${NOTIFICATION_SQS_QUEUE_URL:${NOTIFICATION_QUEUE_URL:}}
+    queue-type: ${NOTIFICATION_SQS_QUEUE_TYPE:STANDARD}
     region: ${AWS_REGION:ap-northeast-2}
     enabled: ${NOTIFICATION_SQS_SENDER_ENABLED:true}
     access-key-id: ${AWS_ACCESS_KEY_ID:}

@@ -97,6 +97,7 @@ exchange-rate:
 notification:
   sqs:
     queue-url: ""
+    queue-type: STANDARD
     region: ap-northeast-2
     enabled: false
     access-key-id: ""

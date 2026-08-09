@@ -27,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.mockingDetails
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
@@ -116,8 +117,9 @@ class UserServiceTest {
     }
 
     @Test
-    fun `닉네임과 프로필 이미지를 수정한다`() {
+    fun `닉네임과 외부 프로필 이미지를 수정한다`() {
         val user = createUser()
+        val externalProfileImageUrl = "https://k.kakaocdn.net/profile.png"
 
         `when`(userRepository.findByIdAndDeletedAtIsNull(1L))
             .thenReturn(user)
@@ -126,18 +128,39 @@ class UserServiceTest {
             userId = 1L,
             request = UpdateUserRequest(
                 nickname = "새닉네임",
-                profileImageUrl = "/uploads/user-profile-images/profile.png",
+                profileImageUrl = externalProfileImageUrl,
             ),
         )
 
         assertEquals("새닉네임", user.nickname)
-        assertEquals("/uploads/user-profile-images/profile.png", user.profileImageUrl)
+        assertEquals(externalProfileImageUrl, user.profileImageUrl)
         assertEquals("새닉네임", response.nickname)
     }
 
     @Test
+    fun `다른 managed 프로필 이미지 URL을 직접 지정하면 실패한다`() {
+        val currentProfileImageUrl = "/uploads/user-profile-images/current.jpg"
+        val previousProfileImageUrl = "/uploads/user-profile-images/previous.jpg"
+        val user = createUser(profileImageUrl = currentProfileImageUrl)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+        `when`(userProfileImageStorage.isManagedFileUrl(previousProfileImageUrl)).thenReturn(true)
+
+        val exception = assertBusinessException {
+            userService.updateMe(
+                userId = 1L,
+                request = UpdateUserRequest(profileImageUrl = previousProfileImageUrl),
+            )
+        }
+
+        assertEquals(CommonErrorCode.INVALID_INPUT, exception.errorCode)
+        assertEquals(currentProfileImageUrl, user.profileImageUrl)
+        verifyNoInteractions(accountDeletionCleanupEnqueueService)
+    }
+
+    @Test
     fun `업로드한 프로필 이미지를 저장하고 저장된 URL로 수정한다`() {
-        val user = createUser()
+        val previousProfileImageUrl = "/uploads/user-profile-images/previous-profile.jpg"
+        val user = createUser(profileImageUrl = previousProfileImageUrl)
         val profileImage = MockMultipartFile(
             "profileImage",
             "profile.JPG",
@@ -169,11 +192,17 @@ class UserServiceTest {
         assertEquals("/uploads/user-profile-images/stored-profile.jpg", user.profileImageUrl)
         assertEquals("/uploads/user-profile-images/stored-profile.jpg", response.profileImageUrl)
         verify(userProfileImageStorage).store(profileImage)
+        verify(accountDeletionCleanupEnqueueService).enqueueProfileImage(
+            userId = 1L,
+            profileImageUrl = previousProfileImageUrl,
+        )
+        verify(userProfileImageStorage, never()).deleteByFileUrl(previousProfileImageUrl)
     }
 
     @Test
     fun `업로드한 프로필 이미지 수정 트랜잭션이 롤백되면 저장된 파일을 삭제한다`() {
-        val user = createUser()
+        val previousProfileImageUrl = "/uploads/user-profile-images/previous-profile.jpg"
+        val user = createUser(profileImageUrl = previousProfileImageUrl)
         val profileImage = MockMultipartFile(
             "profileImage",
             "profile.JPG",
@@ -212,6 +241,25 @@ class UserServiceTest {
         }
 
         verify(userProfileImageStorage).delete(storedImage)
+        verify(userProfileImageStorage, never()).deleteByFileUrl(previousProfileImageUrl)
+        verify(accountDeletionCleanupEnqueueService).enqueueProfileImage(
+            userId = 1L,
+            profileImageUrl = previousProfileImageUrl,
+        )
+    }
+
+    @Test
+    fun `같은 프로필 이미지 URL을 유지하면 정리 작업을 저장하지 않는다`() {
+        val profileImageUrl = "/uploads/user-profile-images/profile.jpg"
+        val user = createUser(profileImageUrl = profileImageUrl)
+        `when`(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(user)
+
+        userService.updateMe(
+            userId = 1L,
+            request = UpdateUserRequest(profileImageUrl = profileImageUrl),
+        )
+
+        verifyNoInteractions(accountDeletionCleanupEnqueueService)
     }
 
     @Test
@@ -549,10 +597,11 @@ class UserServiceTest {
 
     private fun createUser(
         status: UserStatus = UserStatus.ACTIVE,
+        profileImageUrl: String? = null,
     ): User {
         return User(
             nickname = "재완",
-            profileImageUrl = null,
+            profileImageUrl = profileImageUrl,
             status = status,
         ).apply {
             id = 1L
